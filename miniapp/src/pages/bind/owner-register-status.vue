@@ -2,6 +2,9 @@
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { request } from '@/utils/request'
+import { useUserStore } from '@/store/user'
+
+const userStore = useUserStore()
 
 const bindCode = ref('')
 const status = ref('pending')
@@ -78,14 +81,22 @@ async function checkStatus() {
   }
 }
 
-function onPrimary() {
+async function onPrimary() {
   if (status.value === 'auto_bound' || status.value === 'approved') {
-    if (storeCount.value > 1) {
-      // 多门店 → 跳到首页（tabBar 页面，可切换门店）
-      uni.switchTab({ url: '/pages/home/index/index' })
-    } else {
-      // 单门店 → 跳到老板首页（非 tabBar，redirectTo）
+    // 先登录获取 token
+    try {
+      await userStore.wxLogin('')
+    } catch {
+      uni.showToast({ title: '登录失败，请重试', icon: 'none' })
+      return
+    }
+    // 按门店数跳转
+    if (userStore.storeCount > 1) {
+      // 多门店 → 多门店总览
       uni.redirectTo({ url: '/pages/owner-home/index' })
+    } else {
+      // 单门店 → 首页
+      uni.switchTab({ url: '/pages/home/index/index' })
     }
   } else if (status.value === 'rejected') {
     uni.showModal({ title: '联系总部', content: '请联系总部人工处理', showCancel: false })

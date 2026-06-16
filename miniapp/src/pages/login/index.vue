@@ -5,6 +5,15 @@ import { fetchOwnerMyStatus } from '@/api/auth'
 
 const userStore = useUserStore()
 const loading = ref(false)
+const agreed = ref(false)
+
+function openService() {
+  uni.navigateTo({ url: '/pages/agreement/service' })
+}
+
+function openPrivacy() {
+  uni.navigateTo({ url: '/pages/agreement/privacy' })
+}
 
 async function getWxNickname() {
   try {
@@ -72,6 +81,10 @@ async function handleLogin() {
 function handleSkip() {
   uni.navigateBackMiniProgram({ success: () => {} })
 }
+
+function onLoginClick() {
+  if (agreed.value) handleLogin()
+}
 </script>
 
 <template>
@@ -85,26 +98,24 @@ function handleSkip() {
 
       <text class="app-name">象掌柜</text>
       <text class="app-subtitle">象子茶铺的门店经营工具</text>
-      <text class="app-desc">授权后，我们会根据你的门店和岗位，帮你进入对应的工作台。</text>
-
-      <!-- 权限说明卡片 -->
-      <view class="perm-card">
-        <view class="perm-icon-wrap">
-          <text class="perm-icon">🛡</text>
-        </view>
-        <view class="perm-body">
-          <text class="perm-title">将用于匹配门店身份</text>
-          <text class="perm-desc">读取微信头像和昵称，匹配你在门店中的员工身份，用于盘点、支出登记和员工管理。</text>
-        </view>
-      </view>
 
       <!-- 底部按钮 -->
       <view class="bottom-actions">
-        <view class="login-btn tap" :class="{ loading }" @click="handleLogin">
+        <view class="login-btn tap" :class="{ loading, disabled: !agreed }" @click="onLoginClick">
           <text v-if="loading">登录中...</text>
           <text v-else>微信授权登录</text>
         </view>
-        <text class="footer-note">登录即表示你同意象掌柜根据门店授权范围提供经营工具服务。</text>
+        <view class="agree-row" @click="agreed = !agreed">
+          <view class="agree-check" :class="{ on: agreed }">
+            <text v-if="agreed" class="agree-icon">✓</text>
+          </view>
+          <text class="agree-text">
+            已阅读并同意
+            <text class="agree-link" @click.stop="openService">《用户服务协议》</text>
+            和
+            <text class="agree-link" @click.stop="openPrivacy">《隐私政策》</text>
+          </text>
+        </view>
       </view>
     </view>
   </view>
@@ -176,7 +187,7 @@ $border: #E8ECE9;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 128rpx 32rpx 0;
+  padding: 260rpx 32rpx 32rpx;
   text-align: center;
 }
 
@@ -212,68 +223,61 @@ $border: #E8ECE9;
   line-height: 44rpx;
 }
 
-.app-desc {
-  display: block;
-  margin-top: 24rpx;
-  max-width: 600rpx;
-  font-size: 28rpx;
-  color: $text-2;
-  line-height: 44rpx;
-}
-
-// ====== 权限说明卡片 ======
-.perm-card {
-  margin-top: 32rpx;
-  width: 100%;
-  border-radius: 16rpx;
-  background: $surface;
-  padding: 32rpx;
-  text-align: left;
-  box-shadow: 0 4px 16px rgba(31, 36, 33, 0.06);
+// ====== 协议勾选 ======
+.agree-row {
   display: flex;
-  gap: 24rpx;
+  align-items: flex-start;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  padding: 0 4rpx;
 }
 
-.perm-icon-wrap {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 50%;
-  background: $primary-soft;
+.agree-check {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 8rpx;
+  border: 2rpx solid #C4C9C7;
+  background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  margin-top: 4rpx;
+  transition: all 0.2s;
+
+  &.on {
+    background: $primary;
+    border-color: $primary;
+  }
 }
 
-.perm-icon {
-  font-size: 40rpx;
+.agree-icon {
+  font-size: 28rpx;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
 }
 
-.perm-body {
+.agree-text {
   flex: 1;
-  min-width: 0;
-}
-
-.perm-title {
-  display: block;
-  font-size: 30rpx;
-  font-weight: 600;
-  color: $text-1;
-}
-
-.perm-desc {
-  display: block;
-  margin-top: 8rpx;
   font-size: 26rpx;
   color: $text-2;
-  line-height: 40rpx;
+  line-height: 44rpx;
+}
+
+.agree-link {
+  color: $primary;
+  font-weight: 500;
 }
 
 // ====== 底部按钮 ======
 .bottom-actions {
-  margin-top: auto;
-  width: 100%;
-  padding-top: 64rpx;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 32rpx 32rpx calc(env(safe-area-inset-bottom) + 32rpx);
+  background: $bg;
 }
 
 .login-btn {
@@ -292,6 +296,11 @@ $border: #E8ECE9;
   &.loading {
     opacity: 0.7;
   }
+
+  &.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
 }
 
 .skip-btn {
@@ -307,15 +316,6 @@ $border: #E8ECE9;
   align-items: center;
   justify-content: center;
   margin-top: 24rpx;
-}
-
-.footer-note {
-  display: block;
-  margin: 32rpx auto 0;
-  max-width: 600rpx;
-  font-size: 24rpx;
-  color: $text-3;
-  line-height: 36rpx;
 }
 
 // ====== 交互 ======

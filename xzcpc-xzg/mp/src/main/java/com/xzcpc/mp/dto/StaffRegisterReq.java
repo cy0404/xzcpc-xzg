@@ -36,4 +36,7 @@ public class StaffRegisterReq {
 
     /** 重新申请时传入，覆盖旧申请 */
     private String applicationId;
+
+    /** 微信登录 code，未登录用户提交时用于换取 openid */
+    private String wxCode;
 }

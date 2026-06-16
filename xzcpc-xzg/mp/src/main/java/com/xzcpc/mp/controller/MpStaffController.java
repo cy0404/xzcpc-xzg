@@ -1,5 +1,7 @@
 package com.xzcpc.mp.controller;
 
+import cn.binarywang.wx.miniapp.api.WxMaService;
+import cn.binarywang.wx.miniapp.bean.WxMaJscode2SessionResult;
 import com.xzcpc.common.annotation.OpLog;
 import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.common.response.R;
@@ -12,17 +14,21 @@ import com.xzcpc.mp.dto.StaffUpdateReq;
 import com.xzcpc.mp.service.MpStaffService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/mp/staff")
 @RequiredArgsConstructor
 public class MpStaffController {
 
     private final MpStaffService staffService;
+    private final WxMaService wxMaService;
 
     @OpLog(module = "小程序-人员", operation = "查询当前用户员工详情")
     @GetMapping("/me")
@@ -61,7 +67,24 @@ public class MpStaffController {
     @PostMapping("/registrations")
     public R<Map<String, Object>> register(@Valid @RequestBody StaffRegisterReq req) {
         LoginUser user = UserContextHolder.get();
-        return R.ok(staffService.submitRegistration(user.getOpenid(), req));
+        String openid;
+        if (user != null && StringUtils.hasText(user.getOpenid())) {
+            // 已登录用户直接使用 openid（重新申请场景）
+            openid = user.getOpenid();
+        } else {
+            // 未登录新用户：通过 wxCode 换取 openid
+            if (!StringUtils.hasText(req.getWxCode())) {
+                throw new BusinessException("缺少微信授权码，请重试");
+            }
+            try {
+                WxMaJscode2SessionResult session = wxMaService.jsCode2SessionInfo(req.getWxCode());
+                openid = session.getOpenid();
+            } catch (Exception e) {
+                log.error("wxCode 换取 openid 失败", e);
+                throw new BusinessException("微信授权失败，请重试");
+            }
+        }
+        return R.ok(staffService.submitRegistration(openid, req));
     }
 
     @OpLog(module = "小程序-人员", operation = "查询登记申请")

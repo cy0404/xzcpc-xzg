@@ -7,6 +7,15 @@ const bindCode = ref('')
 const form = ref({ name: '', phone: '', birthday: '' })
 const phoneError = ref(false)
 const submitting = ref(false)
+const agreed = ref(false)
+
+function openService() {
+  uni.navigateTo({ url: '/pages/agreement/service' })
+}
+
+function openPrivacy() {
+  uni.navigateTo({ url: '/pages/agreement/privacy' })
+}
 
 onLoad((query: any) => {
   bindCode.value = query?.scene || query?.code || ''
@@ -77,6 +86,10 @@ async function handleSubmit() {
     submitting.value = false
   }
 }
+
+function onSubmitClick() {
+  if (agreed.value) handleSubmit()
+}
 </script>
 
 <template>
@@ -118,7 +131,18 @@ async function handleSubmit() {
     </view>
 
     <view class="bottom">
-      <view class="btn" :class="{ loading: submitting }" @click="handleSubmit">
+      <view class="agree-row" @click="agreed = !agreed">
+        <view class="agree-check" :class="{ on: agreed }">
+          <text v-if="agreed" class="agree-icon">✓</text>
+        </view>
+        <text class="agree-text">
+          已阅读并同意
+          <text class="agree-link" @click.stop="openService">《用户服务协议》</text>
+          和
+          <text class="agree-link" @click.stop="openPrivacy">《隐私政策》</text>
+        </text>
+      </view>
+      <view class="btn" :class="{ loading: submitting, disabled: !agreed }" @click="onSubmitClick">
         {{ submitting ? '提交中...' : '提交验证' }}
       </view>
     </view>
@@ -158,6 +182,13 @@ async function handleSubmit() {
 
 // 底部
 .bottom { position: fixed; bottom: 0; left: 0; right: 0; padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom)); background: rgba(255,255,255,0.95); border-top: 1px solid #EEF1EF; }
+.agree-row { display: flex; align-items: flex-start; gap: 16rpx; margin-bottom: 20rpx; }
+.agree-check { width: 40rpx; height: 40rpx; border-radius: 8rpx; border: 2rpx solid #C4C9C7; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2rpx; }
+.agree-check.on { background: #2F8F57; border-color: #2F8F57; }
+.agree-icon { font-size: 28rpx; color: #fff; font-weight: 700; line-height: 1; }
+.agree-text { flex: 1; font-size: 24rpx; color: #66706A; line-height: 40rpx; }
+.agree-link { color: #2F8F57; font-weight: 500; }
 .btn { height: 96rpx; border-radius: 24rpx; background: #2F8F57; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 30rpx; font-weight: 600; box-shadow: 0 8rpx 24rpx rgba(31,36,33,0.1); }
 .btn.loading { opacity: 0.6; }
+.btn.disabled { opacity: 0.45; pointer-events: none; }
 </style>

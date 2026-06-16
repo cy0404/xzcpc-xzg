@@ -13,6 +13,15 @@ const form = ref<any>({ name: '', mobile: '', gender: '男', birthday: '', expec
 const roles = ['店员', '店长', '兼职']
 const today = new Date().toISOString().slice(0, 10)
 const saving = ref(false)
+const agreed = ref(false)
+
+function openService() {
+  uni.navigateTo({ url: '/pages/agreement/service' })
+}
+
+function openPrivacy() {
+  uni.navigateTo({ url: '/pages/agreement/privacy' })
+}
 
 onLoad(async (query: any) => {
   storeId.value = query?.storeId || userStore.storeId
@@ -66,11 +75,16 @@ async function submit() {
   if (!form.value.name || !form.value.mobile) { uni.showToast({ title: '请填写姓名和手机号', icon: 'none' }); return }
   saving.value = true
   try {
-    const body: any = { ...form.value, storeId: storeId.value }
+    const loginRes: any = await uni.login()
+    const body: any = { ...form.value, storeId: storeId.value, wxCode: loginRes.code }
     if (reapplyId.value) body.applicationId = reapplyId.value
     const res: any = await submitStaffRegistration(body)
     uni.redirectTo({ url: `/pages/staff/register-success/index?applicationId=${res?.applicationId || ''}&name=${encodeURIComponent(form.value.name)}&storeName=${encodeURIComponent(storeName.value)}` })
   } finally { saving.value = false }
+}
+
+function onSubmitClick() {
+  if (agreed.value) submit()
 }
 </script>
 
@@ -126,7 +140,20 @@ async function submit() {
 
     <view class="info">提交后负责人可检查和修改员工信息，审批通过后系统根据岗位开通功能。</view>
 
-    <view class="bottom"><view class="btn" @click="submit">{{ saving ? '提交中...' : '提交登记申请' }}</view></view>
+    <view class="bottom">
+      <view class="agree-row" @click="agreed = !agreed">
+        <view class="agree-check" :class="{ on: agreed }">
+          <text v-if="agreed" class="agree-icon">✓</text>
+        </view>
+        <text class="agree-text">
+          已阅读并同意
+          <text class="agree-link" @click.stop="openService">《用户服务协议》</text>
+          和
+          <text class="agree-link" @click.stop="openPrivacy">《隐私政策》</text>
+        </text>
+      </view>
+      <view class="btn" :class="{ disabled: !agreed }" @click="onSubmitClick">{{ saving ? '提交中...' : '提交登记申请' }}</view>
+    </view>
   </view>
 </template>
 
@@ -144,5 +171,12 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .remark{width:100%;height:120rpx;padding:24rpx 28rpx;font-size:28rpx;border:none;background:transparent;box-sizing:border-box}
 .info{padding:20rpx;border-radius:12rpx;background:#FAFBF9;font-size:26rpx;color:$t2;margin-bottom:24rpx}
 .bottom{position:fixed;left:0;right:0;bottom:0;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);background:$s;border-top:2rpx solid #EEF1EF}
+.agree-row{display:flex;align-items:flex-start;gap:16rpx;margin-bottom:20rpx}
+.agree-check{width:40rpx;height:40rpx;border-radius:8rpx;border:2rpx solid #C4C9C7;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2rpx}
+.agree-check.on{background:$p;border-color:$p}
+.agree-icon{font-size:28rpx;color:#fff;font-weight:700;line-height:1}
+.agree-text{flex:1;font-size:24rpx;color:$t2;line-height:40rpx}
+.agree-link{color:$p;font-weight:500}
 .btn{width:100%;height:88rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30rpx;font-weight:700}
+.btn.disabled{opacity:0.45;pointer-events:none}
 </style>

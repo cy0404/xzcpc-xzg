@@ -45,8 +45,9 @@ function goDetail(item: any) { uni.navigateTo({ url: `/pages/staff/detail/index?
 function goApproval() { uni.navigateTo({ url: '/pages/staff/approval/index' }) }
 
 onShareAppMessage(() => ({
-  title: `${userStore.storeName || '门店'}邀请你登记员工信息`,
+  title: `象子茶铺茶邀请你加入${userStore.storeName || '门店'}`,
   path: invitePath.value,
+  imageUrl: '/static/employee.png',
 }))
 
 function maskMobile(m: string) {
@@ -66,7 +67,6 @@ function maskMobile(m: string) {
             <text class="ov-store">{{ userStore.storeName || '我的门店' }}</text>
             <text v-if="userStore.storeCount > 1" class="switch-link" @click="switcherRef?.open()">切换</text>
           </view>
-          <text class="ov-badge">当前在职 {{ overview.activeCount || 0 }} 人</text>
         </view>
         <view class="ov-stats">
           <view class="stat"><text class="stat-num">{{ overview.managerCount || 0 }}</text><text class="stat-label">店长</text></view>
@@ -122,33 +122,22 @@ function maskMobile(m: string) {
       <view class="sheet" @click.stop>
         <view class="sheet-handle"></view>
         <view class="sheet-head">
-          <text class="sheet-title">邀请员工登记信息</text>
+          <text class="sheet-title">邀请员工</text>
           <text class="sheet-close" @click="showInvite = false">×</text>
         </view>
         <view class="sheet-body">
-          <view class="tip-card">
-            <text>将登记表分享给员工。员工填写并提交后，需要由门店负责人审批，审批通过后才能使用菜单栏。</text>
-          </view>
           <view class="store-row">
             <text class="store-label">登记门店</text>
-            <text class="store-val">{{ userStore.storeName || '--' }} ›</text>
-          </view>
-          <text class="preview-label">预览分享卡片</text>
-          <view class="share-card">
-            <view class="share-logo">店</view>
-            <view class="share-content">
-              <text class="share-title">{{ userStore.storeName || '门店' }}邀请你登记员工信息</text>
-              <text class="share-desc">填写资料并提交，等待门店负责人审批</text>
-            </view>
-            <view class="share-line"></view>
-            <view class="share-miniapp">◇ 象掌柜小程序</view>
+            <text class="store-val">{{ userStore.storeName || '--' }}</text>
           </view>
           <view class="expire-tip">
             <text>邀请有效期：7 天</text>
             <text>过期后可重新生成邀请</text>
           </view>
         </view>
-        <button class="share-btn" open-type="share">⌯ 分享给微信好友</button>
+        <view class="share-btn-wrap">
+          <button class="share-btn" open-type="share">⌯ 分享给微信好友</button>
+        </view>
       </view>
     </view>
   </view>
@@ -164,8 +153,7 @@ $warning: #E58A2D;
 .ov-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24rpx; }
 .store-title-row { display: flex; align-items: baseline; gap: 12rpx; }
 .ov-store { font-size: 36rpx; font-weight: 800; color: $text-1; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.switch-link { font-size: 24rpx; color: $primary; padding: 4rpx 0; }
-.ov-badge { padding: 8rpx 20rpx; border-radius: 999rpx; background: $primary-soft; color: $primary; font-size: 24rpx; font-weight: 600; }
+.switch-link { font-size: 24rpx; color: $primary; padding: 4rpx 0; flex-shrink: 0; }
 .ov-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8rpx; background: #FAFBF9; border-radius: 16rpx; padding: 20rpx; }
 .stat { text-align: center; }
 .stat--border { border-left: 2rpx solid #E8ECE9; }
@@ -206,17 +194,10 @@ $warning: #E58A2D;
 .sheet-title { font-size: 36rpx; font-weight: 700; color: $text-1; }
 .sheet-close { position: absolute; right: 32rpx; font-size: 44rpx; color: $text-2; }
 .sheet-body { flex: 1; overflow-y: auto; padding: 0 32rpx; display: flex; flex-direction: column; gap: 24rpx; }
-.tip-card { padding: 20rpx; border-radius: 12rpx; background: rgba(231,244,235,0.5); color: $text-2; font-size: 26rpx; line-height: 1.5; }
 .store-row { display: flex; justify-content: space-between; padding: 28rpx 0; border-bottom: 2rpx solid #EEF1EF; font-size: 28rpx; }
 .store-label { font-weight: 700; color: $text-1; }
 .store-val { color: $primary; }
-.preview-label { font-size: 24rpx; color: $text-2; font-weight: 700; margin-top: 8rpx; }
-.share-card { padding: 24rpx; border: 2rpx solid #E8ECE9; border-radius: 20rpx; background: #FAFBF9; }
-.share-logo { width: 80rpx; height: 80rpx; border-radius: 12rpx; background: $primary; color: #91ECA6; display: flex; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 800; margin-bottom: 16rpx; }
-.share-title { font-size: 28rpx; font-weight: 600; color: $text-1; }
-.share-desc { display: block; margin-top: 8rpx; font-size: 24rpx; color: $text-2; }
-.share-line { height: 2rpx; background: #E8ECE9; margin: 16rpx 0; }
-.share-miniapp { font-size: 24rpx; color: $text-2; }
 .expire-tip { display: flex; flex-direction: column; align-items: center; gap: 4rpx; padding: 24rpx 0; color: $text-2; font-size: 26rpx; }
-.share-btn { width: 100%; height: 96rpx; background: $primary; color: #fff; border: none; border-radius: 0; font-size: 28rpx; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 16rpx; }
+.share-btn-wrap { padding: 24rpx 32rpx calc(env(safe-area-inset-bottom) + 24rpx); }
+.share-btn { width: 100%; height: 96rpx; background: $primary; color: #fff; border: none; border-radius: 16rpx; font-size: 28rpx; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 16rpx; }
 </style>

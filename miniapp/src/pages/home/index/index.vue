@@ -19,6 +19,7 @@ const monthlyExpense = ref(0)
 const appBanner = ref<{ status: string; storeNames: string[]; rejectReason?: string } | null>(null)
 const firstTask = computed(() => taskStore.currentTasks?.[0] || null)
 const isOwner = computed(() => userStore.role === '老板')
+const hasStaffManage = computed(() => userStore.permissions.includes('staff:manage'))
 const showStoreDrawer = ref(false)
 const storeList = ref<any[]>([])
 
@@ -259,10 +260,15 @@ function goMyProfile() {
           <text class="ti-name">支出登记</text>
           <text class="ti-desc">记录门店支出</text>
         </view>
-        <view class="tool-item" @click="goStaffList">
+        <view class="tool-item" @click="goStaffList" v-if="hasStaffManage">
           <view class="ti-icon-wrap"><text class="ti-icon">👥</text></view>
           <text class="ti-name">人员管理</text>
           <text class="ti-desc">查看员工与审批</text>
+        </view>
+        <view class="tool-item" @click="goMyProfile" v-else>
+          <view class="ti-icon-wrap"><text class="ti-icon">👤</text></view>
+          <text class="ti-name">我的信息</text>
+          <text class="ti-desc">查看个人资料</text>
         </view>
       </view>
     </view>

@@ -29,7 +29,8 @@ public class MpWebMvcConfig implements WebMvcConfigurer {
                                      "/api/mp/auth/owner/qrcode",
                                      "/api/mp/auth/owner/qrcode-img",
                                      "/api/mp/auth/owner/my-status",
-                                     "/api/mp/public/**");
+                                     "/api/mp/public/**",
+                                     "/api/mp/staff/registrations");
     }
 
     @Override

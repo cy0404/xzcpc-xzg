@@ -165,6 +165,7 @@ public class InventoryReportController {
             item.put("itemName", nvl(r.getItemName()));
             item.put("amount", r.getAmount());
             item.put("occurredDate", r.getOccurredDate() != null ? r.getOccurredDate().toString() : "");
+            item.put("createdAt", r.getCreatedAt() != null ? r.getCreatedAt().toString().replace("T", " ") : "");
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> expenses = (List<Map<String, Object>>) store.get("expenses");
             expenses.add(item);
