@@ -1,4 +1,13 @@
 .DS_Store
 *.swp
 *.swo
-*~
+newProject/
+node_modules/
+dist/
+target/
+upload/
+*.log
+temp_*
+.claude/
+*.iml
+.idea/

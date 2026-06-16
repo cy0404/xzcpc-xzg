@@ -1,0 +1,156 @@
+{
+  "pages": [
+    {
+      "path": "pages/home/index/index",
+      "style": { "navigationBarTitleText": "首页" }
+    },
+    {
+      "path": "pages/tools/index/index",
+      "style": { "navigationBarTitleText": "工具" }
+    },
+    {
+      "path": "pages/business/index/index",
+      "style": { "navigationBarTitleText": "经营" }
+    },
+    {
+      "path": "pages/profile/index/index",
+      "style": { "navigationBarTitleText": "我的" }
+    },
+    {
+      "path": "pages/login/index",
+      "style": { "navigationBarTitleText": "登录" }
+    },
+    {
+      "path": "pages/task/list/index",
+      "style": { "navigationBarTitleText": "盘点任务" }
+    },
+    {
+      "path": "pages/task/detail/index",
+      "style": { "navigationBarTitleText": "任务详情" }
+    },
+    {
+      "path": "pages/task/zone-entry/index",
+      "style": { "navigationBarTitleText": "盘点物料" }
+    },
+    {
+      "path": "pages/task/summary/index",
+      "style": { "navigationBarTitleText": "盘点汇总" }
+    },
+    {
+      "path": "pages/task/result/index",
+      "style": { "navigationBarTitleText": "盘点结果" }
+    },
+    {
+      "path": "pages/expense/list/index",
+      "style": {
+        "navigationBarTitleText": "支出登记",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/expense/form/index",
+      "style": { "navigationBarTitleText": "新增支出" }
+    },
+    {
+      "path": "pages/expense/detail/index",
+      "style": { "navigationBarTitleText": "支出详情" }
+    },
+    {
+      "path": "pages/staff/list/index",
+      "style": { "navigationBarTitleText": "门店人员" }
+    },
+    {
+      "path": "pages/staff/detail/index",
+      "style": { "navigationBarTitleText": "员工详情" }
+    },
+    {
+      "path": "pages/staff/edit/index",
+      "style": { "navigationBarTitleText": "编辑员工" }
+    },
+    {
+      "path": "pages/staff/register/index",
+      "style": { "navigationBarTitleText": "员工登记" }
+    },
+    {
+      "path": "pages/staff/register-success/index",
+      "style": { "navigationBarTitleText": "登记结果" }
+    },
+    {
+      "path": "pages/staff/approval/index",
+      "style": { "navigationBarTitleText": "登记审批" }
+    },
+    {
+      "path": "pages/staff/approval-detail/index",
+      "style": { "navigationBarTitleText": "员工申请审批" }
+    },
+    {
+      "path": "pages/staff/approval-result/index",
+      "style": { "navigationBarTitleText": "审批结果" }
+    },
+    {
+      "path": "pages/placeholder/index/index",
+      "style": { "navigationBarTitleText": "功能建设中" }
+    },
+    {
+      "path": "pages/owner-home/index",
+      "style": { "navigationBarTitleText": "门店总览" }
+    },
+    {
+      "path": "pages/inventory/scan/index",
+      "style": {
+        "navigationBarTitleText": "扫码盘点",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/bind/owner-register",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/bind/owner-register-status",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "tabBar": {
+    "color": "#98A19C",
+    "selectedColor": "#2F8F57",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/tools/index/index",
+        "text": "工具"
+      },
+      {
+        "pagePath": "pages/business/index/index",
+        "text": "经营"
+      },
+      {
+        "pagePath": "pages/profile/index/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "象掌柜",
+    "navigationBarBackgroundColor": "#F7F8F6",
+    "backgroundColor": "#F7F8F6"
+  },
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^wd-(.*)": "wot-design-uni/components/wd-$1/wd-$1.vue"
+    }
+  }
+}

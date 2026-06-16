@@ -1,0 +1,133 @@
+// 象掌柜小程序 — 2.0 设计系统
+// 主色：品牌绿 #2F8F57
+
+// =========== 颜色令牌 ===========
+$color-bg: #F7F8F6;
+$color-surface: #FFFFFF;
+$color-surface-subtle: #FAFBF9;
+$color-surface-green: #F1F8F3;
+$color-surface-orange: #FFF8EE;
+$color-surface-red: #FFF4F2;
+
+$color-primary: #2F8F57;
+$color-primary-soft: #E7F4EB;
+
+$color-text-primary: #1F2421;
+$color-text-secondary: #66706A;
+$color-text-tertiary: #98A19C;
+
+$color-border: #E8ECE9;
+$color-divider: #EEF1EF;
+
+$color-warning: #E58A2D;
+$color-danger: #E05A47;
+
+$color-icon-default: #56605B;
+$color-icon-muted: #8C9691;
+
+// =========== 圆角 ===========
+$radius-sm: 8rpx;
+$radius: 12rpx;
+$radius-lg: 16rpx;
+$radius-xl: 20rpx;
+$radius-full: 999rpx;
+
+// =========== 阴影 ===========
+$shadow-card: 0 4rpx 16rpx rgba(31, 36, 33, 0.06);
+
+// =========== 兼容旧变量（逐步迁移） ===========
+$brand-primary: $color-primary;
+$brand-bg-light: $color-primary-soft;
+$text-primary: $color-text-primary;
+$text-secondary: $color-text-secondary;
+$bg-page: $color-bg;
+$bg-card: $color-surface;
+$border-light: $color-border;
+$danger: $color-danger;
+$warning: $color-warning;
+
+// =========== 全局工具类 ===========
+// 卡片
+.card {
+  background: $color-surface;
+  border-radius: $radius-xl;
+  box-shadow: $shadow-card;
+}
+.card-outline {
+  background: $color-surface;
+  border: 2rpx solid $color-border;
+  border-radius: $radius-lg;
+}
+
+// 品牌色文字
+.color-primary { color: $color-primary; }
+.color-danger { color: $color-danger; }
+.color-warning { color: $color-warning; }
+
+// 状态胶囊
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: $radius-full;
+  font-size: 20rpx;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.tag-green { background: $color-primary-soft; color: $color-primary; }
+.tag-orange { background: $color-surface-orange; color: $color-warning; }
+.tag-red { background: $color-surface-red; color: $color-danger; }
+.tag-gray { background: $color-divider; color: $color-text-secondary; }
+
+// Flex 工具
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-start { display: flex; align-items: center; }
+
+// 安全区
+.safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 24rpx); }
+
+// 底部操作栏
+.action-bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  padding: 20rpx 32rpx;
+  background: $color-surface;
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.04);
+  display: flex;
+  gap: 20rpx;
+  z-index: 99;
+}
+
+// 按压反馈
+.tap-active {
+  transition: transform 160ms ease, opacity 160ms ease;
+  &:active { transform: scale(0.98); opacity: 0.85; }
+}
+
+// 旧版兼容
+.badge { @extend .tag; }
+.badge-success { @extend .tag-green; }
+.badge-warning { @extend .tag-orange; }
+.badge-danger { @extend .tag-red; }
+.badge-gray { @extend .tag-gray; }
+
+.section-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: $color-text-secondary;
+  padding: 24rpx 8rpx 16rpx;
+}
+
+.brand-card {
+  @extend .card;
+  padding: 32rpx;
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-btn-primary {
+  --wot-button-primary-bg: #{$color-primary};
+  --wot-button-primary-color: #fff;
+}

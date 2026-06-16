@@ -1,0 +1,22 @@
+{
+  "name": "盘点工具",
+  "appid": "wx3081dfa30167bb6e",
+  "description": "门店月盘数据录入",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wx3081dfa30167bb6e",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "postcss": true,
+      "minified": true
+    },
+    "usingComponents": true,
+    "permission": {},
+    "requiredBackgroundModes": [],
+    "plugins": {},
+    "lazyCodeLoading": "requiredComponents"
+  }
+}

@@ -1,0 +1,50 @@
+server:
+  port: 30261
+  servlet:
+    context-path: /storeInventory
+
+spring:
+  profiles:
+    active: prod   # dev=本地Mock | prod=生产环境
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+store:
+  api:
+    url: http://119.45.162.160:5174/api/publish/entities/mendianxinxi/records
+    key: aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM
+
+material:
+  api:
+    url: http://119.45.162.160:5174/api/publish/entities/yuancailiao/records
+    key: aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+wx:
+  miniapp:
+    appid: wx3081dfa30167bb6e
+    secret: f9651f46d1b892c6e36e20eac6f932b3
+    msg-data-format: JSON
+
+app:
+  upload:
+    path: ./upload
+  public-url: http://www.xzcpc-9pd.top/storeInventory
+
+mp:
+  jwt:
+    secret: xzcpc-mp-jwt-secret-key-2026-production-change-this
+    expire-hours: 168

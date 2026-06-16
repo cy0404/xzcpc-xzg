@@ -1,0 +1,56 @@
+spring:
+  profiles:
+    active: prod
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+logging:
+  level:
+    com.xzcpc: DEBUG
+    org.springframework.web: DEBUG
+    com.xzcpc.template.mapper: DEBUG
+
+store:
+  api:
+    url: http://119.45.162.160:5174/api/publish/entities/mendianxinxi/records
+    key: aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM
+
+material:
+  api:
+    url: http://119.45.162.160:5174/api/publish/entities/yuancailiao/records
+    key: aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: auto
+
+wx:
+  miniapp:
+    appid: wx0000000000000001
+    secret: 00000000000000000000000000000001
+    msg-data-format: JSON
+
+mp:
+  jwt:
+    secret: xzcpc-mp-jwt-secret-key-2026-production-change-this
+    expire-hours: 168
+
+# 飞书应用配置（H5 登录）
+feishu:
+  app-id: cli_aa90f3d66d7adbb7
+  app-secret: wcQCAqZQML7YZn8h6vK0TdOy3t88fnP7
+
+# 总部端管理员 JWT
+report:
+  api:
+    token: U09MTyBHZW5lcmF0ZWQgMjAyNg==
+
+admin:
+  jwt:
+    secret: xzcpc-admin-jwt-secret-key-2026-production
+    expire-hours: 72

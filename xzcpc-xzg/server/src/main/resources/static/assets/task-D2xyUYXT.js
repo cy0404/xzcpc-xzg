@@ -1,0 +1,1 @@
+import{a as s}from"./index-DEzjmyun.js";function a(t){return s.get("/tasks",{params:t})}function n(t){return s.post("/tasks",t)}function r(t){return s.get(`/tasks/${t}`)}function u(t){return s.get(`/tasks/${t}/result`)}function k(t){return s.delete(`/tasks/${t}`)}export{u as a,a as b,n as c,k as d,r as g};
