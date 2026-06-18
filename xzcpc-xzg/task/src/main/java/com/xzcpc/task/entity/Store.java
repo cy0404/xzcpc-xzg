@@ -34,11 +34,11 @@ public class Store {
     /** 门店二维码（本地维护，不随外部同步覆盖） */
     private String qrCode;
 
+    /** 老板姓名（本地维护，用于绑定匹配） */
+    private String ownerName;
+
     /** 老板手机号（本地维护，用于绑定匹配） */
     private String ownerPhone;
-
-    /** 老板生日（本地维护，用于绑定匹配） */
-    private String ownerBirthday;
 
     /** 老板绑定的微信openid（本地维护） */
     private String ownerOpenid;

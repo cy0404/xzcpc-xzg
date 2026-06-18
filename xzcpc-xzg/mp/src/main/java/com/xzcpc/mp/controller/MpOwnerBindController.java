@@ -2,9 +2,11 @@ package com.xzcpc.mp.controller;
 
 import com.xzcpc.common.response.R;
 import com.xzcpc.mp.context.UserContextHolder;
-import com.xzcpc.mp.dto.OwnerBindReq;
+import com.xzcpc.mp.dto.ConfirmBindReq;
 import com.xzcpc.mp.dto.OwnerBindStatusResp;
 import com.xzcpc.mp.dto.OwnerMyStatusResp;
+import com.xzcpc.mp.dto.QueryStoresReq;
+import com.xzcpc.mp.dto.StoreMatchResp;
 import com.xzcpc.mp.service.MpOwnerBindService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -22,9 +24,20 @@ public class MpOwnerBindController {
 
     private final MpOwnerBindService bindService;
 
-    @PostMapping("/bind")
-    public R<OwnerBindStatusResp> bind(@Valid @RequestBody OwnerBindReq req) {
-        return R.ok(bindService.submitBind(req));
+    /**
+     * 查询匹配门店：POST /api/mp/auth/owner/query-stores
+     */
+    @PostMapping("/query-stores")
+    public R<StoreMatchResp> queryStores(@Valid @RequestBody QueryStoresReq req) {
+        return R.ok(bindService.queryStores(req.getBindCode(), req.getWxCode(), req.getName(), req.getPhone()));
+    }
+
+    /**
+     * 确认绑定：POST /api/mp/auth/owner/confirm-bind
+     */
+    @PostMapping("/confirm-bind")
+    public R<OwnerBindStatusResp> confirmBind(@Valid @RequestBody ConfirmBindReq req) {
+        return R.ok(bindService.confirmBind(req));
     }
 
     @GetMapping("/status")

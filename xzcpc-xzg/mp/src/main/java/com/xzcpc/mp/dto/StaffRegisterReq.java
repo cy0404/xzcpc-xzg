@@ -21,7 +21,7 @@ public class StaffRegisterReq {
     private String gender;
     private LocalDate birthday;
 
-    @NotBlank(message = "期望岗位不能为空")
+    @NotBlank(message = "入职岗位不能为空")
     private String expectedRole;
 
     @NotBlank(message = "用工类型不能为空")

@@ -10,6 +10,7 @@ interface RequestOptions {
 }
 
 let requestCount = 0
+let reLaunchTimer: any = null
 
 function showLoading() {
   if (requestCount === 0) {
@@ -53,7 +54,11 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
         } else if (body.code === 401) {
           if (!silent) {
             uni.removeStorageSync('token')
-            uni.reLaunch({ url: '/pages/login/index' })
+            // 防抖：500ms 内多个 401 只触发一次 reLaunch，避免 timeout
+            if (!reLaunchTimer) {
+              uni.reLaunch({ url: '/pages/login/index' })
+              reLaunchTimer = setTimeout(() => { reLaunchTimer = null }, 500)
+            }
             uni.showToast({ title: CODE_MAP[401] || '未登录', icon: 'none' })
           }
           reject(body)

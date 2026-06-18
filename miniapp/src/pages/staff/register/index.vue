@@ -116,7 +116,7 @@ function onSubmitClick() {
     <view class="card">
       <view class="r"><text class="rk">所属门店</text><text class="rv plain">{{ storeName }}</text></view>
       <picker :range="roles" @change="(e:any)=>form.expectedRole=roles[e.detail.value]">
-        <view class="r"><text class="rk"><text class="req">*</text>期望岗位</text><text class="rv sel">{{ form.expectedRole }} ›</text></view>
+        <view class="r"><text class="rk"><text class="req">*</text>入职岗位</text><text class="rv sel">{{ form.expectedRole }} ›</text></view>
       </picker>
       <view class="r"><text class="rk"><text class="req">*</text>入职类型</text>
         <view class="radio-group">

@@ -5,7 +5,7 @@ server:
 
 spring:
   profiles:
-    active: prod   # dev=本地Mock | prod=生产环境
+    active: dev   # dev=本地Mock | prod=生产环境
   servlet:
     multipart:
       max-file-size: 20MB

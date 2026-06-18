@@ -33,13 +33,6 @@ const rawToolGroups = [
         url: '/pages/staff/list/index',
         permission: 'staff:manage',
       },
-      {
-        title: '经营概览',
-        desc: '查看门店经营数据',
-        icon: '营',
-        url: '/pages/business/index/index',
-        type: 'switchTab',
-      },
     ],
   },
 ]

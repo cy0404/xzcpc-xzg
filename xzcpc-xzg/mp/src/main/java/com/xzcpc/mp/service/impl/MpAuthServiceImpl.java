@@ -60,18 +60,12 @@ public class MpAuthServiceImpl implements MpAuthService {
         if (session == null) {
             session = new StoreManagerSession();
             session.setOpenid(openid);
-            session.setSessionKey(sessionKey);
-            if (StringUtils.hasText(wxNickname)) {
-                session.setWxNickname(wxNickname);
-            }
             sessionMapper.insert(session);
-        } else {
-            session.setSessionKey(sessionKey);
-            if (StringUtils.hasText(wxNickname)) {
-                session.setWxNickname(wxNickname);
-            }
-            session.setLastLoginAt(LocalDateTime.now());
-            sessionMapper.updateById(session);
+        }
+
+        session.setSessionKey(sessionKey);
+        if (StringUtils.hasText(wxNickname)) {
+            session.setWxNickname(wxNickname);
         }
 
         // 根据 openid 自动匹配门店（查询 Employee 表，老板绑定后也在这里匹配到）
@@ -81,8 +75,13 @@ public class MpAuthServiceImpl implements MpAuthService {
             Map<String, Object> primary = stores.get(0);
             session.setStoreId((String) primary.get("storeId"));
             session.setStoreName((String) primary.get("storeName"));
+        } else if (session.getId() != null) {
+            // 已有会话但 findStoresByOpenid 返回空 → 员工已离职，清除旧的门店绑定
+            session.setStoreId(null);
+            session.setStoreName(null);
         }
 
+        // 一次性写入所有变更
         boolean bound = StringUtils.hasText(session.getStoreId());
         String token = jwtUtil.generate(session.getId().longValue(), openid);
         session.setToken(token);
@@ -98,7 +97,14 @@ public class MpAuthServiceImpl implements MpAuthService {
                 session.getStoreName()
         );
         resp.setStoreCount(stores.isEmpty() ? 1 : stores.size());
-        return withStaffProfile(resp, session);
+        resp = withStaffProfile(resp, session);
+        // 已离职员工：staffBound=false，视为未绑定，前端会跳到登录页
+        if (!resp.isStaffBound()) {
+            resp.setBound(false);
+            resp.setRole("");
+            resp.setPermissions(List.of());
+        }
+        return resp;
     }
 
     @Override
@@ -243,9 +249,16 @@ public class MpAuthServiceImpl implements MpAuthService {
                 session.getStoreId(),
                 session.getStoreName()
         );
+        resp = withStaffProfile(resp, session);
+        // 已离职员工：staffBound=false，视为未绑定，前端会跳到登录页
+        if (!resp.isStaffBound()) {
+            resp.setBound(false);
+            resp.setRole("");
+            resp.setPermissions(List.of());
+        }
         List<Map<String, Object>> stores = staffService.findStoresByOpenid(session.getOpenid());
         resp.setStoreCount(stores.isEmpty() ? 1 : stores.size());
-        return withStaffProfile(resp, session);
+        return resp;
     }
 
     private LoginResp withStaffProfile(LoginResp resp, StoreManagerSession session) {

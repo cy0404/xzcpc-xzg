@@ -2,43 +2,63 @@
   "pages": [
     {
       "path": "pages/home/index/index",
-      "style": { "navigationBarTitleText": "首页" }
+      "style": {
+        "navigationBarTitleText": "首页"
+      }
     },
     {
       "path": "pages/tools/index/index",
-      "style": { "navigationBarTitleText": "工具" }
+      "style": {
+        "navigationBarTitleText": "工具"
+      }
     },
     {
       "path": "pages/business/index/index",
-      "style": { "navigationBarTitleText": "经营" }
+      "style": {
+        "navigationBarTitleText": "经营"
+      }
     },
     {
       "path": "pages/profile/index/index",
-      "style": { "navigationBarTitleText": "我的" }
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
     },
     {
       "path": "pages/login/index",
-      "style": { "navigationBarTitleText": "登录" }
+      "style": {
+        "navigationBarTitleText": "登录"
+      }
     },
     {
       "path": "pages/task/list/index",
-      "style": { "navigationBarTitleText": "盘点任务" }
+      "style": {
+        "navigationBarTitleText": "盘点任务"
+      }
     },
     {
       "path": "pages/task/detail/index",
-      "style": { "navigationBarTitleText": "任务详情" }
+      "style": {
+        "navigationBarTitleText": "任务详情"
+      }
     },
     {
       "path": "pages/task/zone-entry/index",
-      "style": { "navigationBarTitleText": "盘点物料" }
+      "style": {
+        "navigationBarTitleText": "盘点物料"
+      }
     },
     {
       "path": "pages/task/summary/index",
-      "style": { "navigationBarTitleText": "盘点汇总" }
+      "style": {
+        "navigationBarTitleText": "盘点汇总"
+      }
     },
     {
       "path": "pages/task/result/index",
-      "style": { "navigationBarTitleText": "盘点结果" }
+      "style": {
+        "navigationBarTitleText": "盘点结果"
+      }
     },
     {
       "path": "pages/expense/list/index",
@@ -49,51 +69,75 @@
     },
     {
       "path": "pages/expense/form/index",
-      "style": { "navigationBarTitleText": "新增支出" }
+      "style": {
+        "navigationBarTitleText": "新增支出"
+      }
     },
     {
       "path": "pages/expense/detail/index",
-      "style": { "navigationBarTitleText": "支出详情" }
+      "style": {
+        "navigationBarTitleText": "支出详情"
+      }
     },
     {
       "path": "pages/staff/list/index",
-      "style": { "navigationBarTitleText": "门店人员" }
+      "style": {
+        "navigationBarTitleText": "门店人员"
+      }
     },
     {
       "path": "pages/staff/detail/index",
-      "style": { "navigationBarTitleText": "员工详情" }
+      "style": {
+        "navigationBarTitleText": "员工详情"
+      }
     },
     {
       "path": "pages/staff/edit/index",
-      "style": { "navigationBarTitleText": "编辑员工" }
+      "style": {
+        "navigationBarTitleText": "编辑员工"
+      }
     },
     {
       "path": "pages/staff/register/index",
-      "style": { "navigationBarTitleText": "员工登记" }
+      "style": {
+        "navigationBarTitleText": "员工登记"
+      }
     },
     {
       "path": "pages/staff/register-success/index",
-      "style": { "navigationBarTitleText": "登记结果" }
+      "style": {
+        "navigationBarTitleText": "登记结果"
+      }
     },
     {
       "path": "pages/staff/approval/index",
-      "style": { "navigationBarTitleText": "登记审批" }
+      "style": {
+        "navigationBarTitleText": "登记审批"
+      }
     },
     {
       "path": "pages/staff/approval-detail/index",
-      "style": { "navigationBarTitleText": "员工申请审批" }
+      "style": {
+        "navigationBarTitleText": "员工申请审批"
+      }
     },
     {
       "path": "pages/staff/approval-result/index",
-      "style": { "navigationBarTitleText": "审批结果" }
+      "style": {
+        "navigationBarTitleText": "审批结果"
+      }
     },
     {
       "path": "pages/placeholder/index/index",
-      "style": { "navigationBarTitleText": "功能建设中" }
+      "style": {
+        "navigationBarTitleText": "功能建设中"
+      }
     },
     {
       "path": "pages/owner-home/index",
-      "style": { "navigationBarTitleText": "门店总览" }
+      "style": {
+        "navigationBarTitleText": "门店总览"
+      }
     },
     {
       "path": "pages/inventory/scan/index",

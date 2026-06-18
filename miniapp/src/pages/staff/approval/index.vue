@@ -20,7 +20,14 @@ const rejectTags = ['手机号填写错误', '岗位选择错误', '入职日期
 
 const tabs = [{ label: '待审批', value: 'pending' }, { label: '已通过', value: 'approved' }, { label: '已驳回', value: 'rejected' }]
 
-onShow(loadList)
+onShow(() => {
+  if (!userStore.permissions.includes('staff:manage')) {
+    uni.showToast({ title: '无权限', icon: 'none' })
+    uni.navigateBack()
+    return
+  }
+  loadList()
+})
 
 async function loadList() {
   loading.value = true
@@ -81,7 +88,7 @@ function onEmpTypeChange(e: any) { empTypeVal.value = empTypes[e.detail.value] }
           <view class="av">👤</view>
           <view><text class="an">{{ detail.name }}</text><text class="as">{{ detail.storeName }}</text></view>
         </view>
-        <view class="note">请确认员工信息和岗位角色。审批通过后自动开通对应功能。</view>
+        <view class="note">请确认员工信息和岗位角色。审批通过后，员工才能登录系统。</view>
       </view>
 
       <view class="card">
@@ -100,7 +107,6 @@ function onEmpTypeChange(e: any) { empTypeVal.value = empTypes[e.detail.value] }
         <picker :range="roles" @change="onRoleChange">
           <view class="r"><text class="rk">岗位角色</text><text class="rv sel">{{ roleVal }} ›</text></view>
         </picker>
-        <view class="tip">系统根据岗位自动开通功能，无需手动设置。</view>
         <picker :range="empTypes" @change="onEmpTypeChange">
           <view class="r"><text class="rk">员工类型</text><text class="rv sel">{{ empTypeVal }} ›</text></view>
         </picker>

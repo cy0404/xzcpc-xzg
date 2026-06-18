@@ -8,6 +8,8 @@ const userStore = useUserStore()
 
 const loading = ref(true)
 const dashboard = ref<any>(null)
+const showStoreDrawer = ref(false)
+const storeList = ref<any[]>([])
 
 onShow(async () => {
   if (!userStore.token) {
@@ -21,6 +23,7 @@ async function loadDashboard() {
   loading.value = true
   try {
     dashboard.value = await fetchOwnerDashboard()
+    storeList.value = dashboard.value?.stores || []
   } catch {
     // ignore
   } finally {
@@ -29,6 +32,7 @@ async function loadDashboard() {
 }
 
 async function handleSwitchStore(storeId: string) {
+  showStoreDrawer.value = false
   try {
     const data: any = await switchStore(storeId)
     if (data) {
@@ -81,9 +85,11 @@ function goHome() {
     <view class="header">
       <view class="header-left">
         <text class="greeting">多门店总览</text>
-        <view class="store-pill">
-          <text class="pill-icon">▣</text>
-          <text class="pill-text">{{ dashboard?.storeCount || 0 }} 家门店</text>
+        <view class="store-pill" @click="showStoreDrawer = true">
+          <text class="sp-icon">🏪</text>
+          <text class="sp-name">所有门店</text>
+          <text class="sp-role">老板</text>
+          <text class="sp-switch-btn">⇄</text>
         </view>
       </view>
       <view class="notify-btn">
@@ -144,6 +150,23 @@ function goHome() {
       </view>
     </view>
 
+    <!-- 门店切换抽屉 -->
+    <view v-if="showStoreDrawer" class="mask" @click="showStoreDrawer = false">
+      <view class="drawer" @click.stop>
+        <view class="dr-handle"></view>
+        <view class="dr-head"><text class="dr-title">切换门店</text><text class="dr-close" @click="showStoreDrawer = false">✕</text></view>
+        <view class="dr-list">
+          <view class="dr-item dr-item--owner">
+            <text class="dr-name">🏠 所有门店</text>
+            <text class="dr-check">✓</text>
+          </view>
+          <view class="dr-item" v-for="s in storeList" :key="s.storeId" @click="handleSwitchStore(s.storeId)">
+            <text class="dr-name">{{ s.storeName }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <view class="safe-bottom" />
   </view>
 </template>
@@ -180,19 +203,16 @@ $border: #E8ECE9;
   color: $text-1;
   letter-spacing: -0.02em;
 }
-.store-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 12rpx 24rpx;
-  border-radius: 999rpx;
-  background: $surface;
-  box-shadow: 0 4rpx 16rpx rgba(31, 36, 33, 0.06);
-  font-size: 26rpx;
-}
-.pill-icon { font-size: 28rpx; }
-.pill-text { color: $text-2; font-weight: 500; }
+.store-pill { display: inline-flex; align-items: center; gap: 8rpx; margin-top: 16rpx; padding: 12rpx 24rpx; border-radius: 999rpx; background: $surface; box-shadow: 0 4rpx 16rpx rgba(31, 36, 33, 0.06); font-size: 26rpx; }
+.sp-icon { font-size: 28rpx; } .sp-name { color: $text-2; font-weight: 500; } .sp-role { font-size: 22rpx; background: $primary-soft; color: $primary; padding: 4rpx 12rpx; border-radius: 999rpx; } .sp-switch-btn { font-size: 24rpx; color: $primary; margin-left: 4rpx; }
+.mask { position: fixed; inset: 0; z-index: 100; background: rgba(31, 36, 33, 0.4); display: flex; align-items: flex-end; }
+.drawer { width: 100%; max-height: 70vh; border-radius: 32rpx 32rpx 0 0; background: $surface; display: flex; flex-direction: column; overflow: hidden; }
+.dr-handle { width: 96rpx; height: 6rpx; border-radius: 999rpx; background: $border; margin: 20rpx auto 0; }
+.dr-head { display: flex; justify-content: center; align-items: center; padding: 16rpx 32rpx 20rpx; position: relative; } .dr-title { font-size: 34rpx; font-weight: 700; color: $text-1; } .dr-close { position: absolute; right: 32rpx; font-size: 40rpx; color: $text-2; }
+.dr-list { padding: 0 32rpx calc(env(safe-area-inset-bottom) + 20rpx); display: flex; flex-direction: column; gap: 12rpx; overflow-y: auto; }
+.dr-item { display: flex; align-items: center; justify-content: space-between; padding: 28rpx 24rpx; border-radius: 16rpx; background: #FAFBF9; } .dr-item.active { background: $primary-soft; }
+.dr-item--owner { background: $primary-soft; border: 2rpx solid $primary; margin-bottom: 8rpx; }
+.dr-name { font-size: 30rpx; font-weight: 500; color: $text-1; } .dr-check { font-size: 32rpx; color: $primary; font-weight: 700; }
 .notify-btn {
   width: 88rpx; height: 88rpx;
   border-radius: 50%;

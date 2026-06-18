@@ -8,6 +8,7 @@ import com.xzcpc.mp.dto.AddZoneReq;
 import com.xzcpc.mp.dto.ItemSaveReq;
 import com.xzcpc.mp.dto.SaveZoneReq;
 import com.xzcpc.mp.dto.SortReq;
+import com.xzcpc.mp.dto.ZoneMaterialItem;
 import com.xzcpc.mp.service.MpZoneService;
 import com.xzcpc.task.entity.*;
 import com.xzcpc.task.mapper.*;
@@ -21,6 +22,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -100,12 +102,16 @@ public class MpZoneServiceImpl implements MpZoneService {
             materialMap.put(m.getMaterialId(), m);
         }
 
+        // 批量加载盘点规则，避免 N+1
+        Set<String> batchIds = req.getItems().stream().map(ZoneMaterialItem::getMaterialId).collect(Collectors.toSet());
+        Map<String, MaterialRuleResp> ruleMap = materialRuleService.batchDetail(new ArrayList<>(batchIds));
+
         Map<String, SnapshotResult> snapshotMap = new HashMap<>();
         for (var item : req.getItems()) {
             if (!materialMap.containsKey(item.getMaterialId())) {
                 throw new BusinessException("物料 " + item.getMaterialId() + " 不属于当前分区");
             }
-            SnapshotResult snapshot = buildSnapshot(materialMap.get(item.getMaterialId()), SnapshotInput.from(item));
+            SnapshotResult snapshot = buildSnapshot(materialMap.get(item.getMaterialId()), SnapshotInput.from(item), ruleMap);
             if (snapshot.baseQty() != null && snapshot.baseQty().compareTo(BigDecimal.ZERO) < 0) {
                 throw new BusinessException("物料「" + item.getMaterialId() + "」数量不能为负数");
             }
@@ -256,6 +262,12 @@ public class MpZoneServiceImpl implements MpZoneService {
     }
 
     private SnapshotResult buildSnapshot(TaskZoneMaterial material, SnapshotInput input) {
+        MaterialRuleResp rule = loadMaintainedRule(material.getMaterialId());
+        Map<String, MaterialRuleResp> ruleMap = rule != null ? Map.of(material.getMaterialId(), rule) : Map.of();
+        return buildSnapshot(material, input, ruleMap);
+    }
+
+    private SnapshotResult buildSnapshot(TaskZoneMaterial material, SnapshotInput input, Map<String, MaterialRuleResp> ruleMap) {
         BigDecimal originalQty = input.originalQty() != null ? input.originalQty() : input.qty();
         if (originalQty == null) {
             return new SnapshotResult(null, null, null, null, null, null, null, null);
@@ -269,7 +281,10 @@ public class MpZoneServiceImpl implements MpZoneService {
                 ? input.originalUnit()
                 : (StringUtils.hasText(material.getInventoryUnit()) ? material.getInventoryUnit() : material.getUnit());
 
-        MaterialRuleResp rule = loadMaintainedRule(material.getMaterialId());
+        MaterialRuleResp rule = ruleMap.get(material.getMaterialId());
+        if (rule == null || !"maintained".equals(rule.getRuleStatus()) || !StringUtils.hasText(rule.getBaseUnit())) {
+            rule = null;
+        }
         if (rule == null) {
             String fallbackUnit = StringUtils.hasText(originalUnit) ? originalUnit : material.getInventoryUnit();
             return new SnapshotResult(inputMode, originalQty, fallbackUnit, fallbackUnit, null,

@@ -8,6 +8,8 @@ import com.xzcpc.mp.context.UserContextHolder;
 import com.xzcpc.mp.entity.StoreManagerSession;
 import com.xzcpc.mp.mapper.StoreManagerSessionMapper;
 import com.xzcpc.mp.util.JwtUtil;
+import com.xzcpc.people.entity.Employee;
+import com.xzcpc.people.mapper.EmployeeMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,6 +24,7 @@ public class MpLoginInterceptor implements HandlerInterceptor {
 
     private final JwtUtil jwtUtil;
     private final StoreManagerSessionMapper sessionMapper;
+    private final EmployeeMapper employeeMapper;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
@@ -46,6 +49,18 @@ public class MpLoginInterceptor implements HandlerInterceptor {
                     session.getStoreName()
             );
             UserContextHolder.set(user);
+
+            // 已离职员工拒绝访问（/auth/** 除外，/me 需要正常返回 bound=false）
+            String uri = request.getRequestURI();
+            if (!uri.contains("/auth/") && StringUtils.hasText(session.getStoreId())) {
+                Long count = employeeMapper.selectCount(new LambdaQueryWrapper<Employee>()
+                        .eq(Employee::getStoreId, session.getStoreId())
+                        .eq(Employee::getOpenid, session.getOpenid())
+                        .eq(Employee::getStatus, "在职"));
+                if (count == 0) {
+                    throw new BusinessException(401, "账号已失效，请联系管理员");
+                }
+            }
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

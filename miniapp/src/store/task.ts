@@ -10,7 +10,7 @@ export const useTaskStore = defineStore('task', () => {
   async function fetchTaskList() {
     loading.value = true
     try {
-      const data: any = await request({ url: '/tasks' })
+      const data: any = await request({ url: '/tasks', showLoading: false })
       if (data) {
         currentTasks.value = data.current || []
         historyTasks.value = data.history || []

@@ -221,7 +221,8 @@ function enterCurrentZone() {
               </view>
               <view class="zc-info">
                 <view class="zc-top-row"><text class="zc-name">{{ zone.zoneName }}</text><text class="zc-count">{{ zone.entered || 0 }}/{{ zone.total || 0 }}</text></view>
-                <view class="zc-bar-wrap" v-if="(zone.entered||0) > 0"><view class="zc-bar-fill" :style="{width:zoneProgress(zone)+'%'}"></view></view>
+                <view class="zc-bar-wrap" v-if="(zone.entered||0) > 0 && (!zone.total || zone.entered < zone.total)"><view class="zc-bar-fill" :style="{width:zoneProgress(zone)+'%'}"></view></view>
+                <text class="zc-bar-text" v-else-if="zone.entered && zone.total && zone.entered >= zone.total">已完成</text>
                 <text class="zc-bar-text" v-else>未开始</text>
               </view>
             </view>

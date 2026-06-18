@@ -16,6 +16,14 @@ const resigning = ref(false)
 const resignReasons = ['主动离职', '门店调整', '转店', '试用期未通过', '其他原因']
 const isManager = computed(() => userStore.permissions.includes('staff:manage'))
 
+const displayStatus = computed(() => {
+  if (!detail.value || detail.value.status === '离职') return detail.value?.status || ''
+  if (detail.value.leaveDate && detail.value.leaveDate > new Date().toISOString().slice(0, 10)) return '待离职'
+  return detail.value.status || ''
+})
+
+const isEditable = computed(() => isManager.value && displayStatus.value === '在职')
+
 const currentEmployeeId = ref('')
 
 onLoad((query: any) => {
@@ -56,7 +64,7 @@ async function confirmResign() {
           <view>
             <view class="name-row">
               <text class="name">{{ detail.name }}</text>
-              <text class="tag tag-status">{{ detail.status }}</text>
+              <text class="tag tag-status" :class="{ 'tag-pending': displayStatus === '待离职' }">{{ displayStatus }}</text>
             </view>
             <text class="sub">{{ detail.role }}  |  {{ detail.storeName }}</text>
           </view>
@@ -64,25 +72,22 @@ async function confirmResign() {
       </view>
 
       <view class="card">
-        <view class="card-h"><text class="card-t">基础信息</text><text v-if="isManager" class="card-link" @click="goEdit">编辑</text></view>
+        <view class="card-h"><text class="card-t">基础信息</text><text v-if="isEditable" class="card-link" @click="goEdit">编辑</text></view>
         <view class="row"><text class="k">手机号</text><text class="v">{{ detail.mobile }}</text></view>
         <view class="row"><text class="k">性别</text><text class="v">{{ detail.gender }}</text></view>
         <view class="row"><text class="k">出生日期</text><text class="v">{{ detail.birthday }}</text></view>
         <view class="row"><text class="k">入职日期</text><text class="v">{{ detail.entryDate }}</text></view>
+        <view class="row" v-if="detail.leaveDate"><text class="k">离职日期</text><text class="v">{{ detail.leaveDate }}</text></view>
         <view class="row"><text class="k">用工类型</text><text class="v">{{ detail.employmentType }}</text></view>
         <view class="row"><text class="k">紧急联系人</text><text class="v">{{ detail.emergencyContactName || '--' }}</text></view>
         <view class="row last"><text class="k">联系电话</text><text class="v">{{ detail.emergencyContactPhone || '--' }}</text></view>
       </view>
 
-      <view class="card card-sm">
-        <view class="role-tip">🔐<view><text class="rt">岗位功能</text><text class="rd">系统根据岗位自动开通功能，无需手动设置。</text></view></view>
-      </view>
-
-      <text class="sec-label">员工管理</text>
+      <view class="sec-label">员工管理</view>
       <view v-for="t in ['排班记录','培训记录','任务记录']" :key="t" class="upcoming"><text class="up-icon">📋</text><text class="up-text">{{ t }}</text><text class="up-badge">即将上线</text></view>
     </template>
 
-    <view v-if="isManager" class="bottom">
+    <view v-if="isEditable" class="bottom">
       <view class="btn-outline" @click="goEdit">编辑员工信息</view>
       <view class="btn-danger" @click="showResign = true">办理离职</view>
     </view>
@@ -128,13 +133,13 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .head-left{display:flex;align-items:center;gap:24rpx}
 .avatar{width:128rpx;height:128rpx;border-radius:50%;background:#EEF1EF;display:flex;align-items:center;justify-content:center;font-size:56rpx}
 .name{font-size:36rpx;font-weight:700;color:$t1}.name-row{display:flex;align-items:center;gap:8rpx}.sub{display:block;margin-top:8rpx;font-size:26rpx;color:$t2}
-.tag{padding:4rpx 16rpx;border-radius:999rpx;font-size:22rpx;font-weight:600}.tag-status{background:$ps;color:$p}
+.tag{padding:4rpx 16rpx;border-radius:999rpx;font-size:22rpx;font-weight:600}.tag-status{background:$ps;color:$p}.tag-pending{background:#FFF8EE;color:#E58A2D}
 .card{background:$s;border-radius:20rpx;padding:28rpx;margin-top:24rpx;border:2rpx solid $b}.card-sm{padding:24rpx}
 .card-h{display:flex;justify-content:space-between;margin-bottom:16rpx}.card-t{font-size:28rpx;font-weight:700;color:$t1}.card-link{font-size:26rpx;color:$p;font-weight:600}
 .row{display:flex;justify-content:space-between;padding:16rpx 0;border-bottom:2rpx solid #EEF1EF}.row.last{border:0}.k{color:$t2;font-size:28rpx}.v{color:$t1;font-size:28rpx}
 .role-tip{display:flex;gap:16rpx}.rt{font-size:28rpx;font-weight:700;color:$t1;display:block}.rd{font-size:24rpx;color:$t2;margin-top:4rpx}
-.sec-label{font-size:26rpx;font-weight:600;color:$t2;margin-top:40rpx;margin-bottom:16rpx}
-.upcoming{display:flex;align-items:center;gap:16rpx;padding:24rpx;background:$s;border:2rpx solid $b;border-radius:16rpx;margin-bottom:12rpx;opacity:.7}.up-icon{font-size:32rpx}.up-text{flex:1;font-size:28rpx;color:$t2}.up-badge{padding:4rpx 16rpx;border-radius:999rpx;border:2rpx solid $b;font-size:20rpx;color:$t3}
+.sec-label{font-size:26rpx;font-weight:600;color:$t2;margin-top:68rpx;margin-bottom:20rpx}
+.upcoming{display:flex;align-items:center;gap:20rpx;padding:32rpx;background:$s;border:2rpx solid $b;border-radius:16rpx;margin-bottom:16rpx;opacity:.7}.up-icon{font-size:32rpx}.up-text{flex:1;font-size:28rpx;color:$t2}.up-badge{padding:4rpx 16rpx;border-radius:999rpx;border:2rpx solid $b;font-size:20rpx;color:$t3}
 .bottom{position:fixed;left:0;right:0;bottom:0;display:flex;gap:20rpx;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);background:#fff;border-top:2rpx solid #EEF1EF}
 .btn-outline{flex:1;height:80rpx;border-radius:16rpx;border:2rpx solid $b;color:$p;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
 .btn-danger{flex:1;height:80rpx;border-radius:16rpx;border:2rpx solid $d;color:$d;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}

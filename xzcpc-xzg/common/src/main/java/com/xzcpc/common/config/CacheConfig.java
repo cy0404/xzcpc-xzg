@@ -31,6 +31,10 @@ public class CacheConfig {
                 .maximumSize(500)
                 .expireAfterWrite(10, TimeUnit.MINUTES)
                 .build());
+        manager.registerCustomCache("materials", Caffeine.newBuilder()
+                .maximumSize(500)
+                .expireAfterWrite(5, TimeUnit.MINUTES)
+                .build());
         return manager;
     }
 

@@ -5,9 +5,10 @@ import cn.binarywang.wx.miniapp.bean.WxMaJscode2SessionResult;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import me.chanjar.weixin.common.error.WxErrorException;
 import com.xzcpc.common.exception.BusinessException;
-import com.xzcpc.mp.dto.OwnerBindReq;
+import com.xzcpc.mp.dto.ConfirmBindReq;
 import com.xzcpc.mp.dto.OwnerBindStatusResp;
 import com.xzcpc.mp.dto.OwnerMyStatusResp;
+import com.xzcpc.mp.dto.StoreMatchResp;
 import com.xzcpc.mp.entity.OwnerBindApplication;
 import com.xzcpc.mp.mapper.OwnerBindApplicationMapper;
 import com.xzcpc.mp.service.MpOwnerBindService;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -40,146 +42,146 @@ public class MpOwnerBindServiceImpl implements MpOwnerBindService {
     private final EmployeeMapper employeeMapper;
 
     @Override
+    public StoreMatchResp queryStores(String bindCode, String wxCode, String name, String phone) {
+        validateBindCode(bindCode);
+        String openid = getOpenid(wxCode);
+
+        // 按姓名+手机号匹配门店
+        List<Store> matched = storeMapper.selectList(
+                new LambdaQueryWrapper<Store>()
+                        .eq(Store::getOwnerName, name)
+                        .eq(Store::getOwnerPhone, phone));
+
+        // 保存申请记录（用于后续手工绑定）
+        OwnerBindApplication app = bindMapper.selectOne(
+                new LambdaQueryWrapper<OwnerBindApplication>()
+                        .eq(OwnerBindApplication::getBindCode, bindCode)
+                        .eq(OwnerBindApplication::getWechatOpenid, openid)
+                        .eq(OwnerBindApplication::getBindStatus, "pending"));
+        if (app == null) {
+            app = new OwnerBindApplication();
+            app.setBindCode(bindCode);
+            app.setWechatOpenid(openid);
+            app.setName(name);
+            app.setPhone(phone);
+            app.setBindStatus("pending");
+            app.setAutoBound(0);
+            app.setExpireAt(LocalDateTime.now().plusDays(7));
+            bindMapper.insert(app);
+        } else {
+            app.setName(name);
+            app.setPhone(phone);
+            bindMapper.updateById(app);
+        }
+
+        List<StoreMatchResp.StoreItem> stores = matched.stream()
+                .map(s -> StoreMatchResp.StoreItem.builder()
+                        .storeId(s.getStoreId())
+                        .storeName(s.getStoreName())
+                        .ownerPhone(s.getOwnerPhone())
+                        .alreadyBound(s.getOwnerOpenid() != null && s.getOwnerOpenid().equals(openid))
+                        .build())
+                .collect(Collectors.toList());
+
+        return StoreMatchResp.builder().stores(stores).build();
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
-    public OwnerBindStatusResp submitBind(OwnerBindReq req) {
-        // 1. 校验绑定码（任何一条记录有这个 bindCode 且未过期即有效）
-        OwnerBindApplication template = bindMapper.selectOne(
+    public OwnerBindStatusResp confirmBind(ConfirmBindReq req) {
+        validateBindCode(req.getBindCode());
+        String openid = getOpenid(req.getWxCode());
+
+        List<Store> selected = storeMapper.selectList(
+                new LambdaQueryWrapper<Store>().in(Store::getStoreId, req.getStoreIds()));
+
+        // 校验所选门店的 owner_name+owner_phone 匹配
+        for (Store s : selected) {
+            if (!req.getName().equals(s.getOwnerName()) || !req.getPhone().equals(s.getOwnerPhone())) {
+                throw new BusinessException("门店 " + s.getStoreName() + " 信息不符，请重新校验");
+            }
+        }
+
+        // 复用 queryStores 阶段创建的 pending 记录，更新为 bound
+        OwnerBindApplication app = bindMapper.selectOne(
                 new LambdaQueryWrapper<OwnerBindApplication>()
                         .eq(OwnerBindApplication::getBindCode, req.getBindCode())
+                        .eq(OwnerBindApplication::getWechatOpenid, openid)
+                        .eq(OwnerBindApplication::getBindStatus, "pending"));
+        if (app == null) {
+            app = new OwnerBindApplication();
+            app.setBindCode(req.getBindCode());
+            app.setWechatOpenid(openid);
+            app.setName(req.getName());
+            app.setPhone(req.getPhone());
+            app.setExpireAt(LocalDateTime.now().plusDays(7));
+        }
+        app.setMatchStoreIds(String.join(",", req.getStoreIds()));
+        app.setBindStatus("bound");
+        app.setAutoBound(1);
+        if (app.getId() == null) bindMapper.insert(app); else bindMapper.updateById(app);
+
+        // 绑定门店
+        List<String> storeNames = new ArrayList<>();
+        for (Store store : selected) {
+            store.setOwnerOpenid(openid);
+            storeMapper.updateById(store);
+            storeNames.add(store.getStoreName());
+
+            // 创建 employee 记录
+            long existCount = employeeMapper.selectCount(
+                    new LambdaQueryWrapper<Employee>()
+                            .eq(Employee::getOpenid, openid)
+                            .eq(Employee::getStoreId, store.getStoreId())
+                            .eq(Employee::getStatus, "在职"));
+            if (existCount == 0) {
+                Employee emp = new Employee();
+                emp.setEmployeeId("OWN" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000));
+                emp.setName(req.getName());
+                emp.setMobile(req.getPhone());
+                emp.setOpenid(openid);
+                emp.setStoreId(store.getStoreId());
+                emp.setStoreName(store.getStoreName());
+                emp.setRole("老板");
+                emp.setStatus("在职");
+                emp.setEmploymentType("全职");
+                emp.setEntryDate(LocalDate.now());
+                employeeMapper.insert(emp);
+                log.info("写入老板employee记录 openid={} storeId={}", openid, store.getStoreId());
+            }
+        }
+
+        log.info("老板绑定成功 openid={} stores={}", openid, storeNames);
+
+        return OwnerBindStatusResp.builder()
+                .status("bound")
+                .message("绑定成功")
+                .storeCount(storeNames.size())
+                .storeNames(storeNames)
+                .name(req.getName())
+                .phoneMasked(maskPhone(req.getPhone()))
+                .submitTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))
+                .build();
+    }
+
+    private void validateBindCode(String bindCode) {
+        OwnerBindApplication template = bindMapper.selectOne(
+                new LambdaQueryWrapper<OwnerBindApplication>()
+                        .eq(OwnerBindApplication::getBindCode, bindCode)
                         .gt(OwnerBindApplication::getExpireAt, LocalDateTime.now())
                         .last("LIMIT 1"));
         if (template == null) {
             throw new BusinessException("绑定码无效或已过期");
         }
+    }
 
-        // 2. 通过 wxCode 换取 openid
-        String openid;
+    private String getOpenid(String wxCode) {
         try {
-            WxMaJscode2SessionResult result = wxMaService.jsCode2SessionInfo(req.getWxCode());
-            openid = result.getOpenid();
+            WxMaJscode2SessionResult result = wxMaService.jsCode2SessionInfo(wxCode);
+            return result.getOpenid();
         } catch (Exception e) {
             log.error("换取 openid 失败", e);
             throw new BusinessException("微信授权失败，请重试");
-        }
-
-        // 3. 解析生日
-        LocalDate birthday;
-        try {
-            birthday = LocalDate.parse(req.getBirthday(), DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (Exception e) {
-            throw new BusinessException("生日格式不正确");
-        }
-
-        // 4. 自动匹配：手机号 + 生日 查 store_info 表
-        List<Store> matchedStores = storeMapper.selectList(
-                new LambdaQueryWrapper<Store>()
-                        .eq(Store::getOwnerPhone, req.getPhone())
-                        .eq(Store::getOwnerBirthday, req.getBirthday()));
-
-        // 5. 筛选出新门店（owner_openid 为空或不同于当前微信的）
-        List<Store> newStores = matchedStores.stream()
-                .filter(s -> s.getOwnerOpenid() == null || !s.getOwnerOpenid().equals(openid))
-                .toList();
-
-        // 6. 查找此人此码是否已有申请（允许覆盖）
-        OwnerBindApplication app = bindMapper.selectOne(
-                new LambdaQueryWrapper<OwnerBindApplication>()
-                        .eq(OwnerBindApplication::getBindCode, req.getBindCode())
-                        .eq(OwnerBindApplication::getWechatOpenid, openid));
-        boolean isNew = (app == null);
-        if (isNew) {
-            app = new OwnerBindApplication();
-            app.setBindCode(req.getBindCode());
-            app.setExpireAt(template.getExpireAt());
-        }
-        app.setWechatOpenid(openid);
-        app.setName(req.getName());
-        app.setPhone(req.getPhone());
-        app.setBirthday(birthday);
-
-        if (!newStores.isEmpty()) {
-            // ====== 🟢 自动绑定新门店 ======
-            List<String> storeIds = newStores.stream()
-                    .map(Store::getStoreId)
-                    .collect(Collectors.toList());
-            List<String> storeNames = newStores.stream()
-                    .map(Store::getStoreName)
-                    .collect(Collectors.toList());
-
-            // 合并已有门店记录 + 新门店
-            String mergedIds = String.join(",", storeIds);
-            if (app.getMatchStoreIds() != null && !app.getMatchStoreIds().isEmpty()) {
-                mergedIds = app.getMatchStoreIds() + "," + mergedIds;
-            }
-            app.setMatchStoreIds(mergedIds);
-            app.setBindStatus("auto_bound");
-            app.setAutoBound(1);
-            if (isNew) bindMapper.insert(app); else bindMapper.updateById(app);
-
-            // 回填新门店的 owner_openid
-            for (Store store : newStores) {
-                store.setOwnerOpenid(openid);
-                storeMapper.updateById(store);
-            }
-
-            // 为新门店写入 employee 记录（role=老板）
-            for (Store store : newStores) {
-                long existCount = employeeMapper.selectCount(
-                        new LambdaQueryWrapper<Employee>()
-                                .eq(Employee::getOpenid, openid)
-                                .eq(Employee::getStoreId, store.getStoreId())
-                                .eq(Employee::getStatus, "在职"));
-                if (existCount == 0) {
-                    Employee emp = new Employee();
-                    emp.setEmployeeId("OWN" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000));
-                    emp.setName(req.getName());
-                    emp.setMobile(req.getPhone());
-                    emp.setOpenid(openid);
-                    emp.setStoreId(store.getStoreId());
-                    emp.setStoreName(store.getStoreName());
-                    emp.setRole("老板");
-                    emp.setStatus("在职");
-                    emp.setEmploymentType("全职");
-                    emp.setEntryDate(birthday);
-                    emp.setBirthday(birthday);
-                    employeeMapper.insert(emp);
-                    log.info("写入老板employee记录 openid={} storeId={}", openid, store.getStoreId());
-                }
-            }
-
-            log.info("老板自动绑定成功 openid={} phone={} matchedStores={}",
-                    openid, maskPhone(req.getPhone()), storeIds);
-
-            return OwnerBindStatusResp.builder()
-                    .status("auto_bound")
-                    .message("绑定成功，欢迎回来")
-                    .storeCount(storeIds.size())
-                    .storeNames(storeNames)
-                    .name(req.getName())
-                    .phoneMasked(maskPhone(req.getPhone()))
-                    .submitTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))
-                    .build();
-
-        } else if (!matchedStores.isEmpty()) {
-            // ====== 🟡 所有匹配门店已绑定过当前微信 ======
-            app.setBindStatus("auto_bound");
-            if (isNew) bindMapper.insert(app); else bindMapper.updateById(app);
-            throw new BusinessException("该微信已绑定过门店，请直接登录");
-        } else {
-            // ====== 🟠 没有匹配到任何门店 → 进入总部审核 ======
-            app.setBindStatus("pending");
-            app.setAutoBound(0);
-            if (isNew) bindMapper.insert(app); else bindMapper.updateById(app);
-
-            log.info("老板绑定申请待审核 openid={} phone={}", openid, maskPhone(req.getPhone()));
-
-            return OwnerBindStatusResp.builder()
-                    .status("pending")
-                    .message("信息已提交，等待总部核验")
-                    .name(req.getName())
-                    .phoneMasked(maskPhone(req.getPhone()))
-                    .submitTime(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))
-                    .build();
         }
     }
 

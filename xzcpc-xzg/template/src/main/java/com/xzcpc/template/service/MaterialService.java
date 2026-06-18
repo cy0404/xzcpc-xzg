@@ -26,6 +26,9 @@ public interface MaterialService {
     /** 按业务 materialId 查询 */
     Material getByMaterialId(String materialId);
 
+    /** 按业务 materialId 直接查库获取 MaterialInfo（不走缓存），查不到返回 null */
+    MaterialInfo getMaterialInfoById(String materialId);
+
     /** 新增物料 */
     Material create(Material material);
 

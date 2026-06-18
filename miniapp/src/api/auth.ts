@@ -29,9 +29,17 @@ export function fetchMyStores() {
 }
 
 export function fetchOwnerMyStatus(wxCode: string) {
-  return request({ url: '/auth/owner/my-status', data: { wxCode } })
+  return request({ url: '/auth/owner/my-status', data: { wxCode }})
 }
 
 export function fetchOwnerLatestApplication() {
   return request({ url: '/auth/owner/latest-application' })
+}
+
+export function queryOwnerStores(bindCode: string, wxCode: string, name: string, phone: string) {
+  return request({ url: '/auth/owner/query-stores', method: 'POST', data: { bindCode, wxCode, name, phone } })
+}
+
+export function confirmOwnerBind(data: { bindCode: string; wxCode: string; name: string; phone: string; storeIds: string[] }) {
+  return request({ url: '/auth/owner/confirm-bind', method: 'POST', data })
 }

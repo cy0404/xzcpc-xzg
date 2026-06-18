@@ -33,7 +33,7 @@ public class MockConfig {
             @Override
             public WxMaJscode2SessionResult jsCode2SessionInfo(String code) throws WxErrorException {
                 // dev 模式使用固定 openid，确保每次登录都能匹配 Employee 表中的 openid 记录
-                String openid = code != null && code.startsWith("dev_") ? code : "dev_test_openid";
+                String openid = code != null && code.startsWith("dev_") ? code : "oK2o33VPGXkBpwW5Cu2JmuWnO2Xk";
                 log.info("Mock jsCode2SessionInfo code={} → openid={}", code, openid);
                 WxMaJscode2SessionResult result = new WxMaJscode2SessionResult();
                 result.setOpenid(openid);

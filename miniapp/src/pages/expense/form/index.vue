@@ -82,7 +82,7 @@ async function submit() {
   <view class="page">
     <view class="amount-input">
       <text class="amount-symbol">¥</text>
-      <input class="amount-num" type="digit" v-model="amount" placeholder="0.00" />
+      <input class="amount-num" type="digit" v-model="amount" placeholder="0.00" :focus="true" />
     </view>
 
     <view class="card">
@@ -109,12 +109,11 @@ async function submit() {
     <view class="sheet" @click.stop>
       <view class="sh"></view>
       <text class="st">选择支出项目</text>
-      <scroll-view scroll-y class="type-list">
-        <view v-for="item in items" :key="item.itemId" class="type-opt" :class="{on:itemId===item.itemId}" @click="selectItem(item)">
+      <view class="type-grid">
+        <view v-for="item in items" :key="item.itemId" class="type-btn" :class="{on:itemId===item.itemId}" @click="selectItem(item)">
           <text>{{ item.name }}</text>
-          <text v-if="itemId===item.itemId">✓</text>
         </view>
-      </scroll-view>
+      </view>
     </view>
   </view>
 </template>
@@ -138,5 +137,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .mask{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;background:rgba(31,36,33,.4)}
 .sheet{width:100%;max-height:70vh;border-radius:32rpx 32rpx 0 0;background:$s;padding:24rpx 32rpx calc(env(safe-area-inset-bottom) + 24rpx)}
 .sh{width:80rpx;height:6rpx;border-radius:999rpx;background:$b;margin:8rpx auto 20rpx}.st{display:block;font-size:34rpx;font-weight:700;color:$t1;margin-bottom:20rpx}
-.type-list{display:flex;flex-direction:column;max-height:60vh}.type-opt{display:flex;justify-content:space-between;padding:24rpx 0;border-bottom:2rpx solid #EEF1EF;font-size:30rpx;color:$t1}.type-opt.on{color:$p;font-weight:600}
+.type-grid{display:flex;flex-wrap:wrap;gap:16rpx;max-height:60vh;overflow-y:auto;padding:8rpx 0}
+.type-btn{width:calc((100% - 32rpx) / 3);padding:18rpx 4rpx;border-radius:16rpx;background:#FAFBF9;border:2rpx solid $b;text-align:center;font-size:26rpx;color:$t1;display:flex;align-items:center;justify-content:center;min-height:64rpx;box-sizing:border-box}
+.type-btn.on{background:$ps;border-color:$p;color:$p;font-weight:600}
 </style>

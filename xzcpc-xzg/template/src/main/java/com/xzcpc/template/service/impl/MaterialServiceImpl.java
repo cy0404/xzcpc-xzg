@@ -291,6 +291,22 @@ public class MaterialServiceImpl implements MaterialService {
     }
 
     @Override
+    public MaterialInfo getMaterialInfoById(String materialId) {
+        if (!StringUtils.hasText(materialId)) return null;
+        Material material = materialMapper.selectOne(new LambdaQueryWrapper<Material>()
+                .eq(Material::getMaterialId, materialId));
+        if (material == null) return null;
+        MaterialInfo info = toInfo(material);
+        MaterialInventoryRule rule = ruleMapper.selectOne(
+                new LambdaQueryWrapper<MaterialInventoryRule>()
+                        .eq(MaterialInventoryRule::getMaterialId, material.getMaterialId()));
+        if (rule != null && StringUtils.hasText(rule.getBaseUnit())) {
+            info.setPandiandanwei(rule.getBaseUnit());
+        }
+        return info;
+    }
+
+    @Override
     @Transactional
     public Material create(Material material) {
         if (!StringUtils.hasText(material.getMaterialName())) {

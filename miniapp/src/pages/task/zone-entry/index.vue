@@ -22,6 +22,8 @@ const showDone = ref<boolean|undefined>(undefined)   // 全部tab下已盘区域
 const drawerItem = ref<any>(null)
 const drawerUnitInputs = ref<Record<string,string>>({})
 
+const editingDoneId = ref<string | null>(null)
+
 const editMode = ref(false)
 const editList = ref<any[]>([])
 const selected = ref<Set<string>>(new Set())
@@ -30,6 +32,8 @@ const listKey = ref(0)
 const editingIdx = ref(-1)
 const editValue = ref('')
 
+const keyboardHeight = ref(0)
+
 onLoad((options: any) => {
   taskId.value = Number(options.taskId); zoneId.value = Number(options.zoneId)
   zoneName.value = options.zoneName ? decodeURIComponent(options.zoneName) : ''
@@ -37,12 +41,15 @@ onLoad((options: any) => {
   taskName.value = options.taskName ? decodeURIComponent(options.taskName) : ''
   uni.setNavigationBarTitle({ title: '物料盘点' })
   drawerItem.value = null; addSearchVisible.value = false; showEditConfirm.value = false; editMode.value = false
+  uni.onKeyboardHeightChange((res: any) => {
+    keyboardHeight.value = res.height || 0
+  })
   loadMaterials()
 })
 
 async function loadMaterials() {
   loading.value = true
-  drawerItem.value = null; addSearchVisible.value = false; showEditConfirm.value = false
+  drawerItem.value = null; showEditConfirm.value = false
   try { materials.value = ((await fetchZoneMaterials(taskId.value, zoneId.value)) as any[]) || [] }
   finally { loading.value = false }
 }
@@ -223,7 +230,7 @@ async function handleExtAdd(item:any) { if(extAddings.value.has(item.materialId)
           </view>
           <text class="pc-badge">{{ doneCount }} / {{ totalCount }} 已录入</text>
         </view>
-        <view class="pc-bar"><view class="pc-fill" :style="{width:progressPercent+'%'}"></view></view>
+        <view class="pc-bar" v-if="pendingCount > 0"><view class="pc-fill" :style="{width:progressPercent+'%'}"></view></view>
         <view class="pc-stats">
           <view class="pcs"><text class="pcsl">待盘</text><text class="pcsv">{{ pendingCount }} 项</text></view>
           <view class="pcs"><text class="pcsl">已盘</text><text class="pcsv">{{ doneCount }} 项</text></view>
@@ -297,7 +304,17 @@ async function handleExtAdd(item:any) { if(extAddings.value.has(item.materialId)
               <text class="mr-name done-name">{{ m.materialName }}</text>
               <text class="mr-desc done-desc">{{ breakdownText(m) }}</text>
             </view>
-            <view class="mr-done">
+            <template v-if="!isMultiUnit(m)">
+              <view v-if="editingDoneId === m.materialId" class="mr-input-wrap" @click.stop>
+                <input class="mr-input" type="digit" :focus="true" :value="m.inputQty||''" @blur="(e:any)=>{ quickSave(m,e.detail.value); editingDoneId=null }" />
+                <text class="mr-unit">{{ m.inventoryUnit||m.inventory_unit||m.unit||'' }}</text>
+              </view>
+              <view v-else class="mr-done">
+                <text class="mr-val">{{ m.inputQty||'--' }} {{ m.unit || baseUnit(m) }}</text>
+                <text class="mr-edit" @click.stop="editingDoneId = m.materialId">修改</text>
+              </view>
+            </template>
+            <view v-else class="mr-done">
               <text class="mr-val">{{ m.inputQty||'--' }} {{ m.unit || baseUnit(m) }}</text>
               <text class="mr-edit" @click.stop="openDrawer(m)">修改</text>
             </view>
@@ -382,7 +399,7 @@ async function handleExtAdd(item:any) { if(extAddings.value.has(item.materialId)
     </view>
 
     <view v-if="drawerItem" class="mask" @click="closeDrawer">
-      <view class="drawer" @click.stop>
+      <view class="drawer" :style="keyboardHeight > 0 ? { transform: `translateY(-${keyboardHeight}px)` } : {}" @click.stop>
         <view class="dh"></view>
         <view class="drawer-head">
           <text class="dht">{{ drawerItem.materialName }}</text>
@@ -395,9 +412,11 @@ async function handleExtAdd(item:any) { if(extAddings.value.has(item.materialId)
               <input class="dfi" type="digit" v-model="drawerUnitInputs[u]" :placeholder="u" />
             </view>
           </view>
-          <view class="drawer-total">折算 ≈ {{ drawerTotal }} {{ baseUnit(drawerItem) }}</view>
         </view>
-        <view class="drawer-act"><view class="da-confirm" @click="confirmDrawer">确认录入</view></view>
+        <view class="drawer-act">
+          <view class="drawer-total">汇总 ≈ {{ drawerTotal }} {{ baseUnit(drawerItem) }}</view>
+          <view class="da-confirm" @click="confirmDrawer">确认录入</view>
+        </view>
       </view>
     </view>
 
@@ -515,9 +534,9 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .drawer-body{padding:0 32rpx 24rpx;display:flex;flex-direction:column;gap:20rpx}
 .df-grid{display:grid;grid-template-columns:1fr 1fr;gap:20rpx}.df-item{display:flex;flex-direction:column;gap:10rpx}
 .dfl{font-size:28rpx;font-weight:600;color:$t1}.dfi{padding:24rpx;border:2rpx solid $b;border-radius:12rpx;font-size:32rpx;font-weight:600;text-align:center;background:#FAFBF9}
-.drawer-total{text-align:center;padding:16rpx;background:$ps;border-radius:12rpx;color:$p;font-size:28rpx;font-weight:600}
-.drawer-act{padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);border-top:2rpx solid #EEF1EF}
-.da-confirm{height:96rpx;border-radius:999rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30rpx;font-weight:700}
+.drawer-total{flex:1;height:96rpx;display:flex;align-items:center;justify-content:center;background:$ps;border-radius:0;color:$p;font-size:28rpx;font-weight:600;white-space:nowrap}
+.drawer-act{display:flex;align-items:center;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);border-top:2rpx solid #EEF1EF;gap:20rpx}
+.da-confirm{flex:1;height:96rpx;border-radius:999rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30rpx;font-weight:700}
 
 .sheet{width:100%;max-height:80vh;border-radius:32rpx 32rpx 0 0;background:$s;display:flex;flex-direction:column}
 .search-results{flex:1;overflow:auto;padding:0 32rpx 24rpx;min-height:0}

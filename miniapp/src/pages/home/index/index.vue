@@ -3,9 +3,8 @@ import { ref, computed } from 'vue'
 import { onShow, onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { useTaskStore } from '@/store/task'
-import { fetchStaffApplications, fetchStaffList } from '@/api/staff'
-import { fetchExpenses } from '@/api/expense'
-import { fetchOwnerDashboard, switchStore, fetchOwnerLatestApplication } from '@/api/auth'
+import { switchStore } from '@/api/auth'
+import { request } from '@/utils/request'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
@@ -47,10 +46,11 @@ onShow(async () => {
     return
   }
   if (initialized) {
-    await userStore.fetchMe()
+    await Promise.all([userStore.fetchMe(), taskStore.fetchTaskList()])
+  } else {
+    initialized = true
+    await taskStore.fetchTaskList()
   }
-  initialized = true
-  await taskStore.fetchTaskList()
   loadStats()
   checkBanner()
   if (isOwner.value && userStore.storeCount > 1) {
@@ -60,12 +60,12 @@ onShow(async () => {
 
 async function loadStats() {
   try {
-    const apps: any = await fetchStaffApplications('pending')
+    const apps: any = await request({ url: '/staff/applications', data: { status: 'pending' }, showLoading: false, silent: true })
     pendingAppCount.value = Array.isArray(apps) ? apps.length : 0
   } catch { /* ignore */ }
   pendingTaskCount.value = taskStore.currentTasks?.length || 0
   try {
-    const list: any = await fetchStaffList('')
+    const list: any = await request({ url: '/staff', data: { status: '' }, showLoading: false, silent: true })
     staffCount.value = list?.overview?.active || list?.records?.length || 0
   } catch { /* ignore */ }
   try {
@@ -73,7 +73,7 @@ async function loadStats() {
     const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
     const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
     const end = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-    const res: any = await fetchExpenses({ startDate: start, endDate: end, pageSize: 999 })
+    const res: any = await request({ url: '/expenses', data: { startDate: start, endDate: end, pageSize: 999 }, showLoading: false, silent: true })
     const records = res?.records || []
     monthlyExpense.value = records.reduce((sum: number, r: any) => sum + (r.amount || 0), 0)
   } catch { /* ignore */ }
@@ -81,7 +81,7 @@ async function loadStats() {
 
 async function checkBanner() {
   try {
-    const data: any = await fetchOwnerLatestApplication()
+    const data: any = await request({ url: '/auth/owner/latest-application', showLoading: false, silent: true })
     if (data && (data.status === 'pending' || data.status === 'rejected')) {
       appBanner.value = {
         status: data.status,
@@ -98,7 +98,7 @@ async function checkBanner() {
 
 async function loadStoreList() {
   try {
-    const data: any = await fetchOwnerDashboard()
+    const data: any = await request({ url: '/owner/dashboard', showLoading: false, silent: true })
     storeList.value = data?.stores || []
   } catch { /* ignore */ }
 }
@@ -120,11 +120,15 @@ async function onSwitchStore(storeId: string) {
   } catch { /* ignore */ }
 }
 
+const pendingTotal = computed(() => {
+  return (hasStaffManage.value ? pendingAppCount.value : 0) + pendingTaskCount.value
+})
+
 function goPending() {
-  if (pendingAppCount.value > 0) {
+  if (hasStaffManage.value && pendingAppCount.value > 0) {
     uni.navigateTo({ url: '/pages/staff/approval/index' })
   } else if (firstTask.value) {
-    uni.navigateTo({ url: `/pages/task/detail/index?taskId=${firstTask.value.taskId}` })
+    uni.navigateTo({ url: '/pages/task/list/index' })
   }
 }
 
@@ -133,11 +137,7 @@ function goTaskList() {
 }
 
 function goCurrentTask() {
-  if (firstTask.value) {
-    uni.navigateTo({ url: `/pages/task/detail/index?taskId=${firstTask.value.taskId}` })
-  } else {
-    uni.navigateTo({ url: '/pages/task/list/index' })
-  }
+  uni.navigateTo({ url: '/pages/task/list/index' })
 }
 
 function goStaffApproval() {
@@ -168,6 +168,12 @@ function goMyProfile() {
     uni.navigateTo({ url: '/pages/staff/detail/index?employeeId=me' })
   }
 }
+
+const showNoticeVisible = ref(false)
+
+function showNotice() {
+  showNoticeVisible.value = true
+}
 </script>
 
 <template>
@@ -186,7 +192,7 @@ function goMyProfile() {
       <view class="header-right">
         <view class="bell-wrap">
           <text class="bell-icon">🔔</text>
-          <view class="bell-dot" v-if="pendingAppCount > 0"></view>
+          <view class="bell-dot" v-if="hasStaffManage && pendingAppCount > 0"></view>
         </view>
       </view>
     </view>
@@ -220,13 +226,13 @@ function goMyProfile() {
         <view class="sc-item" @click="goPending">
           <view class="sci-icon-wrap"><text class="sci-icon">📝</text></view>
           <text class="sci-label">待处理</text>
-          <text class="sci-val">{{ pendingAppCount + pendingTaskCount }} 项</text>
+          <text class="sci-val">{{ pendingTotal }} 项</text>
         </view>
       </view>
     </view>
 
-    <view class="section" v-if="pendingAppCount + pendingTaskCount > 0">
-      <view class="sec-top"><text class="sec-title">待处理事项</text><text class="sec-count">{{ pendingAppCount + pendingTaskCount }} 项</text></view>
+    <view class="section" v-if="pendingTotal > 0">
+      <view class="sec-top"><text class="sec-title">待处理事项</text><text class="sec-count">{{ pendingTotal }} 项</text></view>
       <view class="todo-list">
         <view class="todo-card green" @click="goCurrentTask">
           <view class="tc-icon-wrap"><text class="tc-icon">✅</text></view>
@@ -236,7 +242,7 @@ function goMyProfile() {
           </view>
           <text class="tc-btn" v-if="firstTask">去盘点</text>
         </view>
-        <view class="todo-card" @click="goStaffApproval" v-if="pendingAppCount > 0">
+        <view class="todo-card" @click="goStaffApproval" v-if="hasStaffManage && pendingAppCount > 0">
           <view class="tc-icon-wrap"><text class="tc-icon">👤</text></view>
           <view class="tc-body">
             <text class="tc-title">审批新员工登记</text>
@@ -273,16 +279,22 @@ function goMyProfile() {
       </view>
     </view>
 
-    <view class="section">
-      <text class="sec-title" style="margin-bottom:20rpx">门店成长</text>
-      <view class="learn-item">
-        <view class="li-icon-wrap"><text class="li-icon">🎓</text></view>
+    <view class="section" v-if="isOwner">
+      <text class="sec-title" style="margin-bottom:20rpx">门店公告</text>
+      <view class="learn-item" @click="showNotice">
+        <view class="li-icon-wrap"><text class="li-icon">📢</text></view>
         <view class="li-body">
-          <text class="li-title">新员工入职后，店长应该关注什么？</text>
-          <text class="li-desc">3 分钟阅读</text>
+          <text class="li-title">门店加盟注意事项</text>
+          <text class="li-desc">点击查看详情</text>
         </view>
         <text class="li-arrow">›</text>
       </view>
+    </view>
+
+    <!-- 门店公告图片弹窗 -->
+    <view v-if="showNoticeVisible" class="notice-mask" @click="showNoticeVisible = false">
+      <view class="notice-close" @click="showNoticeVisible = false">✕</view>
+      <image class="notice-img" src="/static/announcement/bossNotice.png" mode="widthFix" @click.stop />
     </view>
 
     <!-- 门店切换抽屉 -->
@@ -291,13 +303,13 @@ function goMyProfile() {
         <view class="dr-handle"></view>
         <view class="dr-head"><text class="dr-title">切换门店</text><text class="dr-close" @click="showStoreDrawer = false">✕</text></view>
         <view class="dr-list">
+          <view class="dr-item dr-item--owner" @click="goOwnerHome">
+            <text class="dr-name">🏠 所有门店</text>
+            <text class="dr-arrow">›</text>
+          </view>
           <view class="dr-item" :class="{active: s.storeId === userStore.storeId}" v-for="s in storeList" :key="s.storeId" @click="onSwitchStore(s.storeId)">
             <text class="dr-name">{{ s.storeName }}</text>
             <text class="dr-check" v-if="s.storeId === userStore.storeId">✓</text>
-          </view>
-          <view class="dr-item dr-item--owner" @click="goOwnerHome">
-            <text class="dr-name">🏠 多门店总览</text>
-            <text class="dr-arrow">›</text>
           </view>
         </view>
       </view>
@@ -344,5 +356,9 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .dr-list{padding:0 32rpx calc(env(safe-area-inset-bottom) + 20rpx);display:flex;flex-direction:column;gap:12rpx;overflow-y:auto}
 .dr-item{display:flex;align-items:center;justify-content:space-between;padding:28rpx 24rpx;border-radius:16rpx;background:#FAFBF9}.dr-item.active{background:$ps}
 .dr-name{font-size:30rpx;font-weight:500;color:$t1}.dr-check{font-size:32rpx;color:$p;font-weight:700}
-.dr-item--owner{background:$ps;border:2rpx solid $p;margin-top:8rpx}.dr-arrow{font-size:36rpx;color:$p}
+.dr-item--owner{background:$ps;border:2rpx solid $p;margin-bottom:8rpx}.dr-arrow{font-size:36rpx;color:$p}
+.notice-mask{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.95);overflow-y:auto}
+.notice-close{position:fixed;top:24rpx;right:24rpx;z-index:201;width:64rpx;height:64rpx;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;font-size:32rpx}
+.notice-img{display:block;width:100%}
+.notice-img{width:100%}
 </style>

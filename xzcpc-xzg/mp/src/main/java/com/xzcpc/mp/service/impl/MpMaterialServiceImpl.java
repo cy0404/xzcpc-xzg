@@ -72,9 +72,7 @@ public class MpMaterialServiceImpl implements MpMaterialService {
             throw new BusinessException("该物料已在当前分区中");
         }
 
-        MaterialInfo material = materialService.getAllMaterials().stream()
-                .filter(m -> m.getId().equals(req.getMaterialId()))
-                .findFirst().orElse(null);
+        MaterialInfo material = materialService.getMaterialInfoById(req.getMaterialId());
         if (material == null) {
             throw new BusinessException("物料不存在");
         }

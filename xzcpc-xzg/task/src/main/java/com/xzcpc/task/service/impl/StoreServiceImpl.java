@@ -115,7 +115,7 @@ public class StoreServiceImpl implements StoreService {
             existing.setStoreCode(item.getBianma());
             existing.setXiaochengxuid(item.getXiaochengxuid());
             existing.setCangkuid(item.getCangkuid());
-            // 本地维护字段不随外部同步覆盖：qr_code, owner_phone, owner_birthday, owner_openid
+            // 本地维护字段不随外部同步覆盖：qr_code, owner_name, owner_phone, owner_openid
             if (existing.getId() == null) {
                 storeMapper.insert(existing);
             } else {
@@ -193,8 +193,8 @@ public class StoreServiceImpl implements StoreService {
         info.setXiaochengxuid(s.getXiaochengxuid());
         info.setCangkuid(s.getCangkuid());
         info.setQrCode(s.getQrCode());
+        info.setOwnerName(s.getOwnerName());
         info.setOwnerPhone(s.getOwnerPhone());
-        info.setOwnerBirthday(s.getOwnerBirthday());
         info.setOwnerOpenid(s.getOwnerOpenid());
         return info;
     }

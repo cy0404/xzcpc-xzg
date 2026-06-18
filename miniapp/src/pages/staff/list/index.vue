@@ -54,6 +54,12 @@ function maskMobile(m: string) {
   if (!m || m.length < 7) return m || '--'
   return `${m.slice(0, 3)}****${m.slice(-4)}`
 }
+
+function staffStatus(item: any) {
+  if (item.status === '离职') return { text: '离职', cls: 'tag-left' }
+  if (item.leaveDate && item.leaveDate > new Date().toISOString().slice(0, 10)) return { text: '待离职', cls: 'tag-pending' }
+  return { text: item.status || '--', cls: 'tag-active' }
+}
 </script>
 
 <template>
@@ -97,7 +103,7 @@ function maskMobile(m: string) {
             <view class="name-row">
               <text class="name">{{ item.name }}</text>
               <text class="tag" :class="item.role === '店长' ? 'tag-lead' : 'tag-normal'">{{ item.role || '--' }}</text>
-              <text class="tag tag-status" :class="item.status === '在职' ? 'tag-active' : 'tag-left'">{{ item.status || '--' }}</text>
+              <text class="tag tag-status" :class="staffStatus(item).cls">{{ staffStatus(item).text }}</text>
             </view>
             <text class="meta">入职时间：{{ item.entryDate || '--' }}</text>
             <text class="meta">手机号：{{ maskMobile(item.mobile) }}</text>
@@ -112,7 +118,7 @@ function maskMobile(m: string) {
 
     <!-- 新增按钮 -->
     <view class="bottom-bar">
-      <view class="btn-primary" @click="showInvite = true">
+      <view v-if="userStore.permissions.includes('staff:manage')" class="btn-primary" @click="showInvite = true">
         <text>＋ 新增员工</text>
       </view>
     </view>
@@ -179,6 +185,7 @@ $warning: #E58A2D;
 .tag-lead { background: $primary-soft; color: $primary; }
 .tag-normal { background: #EEF1EF; color: $text-1; }
 .tag-active { background: $primary-soft; color: $primary; }
+.tag-pending { background: #FFF8EE; color: $warning; }
 .tag-left { background: #EEF1EF; color: $text-2; }
 .meta { display: block; margin-top: 6rpx; font-size: 24rpx; color: $text-2; }
 .arrow { font-size: 48rpx; color: #8C9691; }

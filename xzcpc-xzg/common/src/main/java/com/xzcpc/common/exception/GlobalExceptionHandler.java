@@ -18,9 +18,11 @@ public class GlobalExceptionHandler {
     // 处理 BusinessException，返回业务错误码和提示信息
     @ExceptionHandler(BusinessException.class)
     public R<Void> handleBusinessException(BusinessException e, HttpServletRequest request) {
-        log.error("业务异常 - {} {} → code={}, message={}",
-                request.getMethod(), request.getRequestURI(), e.getCode(), e.getMessage());
-        log.error("堆栈:", e);
+        if (e.getCode() >= 500) {
+            log.error("业务异常 - {} {} → code={}, message={}", request.getMethod(), request.getRequestURI(), e.getCode(), e.getMessage(), e);
+        } else {
+            log.warn("业务异常 - {} {} → code={}, message={}", request.getMethod(), request.getRequestURI(), e.getCode(), e.getMessage());
+        }
         return R.fail(e.getCode(), e.getMessage());
     }
 

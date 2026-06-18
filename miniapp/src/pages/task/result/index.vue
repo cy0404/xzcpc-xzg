@@ -34,6 +34,19 @@ function goTaskList() {
 function isAbnormal(mat: any) {
   return Number(mat.quantity) === 0 && mat.remark
 }
+
+function formatUnitInputs(mat: any) {
+  try {
+    if (!mat.unitInputs) return ''
+    const obj = typeof mat.unitInputs === 'string' ? JSON.parse(mat.unitInputs) : mat.unitInputs
+    return Object.entries(obj)
+      .filter(([, v]) => v && Number(v) > 0)
+      .map(([u, v]) => `${v}${u}`)
+      .join(' · ')
+  } catch {
+    return ''
+  }
+}
 </script>
 
 <template>
@@ -94,7 +107,7 @@ function isAbnormal(mat: any) {
             <view class="zone-material-info">
               <text class="zm-name">{{ mat.materialName }}</text>
               <text class="zm-spec">{{ mat.spec || '--' }}</text>
-              <text v-if="mat.inventoryUnit && mat.inventoryUnit.includes(',')" class="zm-detail">多单位：{{ mat.inventoryUnit }}</text>
+              <text v-if="formatUnitInputs(mat)" class="zm-detail">{{ formatUnitInputs(mat) }}</text>
             </view>
             <view class="zone-material-qty">
               <text class="zm-qty" :class="{ 'danger-text': isAbnormal(mat) }">{{ mat.quantity }}</text>
@@ -117,7 +130,7 @@ function isAbnormal(mat: any) {
               <text class="row-sub">{{ item.spec || '--' }}</text>
             </view>
             <view class="row-mid">
-              <text v-if="item.inventoryUnit && item.inventoryUnit.includes(',')" class="row-multi">{{ item.inventoryUnit }}</text>
+              <text v-if="formatUnitInputs(item)" class="row-multi">{{ formatUnitInputs(item) }}</text>
               <text class="row-zone">分区数：{{ item.zoneCount }}</text>
               <text v-if="item.remark" class="row-remark danger-text">备注：{{ item.remark }}</text>
             </view>
@@ -382,7 +395,19 @@ function isAbnormal(mat: any) {
   background: #F3F4F6;
   padding: 4rpx 10rpx;
   border-radius: 6rpx;
-  max-width: 200rpx;
+  max-width: 260rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zm-detail {
+  max-width: 280rpx;
+  color: #00734A;
+  font-size: 22rpx;
+  margin-top: 4rpx;
+  background: #F0FAF3;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

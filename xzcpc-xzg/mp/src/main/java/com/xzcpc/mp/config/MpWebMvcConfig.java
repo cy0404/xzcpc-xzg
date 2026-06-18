@@ -24,7 +24,8 @@ public class MpWebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(loginInterceptor)
                 .addPathPatterns("/api/mp/**")
                 .excludePathPatterns("/api/mp/auth/wx/login",
-                                     "/api/mp/auth/owner/bind",
+                                     "/api/mp/auth/owner/query-stores",
+                                     "/api/mp/auth/owner/confirm-bind",
                                      "/api/mp/auth/owner/status",
                                      "/api/mp/auth/owner/qrcode",
                                      "/api/mp/auth/owner/qrcode-img",

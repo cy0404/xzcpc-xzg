@@ -14,21 +14,41 @@ import com.xzcpc.people.entity.Employee;
 import com.xzcpc.people.mapper.EmployeeMapper;
 import com.xzcpc.task.service.StoreService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MpStaffServiceImpl implements MpStaffService {
 
     private static final String STATUS_ACTIVE = "在职";
+
+    /**
+     * 每天凌晨 2 点扫描：leaveDate 已到期的员工自动变更为离职状态
+     */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 2 * * *")
+    @Transactional(rollbackFor = Exception.class)
+    public void autoUpdateResignedStatus() {
+        List<Employee> expired = employeeMapper.selectList(new LambdaQueryWrapper<Employee>()
+                .eq(Employee::getStatus, STATUS_ACTIVE)
+                .le(Employee::getLeaveDate, LocalDate.now()));
+        if (expired.isEmpty()) return;
+        for (Employee e : expired) {
+            e.setStatus("离职");
+            employeeMapper.updateById(e);
+        }
+        log.info("定时任务：{} 名员工 leaveDate 到期，已自动变更为离职", expired.size());
+    }
     private static final String APP_PENDING = "pending";
     private static final String APP_APPROVED = "approved";
     private static final String APP_REJECTED = "rejected";
@@ -237,14 +257,13 @@ public class MpStaffServiceImpl implements MpStaffService {
         Employee employee = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
                 .eq(Employee::getStoreId, storeId)
                 .eq(Employee::getOpenid, openid)
+                .eq(Employee::getStatus, STATUS_ACTIVE)
                 .last("LIMIT 1"));
         if (employee == null) {
-            employee = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
-                    .eq(Employee::getStoreId, storeId)
-                    .eq(Employee::getStatus, STATUS_ACTIVE)
-                    .last("LIMIT 1"));
+            return Map.of("role", "", "employeeId", "", "employeeName", "", "staffBound", false);
         }
-        if (employee == null) {
+        // leaveDate 已到期 → 视为已离职
+        if (employee.getLeaveDate() != null && !employee.getLeaveDate().isAfter(LocalDate.now())) {
             return Map.of("role", "", "employeeId", "", "employeeName", "", "staffBound", false);
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -355,8 +374,18 @@ public class MpStaffServiceImpl implements MpStaffService {
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> resign(String storeId, String employeeId, StaffResignReq req) {
         Employee employee = getEmployee(storeId, employeeId);
-        employee.setStatus("离职");
-        employee.setLeaveDate(req.getResignDate() != null ? java.time.LocalDate.parse(req.getResignDate()) : null);
+        if (!STATUS_ACTIVE.equals(employee.getStatus())) {
+            throw new BusinessException("该员工已离职或待离职");
+        }
+        LocalDate leaveDate = req.getResignDate() != null ? LocalDate.parse(req.getResignDate()) : LocalDate.now();
+        employee.setLeaveDate(leaveDate);
+        // leaveDate 在今天之后 → 待离职（status 保持 "在职"）
+        // leaveDate 在今天或之前 → 直接离职
+        if (leaveDate.isAfter(LocalDate.now())) {
+            employee.setStatus(STATUS_ACTIVE); // 保持在职，前端按 leaveDate 显示"待离职"
+        } else {
+            employee.setStatus("离职");
+        }
         employeeMapper.updateById(employee);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("employeeId", employee.getEmployeeId());

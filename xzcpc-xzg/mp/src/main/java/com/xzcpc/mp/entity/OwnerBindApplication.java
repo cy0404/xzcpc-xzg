@@ -3,12 +3,11 @@ package com.xzcpc.mp.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
  * 老板微信绑定申请记录。
- * 提交时自动匹配 store_info.owner_phone + owner_birthday，
+ * 提交时匹配 store_info.owner_name + owner_phone，
  * 匹配成功自动绑定（auto_bound=1），否则进入总部人工审核。
  */
 @Data
@@ -29,9 +28,6 @@ public class OwnerBindApplication {
 
     /** 老板填写的手机号 */
     private String phone;
-
-    /** 老板填写的生日 */
-    private LocalDate birthday;
 
     /** 自动匹配到的门店 ID 列表（逗号分隔），为空表示未匹配到 */
     private String matchStoreIds;

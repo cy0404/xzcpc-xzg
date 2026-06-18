@@ -36,8 +36,13 @@ export const useUserStore = defineStore('user', () => {
 
   function applyLoginResp(data: any) {
     if (!data) return
+    if (!data.bound) {
+      // 已离职或无权限，清空登录态
+      logout()
+      return
+    }
     if (data.token) setToken(data.token)
-    bound.value = !!data.bound
+    bound.value = true
     storeId.value = data.storeId || ''
     storeName.value = data.storeName || ''
     employeeId.value = data.employeeId || ''
@@ -73,6 +78,9 @@ export const useUserStore = defineStore('user', () => {
     try {
       const data: any = await request({ url: '/auth/me', showLoading: false, silent: true })
       applyLoginResp(data)
+      if (!data.bound) {
+        uni.reLaunch({ url: '/pages/login/index' })
+      }
     } catch {
       token.value = ''
       uni.removeStorageSync('token')
@@ -91,6 +99,7 @@ export const useUserStore = defineStore('user', () => {
       url: '/auth/wx/login',
       method: 'POST',
       data: { code: loginRes.code, wxNickname },
+      showLoading: false,
     })
     if (data) {
       applyLoginResp(data)
