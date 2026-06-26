@@ -12,6 +12,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/mp/tasks/{taskId}/zones")
 @RequiredArgsConstructor
@@ -64,6 +66,15 @@ public class MpZoneController {
     public R<Void> sortZones(@PathVariable Integer taskId, @RequestBody SortReq req) {
         String storeId = UserContextHolder.get().getStoreId();
         zoneService.sortZones(taskId, req, storeId);
+        return R.ok();
+    }
+
+    @OpLog(module = "小程序-分区", operation = "编辑分区名")
+    @PutMapping("/{zoneId}/name")
+    public R<Void> updateZoneName(@PathVariable Integer taskId, @PathVariable Integer zoneId,
+                                   @RequestBody Map<String, String> body) {
+        String storeId = UserContextHolder.get().getStoreId();
+        zoneService.updateZoneName(taskId, zoneId, body.get("zoneName"), storeId);
         return R.ok();
     }
 }

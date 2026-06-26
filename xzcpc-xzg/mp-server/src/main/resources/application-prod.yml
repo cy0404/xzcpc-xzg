@@ -1,14 +1,31 @@
+store:
+  api:
+    key: ${STORE_API_KEY}
+
+material:
+  api:
+    key: ${STORE_API_KEY}
+
+wx:
+  miniapp:
+    secret: ${WX_APP_SECRET}
+
+mp:
+  jwt:
+    secret: ${MP_JWT_SECRET}
+
 spring:
   datasource:
     url: jdbc:mysql://162.14.122.80:3306/store_inventory?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
     username: store_inventory
-    password: Xzcpc@2026
+    password: ${DB_PASSWORD}
     hikari:
-      maximum-pool-size: 30
-      minimum-idle: 2
+      maximum-pool-size: 100
+      minimum-idle: 10
       idle-timeout: 300000
       max-lifetime: 600000
       keepalive-time: 60000
+      connection-timeout: 15000
       connection-test-query: SELECT 1
       initialization-fail-timeout: -1
 

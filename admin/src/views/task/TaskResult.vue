@@ -45,10 +45,10 @@
       <a-radio-button value="material">按物料汇总看</a-radio-button>
     </a-radio-group>
 
-    <div v-if="viewMode === 'zone'" class="zone-grid">
+    <div v-if="viewMode === 'zone'" class="zone-grid scroll-area">
       <a-card
         v-for="zone in zoneData"
-        :key="zone.zoneId"
+        :key="zone.id"
         class="zone-result-card"
         :bordered="false"
       >
@@ -96,7 +96,7 @@
       <a-empty v-if="!zoneData.length && !loading" description="暂无分区数据" class="grid-empty" />
     </div>
 
-    <a-card v-else title="物料汇总" class="summary-table-card" :bordered="false" :loading="loading">
+    <a-card v-else title="物料汇总" class="summary-table-card scroll-area" :bordered="false" :loading="loading">
       <a-table
         :columns="summaryColumns"
         :data-source="summaryData"
@@ -268,6 +268,16 @@ onMounted(initPage)
 <style scoped>
 .task-result-page {
   max-width: 1280px;
+  height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .result-header {

@@ -2,13 +2,15 @@ package com.xzcpc.task.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xzcpc.task.entity.TaskZoneMaterial;
+import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 @Mapper
-public interface TaskZoneMaterialMapper extends BaseMapper<TaskZoneMaterial> { // 任务分区物料快照表 Mapper
+public interface TaskZoneMaterialMapper extends BaseMapper<TaskZoneMaterial> {
+    int insertBatch(List<TaskZoneMaterial> list);
 
     /**
      * 查询唯一键对应的记录（包含已逻辑删除的），绕过 @TableLogic 自动过滤。

@@ -25,13 +25,12 @@ public class MpWebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/mp/**")
                 .excludePathPatterns("/api/mp/auth/wx/login",
                                      "/api/mp/auth/owner/query-stores",
-                                     "/api/mp/auth/owner/confirm-bind",
                                      "/api/mp/auth/owner/status",
                                      "/api/mp/auth/owner/qrcode",
                                      "/api/mp/auth/owner/qrcode-img",
-                                     "/api/mp/auth/owner/my-status",
                                      "/api/mp/public/**",
-                                     "/api/mp/staff/registrations");
+                                     "/api/mp/staff/registrations",
+                                     "/api/mp/stores/refresh");
     }
 
     @Override

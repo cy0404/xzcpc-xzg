@@ -51,7 +51,7 @@ public class StoreServiceImpl implements StoreService {
     public List<StoreInfo> getAllStores() {
         List<Store> stores = storeMapper.selectList(
                 new LambdaQueryWrapper<Store>().orderByDesc(Store::getUpdatedAt));
-        if (stores.isEmpty()) {
+        if (stores.isEmpty() && syncEnabled()) {
             syncFromApi();
             stores = storeMapper.selectList(
                     new LambdaQueryWrapper<Store>().orderByDesc(Store::getUpdatedAt));
@@ -85,6 +85,7 @@ public class StoreServiceImpl implements StoreService {
      */
     @Scheduled(cron = "0 0 1 * * *")
     public void refreshCache() {
+        if (!syncEnabled()) return;
         log.info("开始从外部 API 同步门店信息到数据库...");
         try {
             syncFromApi();
@@ -135,6 +136,25 @@ public class StoreServiceImpl implements StoreService {
             throw new BusinessException(404, "门店不存在");
         }
         store.setQrCode(StringUtils.hasText(qrCode) ? qrCode.trim() : null);
+        storeMapper.updateById(store);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateOwnerInfo(String storeId, String openid, String name, String phone) {
+        Store store = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
+                .eq(Store::getStoreId, storeId));
+        if (store == null) return;
+        updateOwnerInfo(store, openid, name, phone);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateOwnerInfo(Store store, String openid, String name, String phone) {
+        store.setOwnerOpenid(openid);
+        store.setOwnerName(name);
+        store.setOwnerPhone(phone);
+        store.setUpdatedAt(java.time.LocalDateTime.now());
         storeMapper.updateById(store);
     }
 
@@ -202,4 +222,9 @@ public class StoreServiceImpl implements StoreService {
     private static String toString(Object value) {
         return value == null ? null : value.toString();
     }
+
+    @org.springframework.beans.factory.annotation.Value("${app.sync.enabled:true}")
+    private boolean syncEnabled;
+
+    private boolean syncEnabled() { return syncEnabled; }
 }

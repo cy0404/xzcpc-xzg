@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xzcpc.task.mapper.TaskZoneMapper">
+    <insert id="insertBatch">
+        INSERT INTO task_zone (task_id, zone_name, sort_no, source_type, biz_code)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.taskId}, #{item.zoneName}, #{item.sortNo}, #{item.sourceType}, #{item.bizCode})
+        </foreach>
+    </insert>
+</mapper>

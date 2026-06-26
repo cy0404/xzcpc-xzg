@@ -47,7 +47,7 @@ function goApproval() { uni.navigateTo({ url: '/pages/staff/approval/index' }) }
 onShareAppMessage(() => ({
   title: `象子茶铺茶邀请你加入${userStore.storeName || '门店'}`,
   path: invitePath.value,
-  imageUrl: '/static/employee.png',
+  imageUrl: '/static/icons/employee.png',
 }))
 
 function maskMobile(m: string) {

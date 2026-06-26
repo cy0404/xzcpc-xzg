@@ -3,6 +3,8 @@ package com.xzcpc.mp.controller;
 import com.xzcpc.common.annotation.OpLog;
 import com.xzcpc.common.response.R;
 import com.xzcpc.mp.context.UserContextHolder;
+import java.util.List;
+import java.util.Map;
 import com.xzcpc.mp.service.MpTaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -49,5 +51,12 @@ public class MpTaskController {
     public R<Object> result(@PathVariable Integer id) {
         String storeId = UserContextHolder.get().getStoreId();
         return R.ok(taskService.result(id, storeId));
+    }
+
+    @OpLog(module = "小程序-任务", operation = "获取未录入物料")
+    @GetMapping("/{id}/unentered-materials")
+    public R<List<Map<String, Object>>> unenteredMaterials(@PathVariable Integer id) {
+        String storeId = UserContextHolder.get().getStoreId();
+        return R.ok(taskService.getUnenteredMaterials(id, storeId));
     }
 }

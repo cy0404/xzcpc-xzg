@@ -21,4 +21,14 @@ public interface StoreService {
      * 更新门店二维码（本地维护字段，不随外部同步覆盖）。
      */
     void updateQrCode(String storeId, String qrCode);
+
+    /**
+     * 更新门店老板绑定信息（openid/姓名/手机号）。
+     */
+    void updateOwnerInfo(String storeId, String openid, String name, String phone);
+
+    /**
+     * 更新门店老板绑定信息（复用已加载的 Store 对象，避免重复查询）。
+     */
+    void updateOwnerInfo(com.xzcpc.task.entity.Store store, String openid, String name, String phone);
 }

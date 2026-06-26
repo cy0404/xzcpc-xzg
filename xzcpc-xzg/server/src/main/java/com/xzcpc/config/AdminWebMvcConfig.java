@@ -2,8 +2,10 @@ package com.xzcpc.config;
 
 import com.xzcpc.interceptor.AdminLoginInterceptor;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
@@ -16,19 +18,32 @@ public class AdminWebMvcConfig implements WebMvcConfigurer {
 
     private final AdminLoginInterceptor adminLoginInterceptor;
 
+    @Value("${app.upload.path:./upload}")
+    private String uploadPath;
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        String absPath = new java.io.File(uploadPath).getAbsolutePath() + "/";
+        String location = "file:" + absPath;
+        registry.addResourceHandler("/upload/**").addResourceLocations(location);
+        registry.addResourceHandler("/api/upload/**").addResourceLocations(location);
+    }
+
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(adminLoginInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
-                        "/api/auth/feishu/login",    // 飞书登录
-                        "/api/auth/dev/**",          // 本地开发 Mock 登录
-                        "/api/materials/migrate-inventory-units", // 一次性迁移
-                        "/api/materials/sync",       // 物料同步
-                        "/api/mp/**",                // 小程序端（走 mp-server 独立部署）
-                        "/api/reports/**",           // 报表接口（自带固定 token 鉴权）
-                        "/api/logs/operation",       // 日志查询暂时放行（开发阶段）
-                        "/api/logs/login"            // 日志查询暂时放行（开发阶段）
+                        "/api/auth/feishu/login",
+                        "/api/auth/dev/**",
+                        "/api/materials/migrate-inventory-units",
+                        "/api/materials/sync",
+                        "/api/materials/*/qrcode-img",
+                        "/api/upload/**",
+                        "/api/mp/**",
+                        "/api/reports/**",
+                        "/api/logs/operation",
+                        "/api/logs/login"
                 );
     }
 }

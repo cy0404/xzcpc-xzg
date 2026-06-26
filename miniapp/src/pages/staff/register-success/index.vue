@@ -24,7 +24,13 @@ async function refreshStatus() {
   if (!applicationId.value || refreshing.value) return
   refreshing.value = true
   try {
-    const data: any = await checkApplicationStatus(applicationId.value)
+    // 获取 wxCode 用于身份校验
+    let wxCode = ''
+    try {
+      const loginRes: any = await uni.login()
+      wxCode = loginRes.code || ''
+    } catch { /* ignore */ }
+    const data: any = await checkApplicationStatus(applicationId.value, wxCode)
     if (data?.found) {
       status.value = data.status || 'pending'
       rejectReason.value = data.rejectReason || ''

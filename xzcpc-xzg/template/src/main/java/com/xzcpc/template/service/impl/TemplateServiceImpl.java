@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xzcpc.common.event.TemplateChangedEvent;
 import com.xzcpc.common.exception.BusinessException;
+import com.xzcpc.common.util.BizCodeUtil;
 import com.xzcpc.template.entity.Template;
 import com.xzcpc.template.entity.TemplateZone;
 import com.xzcpc.template.entity.TemplateZoneMaterial;
@@ -18,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
+
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -60,11 +63,9 @@ public class TemplateServiceImpl implements TemplateService {
             throw new BusinessException("模板名称已存在");
         }
         template.setStatus(2);
+        template.setId(null);
+        template.setBizCode(BizCodeUtil.of("TPL"));
         templateMapper.insert(template);
-        // 迁移兼容：同步旧主键为 id 值
-        template.setTemplateId(template.getId());
-        template.setBizCode("TPL" + String.format("%08d", template.getId()));
-        templateMapper.updateById(template);
     }
 
     @Override
@@ -73,9 +74,6 @@ public class TemplateServiceImpl implements TemplateService {
         Template exist = templateMapper.selectById(template.getId());
         if (exist == null) {
             throw new BusinessException("模板不存在");
-        }
-        if (template.getTemplateId() == null) {
-            template.setTemplateId(exist.getTemplateId());
         }
         if (template.getBizCode() == null) {
             template.setBizCode(exist.getBizCode());
@@ -106,7 +104,7 @@ public class TemplateServiceImpl implements TemplateService {
         for (TemplateZone zone : zones) {
             templateZoneMaterialMapper.delete(
                     new LambdaQueryWrapper<TemplateZoneMaterial>()
-                            .eq(TemplateZoneMaterial::getZoneId, zone.getZoneId()));
+                            .eq(TemplateZoneMaterial::getZoneId, zone.getId()));
         }
         templateZoneMapper.delete(
                 new LambdaQueryWrapper<TemplateZone>()
@@ -148,15 +146,17 @@ public class TemplateServiceImpl implements TemplateService {
             if (b.getSortNo() != null) return 1;
             return 0;
         });
-        for (TemplateZone zone : zones) {
-            // 迁移兼容：zoneId 同步为 id，前端统一用 zoneId 操作
-            if (zone.getZoneId() == null || zone.getZoneId() == 0) {
-                zone.setZoneId(zone.getId());
+        // 批量查所有分区的物料计数（避免 N+1）
+        List<Integer> zoneIds = zones.stream().map(TemplateZone::getId).collect(Collectors.toList());
+        if (!zoneIds.isEmpty()) {
+            List<TemplateZoneMaterial> allMaterials = templateZoneMaterialMapper.selectList(
+                    new LambdaQueryWrapper<TemplateZoneMaterial>().in(TemplateZoneMaterial::getZoneId, zoneIds));
+            java.util.Map<Integer, Long> countMap = allMaterials.stream()
+                    .collect(Collectors.groupingBy(TemplateZoneMaterial::getZoneId, Collectors.counting()));
+            for (TemplateZone zone : zones) {
+                Long count = countMap.get(zone.getId());
+                zone.setMaterialCount(count != null ? count.intValue() : 0);
             }
-            Long count = templateZoneMaterialMapper.selectCount(
-                    new LambdaQueryWrapper<TemplateZoneMaterial>()
-                            .eq(TemplateZoneMaterial::getZoneId, zone.getId()));
-            zone.setMaterialCount(count != null ? count.intValue() : 0);
         }
         return zones;
     }
@@ -174,10 +174,8 @@ public class TemplateServiceImpl implements TemplateService {
         if (count > 0) {
             throw new BusinessException("分区名称在该模板内已存在");
         }
+        zone.setBizCode(BizCodeUtil.of("TZ"));
         templateZoneMapper.insert(zone);
-        zone.setZoneId(zone.getId());
-        zone.setBizCode("TZ" + String.format("%08d", zone.getId()));
-        templateZoneMapper.updateById(zone);
         eventPublisher.publishEvent(new TemplateChangedEvent(this, zone.getTemplateId()));
     }
 
@@ -198,7 +196,6 @@ public class TemplateServiceImpl implements TemplateService {
             }
         }
         zone.setId(zoneId);
-        zone.setZoneId(zoneId);
         zone.setTemplateId(templateId);
         templateZoneMapper.updateById(zone);
         eventPublisher.publishEvent(new TemplateChangedEvent(this, templateId));
@@ -267,12 +264,8 @@ public class TemplateServiceImpl implements TemplateService {
     @Transactional
     @CacheEvict(value = "templateZoneMaterials", key = "#root.args[1]")
     public void updateZoneMaterialSort(Integer templateId, Integer zoneId, List<TemplateZoneMaterial> materials) {
-        for (TemplateZoneMaterial material : materials) {
-            templateZoneMaterialMapper.update(null,
-                    new LambdaUpdateWrapper<TemplateZoneMaterial>()
-                            .eq(TemplateZoneMaterial::getZoneId, zoneId)
-                            .eq(TemplateZoneMaterial::getMaterialId, material.getMaterialId())
-                            .set(TemplateZoneMaterial::getSortNo, material.getSortNo()));
+        if (!materials.isEmpty()) {
+            templateZoneMaterialMapper.updateSortBatch(zoneId, materials);
         }
         eventPublisher.publishEvent(new TemplateChangedEvent(this, templateId));
     }

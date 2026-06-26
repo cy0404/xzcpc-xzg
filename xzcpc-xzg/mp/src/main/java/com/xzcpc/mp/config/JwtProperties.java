@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "mp.jwt")
 public class JwtProperties {
 
-    private String secret = "xzcpc-mp-default-secret-key-need-replace-in-prod-please";
+    private String secret;
 
     private long expireHours = 168;
 }

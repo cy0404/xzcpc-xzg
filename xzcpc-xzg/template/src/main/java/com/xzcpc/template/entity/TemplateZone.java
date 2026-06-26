@@ -12,10 +12,10 @@ import java.util.Map;
 public class TemplateZone {
 
     @TableId(type = IdType.AUTO)
+    @TableField("zone_id")
     private Integer id;
 
     private String bizCode;
-    private Integer zoneId;
     private Integer templateId;
     private String zoneName;
     private Integer sortNo;

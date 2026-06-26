@@ -50,7 +50,7 @@ public class MpZoneServiceImpl implements MpZoneService {
         List<Map<String, Object>> result = new ArrayList<>();
         for (TaskZoneMaterial m : materials) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("taskZoneMaterialId", m.getTaskZoneMaterialId());
+            item.put("taskZoneMaterialId", m.getId());
             item.put("materialId", m.getMaterialId());
             item.put("materialName", m.getMaterialName());
             item.put("spec", m.getSpec() != null ? m.getSpec() : "");
@@ -65,7 +65,9 @@ public class MpZoneServiceImpl implements MpZoneService {
             item.put("baseUnit", m.getBaseUnitSnapshot());
             item.put("baseQty", m.getBaseQty() != null ? m.getBaseQty() : m.getInputQty());
             item.put("conversionSnapshot", m.getConversionSnapshot());
+            item.put("unitInputs", m.getUnitInputs() != null ? m.getUnitInputs() : "");
             com.xzcpc.template.dto.MaterialRuleResp rule = ruleMap.get(m.getMaterialId());
+            item.put("category", rule != null && rule.getCategory() != null ? rule.getCategory() : "");
             item.put("inventoryRule", rule != null ? rule : pendingFallback(m.getMaterialId()));
             result.add(item);
         }
@@ -124,6 +126,7 @@ public class MpZoneServiceImpl implements MpZoneService {
             if (snapshot.baseQty() != null) {
                 applySnapshot(material, snapshot);
                 material.setInputStatus("entered");
+                material.setEnteredAt(java.time.LocalDateTime.now());
             }
             if (item.getRemark() != null) {
                 material.setRemark(item.getRemark());
@@ -132,6 +135,7 @@ public class MpZoneServiceImpl implements MpZoneService {
         }
 
         zone.setZoneSaved(1);
+        zone.setSavedAt(java.time.LocalDateTime.now());
         taskZoneMapper.updateById(zone);
 
         Task task = taskMapper.selectById(taskId);
@@ -164,6 +168,7 @@ public class MpZoneServiceImpl implements MpZoneService {
         material.setUnitInputs(req.getUnitInputs());
         if (snapshot.baseQty() != null) {
             material.setInputStatus("entered");
+            material.setEnteredAt(java.time.LocalDateTime.now());
         }
         taskZoneMaterialMapper.updateById(material);
 
@@ -219,6 +224,22 @@ public class MpZoneServiceImpl implements MpZoneService {
                         .eq(TaskZoneMaterial::getTaskId, taskId)
                         .eq(TaskZoneMaterial::getTaskZoneId, zoneId));
         taskZoneMapper.deleteById(zoneId);
+    }
+
+    @Override
+    @Transactional
+    public void updateZoneName(Integer taskId, Integer zoneId, String zoneName, String storeId) {
+        validateTaskOwnership(taskId, storeId);
+        validateTaskNotSubmitted(taskId);
+        TaskZone zone = taskZoneMapper.selectById(zoneId);
+        if (zone == null || !zone.getTaskId().equals(taskId)) {
+            throw new BusinessException("分区不存在");
+        }
+        if (!org.springframework.util.StringUtils.hasText(zoneName)) {
+            throw new BusinessException("分区名称不能为空");
+        }
+        zone.setZoneName(zoneName.trim());
+        taskZoneMapper.updateById(zone);
     }
 
     @Override

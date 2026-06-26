@@ -47,7 +47,7 @@ public class MpTaskServiceImpl implements MpTaskService {
                         .orderByDesc(Task::getDeadline));
 
         Map<String, Template> templateMap = templateMapper.selectList(null).stream()
-                .collect(Collectors.toMap(t -> t.getTemplateId().toString(), t -> t));
+                .collect(Collectors.toMap(t -> t.getId().toString(), t -> t));
 
         // 预加载所有任务的分区与物料统计，避免 N+1
         List<Integer> taskIds = allTasks.stream().map(Task::getId).collect(Collectors.toList());
@@ -167,22 +167,14 @@ public class MpTaskServiceImpl implements MpTaskService {
             throw new BusinessException(4033, "任务已过截止时间");
         }
 
-        List<TaskZone> zones = taskZoneMapper.selectList(
-                new LambdaQueryWrapper<TaskZone>().eq(TaskZone::getTaskId, taskId));
-        List<TaskZoneMaterial> allSubmitMaterials = taskZoneMaterialMapper.selectList(
-                new LambdaQueryWrapper<TaskZoneMaterial>().eq(TaskZoneMaterial::getTaskId, taskId));
-        Map<Integer, List<TaskZoneMaterial>> submitMaterialsByZone = allSubmitMaterials.stream()
-                .collect(Collectors.groupingBy(TaskZoneMaterial::getTaskZoneId));
-
-        for (TaskZone zone : zones) {
-            List<TaskZoneMaterial> zoneMaterials = submitMaterialsByZone.getOrDefault(zone.getId(), List.of());
-            long entered = zoneMaterials.stream()
-                    .filter(m -> m.getInputStatus() != null && !"not_entered".equals(m.getInputStatus()))
-                    .count();
-            if (zoneMaterials.isEmpty() || entered < zoneMaterials.size()) {
-                throw new BusinessException("分区「" + zone.getZoneName() + "」尚未完成盘点，请录入所有物料数量");
-            }
-        }
+        // 将未录入物料批量设为 0（单条 SQL，避免 N 次 updateById）
+        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<TaskZoneMaterial> zeroUpdate =
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
+        zeroUpdate.eq(TaskZoneMaterial::getTaskId, taskId)
+                .eq(TaskZoneMaterial::getInputStatus, "not_entered")
+                .set(TaskZoneMaterial::getInputQty, BigDecimal.ZERO)
+                .set(TaskZoneMaterial::getInputStatus, "zero_entered");
+        taskZoneMaterialMapper.update(null, zeroUpdate);
 
         task.setStatus("submitted");
         task.setSubmittedAt(LocalDateTime.now());
@@ -225,8 +217,10 @@ public class MpTaskServiceImpl implements MpTaskService {
             }
         }
 
-        for (TaskMaterialSummary sm : summaryMap.values()) {
-            taskMaterialSummaryMapper.insert(sm);
+        // 真正的批量 INSERT——单条 SQL 多 VALUES
+        List<TaskMaterialSummary> summaryList = new ArrayList<>(summaryMap.values());
+        if (!summaryList.isEmpty()) {
+            taskMaterialSummaryMapper.insertBatch(summaryList);
         }
     }
 
@@ -281,6 +275,7 @@ public class MpTaskServiceImpl implements MpTaskService {
                 boolean hasMulti = (sm.getUnitBreakdown() != null && sm.getUnitBreakdown().contains("},{"))
                         || (rule != null && !rule.getConversions().isEmpty());
                 m.put("isMultiUnit", hasMulti);
+                m.put("category", rule != null && rule.getCategory() != null ? rule.getCategory() : "");
                 return m;
             }).collect(Collectors.toList());
         } else {
@@ -440,6 +435,7 @@ public class MpTaskServiceImpl implements MpTaskService {
             MaterialRuleResp rule = ruleMap.get(materialId);
             boolean hasMulti = breakdown.size() > 1 || (rule != null && !rule.getConversions().isEmpty());
             sm.put("isMultiUnit", hasMulti);
+            sm.put("category", rule != null && rule.getCategory() != null ? rule.getCategory() : "");
             sm.put("baseUnit", rule != null && StringUtils.hasText(rule.getBaseUnit()) ? rule.getBaseUnit() : "");
             result.add(sm);
         }
@@ -581,6 +577,30 @@ public class MpTaskServiceImpl implements MpTaskService {
 
     private String escapeJson(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    @Override
+    public List<Map<String, Object>> getUnenteredMaterials(Integer taskId, String storeId) {
+        getTaskById(taskId, storeId); // 校验任务归属
+        List<TaskZoneMaterial> allMaterials = taskZoneMaterialMapper.selectList(
+                new LambdaQueryWrapper<TaskZoneMaterial>()
+                        .eq(TaskZoneMaterial::getTaskId, taskId)
+                        .eq(TaskZoneMaterial::getInputStatus, "not_entered"));
+        List<String> materialIds = allMaterials.stream().map(TaskZoneMaterial::getMaterialId).distinct().collect(Collectors.toList());
+        Map<String, MaterialRuleResp> ruleMap = materialRuleService.batchDetail(materialIds);
+        return allMaterials.stream().map(m -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("taskZoneMaterialId", m.getTaskZoneMaterialId());
+            item.put("taskZoneId", m.getTaskZoneId());
+            item.put("materialId", m.getMaterialId());
+            item.put("materialName", m.getMaterialName());
+            item.put("spec", m.getSpec() != null ? m.getSpec() : "");
+            item.put("unit", m.getUnit() != null ? m.getUnit() : "");
+            item.put("sortNo", m.getSortNo());
+            MaterialRuleResp rule = ruleMap.get(m.getMaterialId());
+            item.put("category", rule != null && rule.getCategory() != null ? rule.getCategory() : "");
+            return item;
+        }).collect(Collectors.toList());
     }
 
     private Map<String, Object> buildTaskMap(Task task, Map<String, Template> templateMap) {

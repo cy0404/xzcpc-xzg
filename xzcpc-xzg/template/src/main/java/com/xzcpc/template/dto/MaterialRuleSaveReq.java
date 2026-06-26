@@ -10,6 +10,7 @@ import java.util.List;
 public class MaterialRuleSaveReq {
 
     private String baseUnit;
+    private String stockUnit;
     private BigDecimal unitPrice;
     private List<UnitItem> units = new ArrayList<>();
     private List<UnitConversionItem> conversions = new ArrayList<>();

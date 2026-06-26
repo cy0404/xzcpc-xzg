@@ -13,7 +13,6 @@ public class Template {
     private Integer id;
 
     private String bizCode;
-    private Integer templateId;
     private String templateName;
     private Integer status;
 

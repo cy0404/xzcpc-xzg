@@ -53,41 +53,34 @@ public class MpOwnerServiceImpl implements MpOwnerService {
         // 2. 老板姓名（从第一个门店取 employeeName）
         resp.setOwnerName((String) stores.get(0).getOrDefault("employeeName", "老板"));
 
-        // 3. 本月支出（所有门店汇总）
         LocalDate today = LocalDate.now();
         LocalDate firstOfMonth = today.withDayOfMonth(1);
-        resp.setTotalExpense(formatMoney(sumExpenses(storeIds, firstOfMonth, today)));
 
-        // 4. 在职员工总数
-        int totalStaff = 0;
-        Map<String, Integer> staffCountByStore = new HashMap<>();
-        Map<String, String> managerByStore = new HashMap<>();
-        Map<String, String> expenseByStore = new HashMap<>();
+        // 4. 批量查所有门店的在职员工（一次查询代替 N 次）
+        List<Employee> allEmployees = employeeMapper.selectList(new LambdaQueryWrapper<Employee>()
+                .in(Employee::getStoreId, storeIds)
+                .eq(Employee::getStatus, "在职"));
+        // 员工数（排除老板）
+        Map<String, Long> staffCountByStore = allEmployees.stream()
+                .filter(e -> !"老板".equals(e.getRole()))
+                .collect(Collectors.groupingBy(Employee::getStoreId, Collectors.counting()));
+        int totalStaff = (int) staffCountByStore.values().stream().mapToLong(Long::longValue).sum();
+        // 店长
+        Map<String, String> managerByStore = allEmployees.stream()
+                .filter(e -> "店长".equals(e.getRole()))
+                .collect(Collectors.toMap(Employee::getStoreId, Employee::getName, (a, b) -> a));
 
-        for (String storeId : storeIds) {
-            // 员工数（排除老板）
-            Long count = employeeMapper.selectCount(new LambdaQueryWrapper<Employee>()
-                    .eq(Employee::getStoreId, storeId)
-                    .eq(Employee::getStatus, "在职")
-                    .ne(Employee::getRole, "老板"));
-            int sc = count != null ? count.intValue() : 0;
-            staffCountByStore.put(storeId, sc);
-            totalStaff += sc;
+        // 5. 批量查所有门店的当月支出（一次查询代替 N 次）
+        List<ExpenseRecord> allExpenses = expenseRecordMapper.selectList(new LambdaQueryWrapper<ExpenseRecord>()
+                .in(ExpenseRecord::getStoreId, storeIds)
+                .between(ExpenseRecord::getOccurredDate, firstOfMonth, today));
+        Map<String, BigDecimal> expenseByStore = allExpenses.stream()
+                .collect(Collectors.groupingBy(ExpenseRecord::getStoreId,
+                        Collectors.reducing(BigDecimal.ZERO, e -> e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO, BigDecimal::add)));
 
-            // 店长
-            Employee manager = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
-                    .eq(Employee::getStoreId, storeId)
-                    .eq(Employee::getRole, "店长")
-                    .eq(Employee::getStatus, "在职")
-                    .last("LIMIT 1"));
-            managerByStore.put(storeId, manager != null ? manager.getName() : "--");
-
-            // 本月支出
-            expenseByStore.put(storeId, formatMoney(sumExpenses(List.of(storeId), firstOfMonth, today)));
-        }
         resp.setTotalStaff(totalStaff);
 
-        // 5. 组装门店列表
+        // 6. 组装门店列表
         List<OwnerDashboardResp.StoreSummary> storeList = new ArrayList<>();
         for (Map<String, Object> s : stores) {
             String sid = (String) s.get("storeId");
@@ -95,24 +88,17 @@ public class MpOwnerServiceImpl implements MpOwnerService {
             summary.setStoreId(sid);
             summary.setStoreName((String) s.get("storeName"));
             summary.setManager(managerByStore.getOrDefault(sid, "--"));
-            summary.setStaffCount(staffCountByStore.getOrDefault(sid, 0));
-            summary.setExpense(expenseByStore.getOrDefault(sid, "¥0"));
+            summary.setStaffCount(staffCountByStore.getOrDefault(sid, 0L).intValue());
+            summary.setExpense(formatMoney(expenseByStore.getOrDefault(sid, BigDecimal.ZERO)));
             storeList.add(summary);
         }
         resp.setStores(storeList);
 
-        return resp;
-    }
+        // 本月总支出
+        BigDecimal totalExpense = expenseByStore.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        resp.setTotalExpense(formatMoney(totalExpense));
 
-    private BigDecimal sumExpenses(List<String> storeIds, LocalDate start, LocalDate end) {
-        if (storeIds.isEmpty()) return BigDecimal.ZERO;
-        List<ExpenseRecord> records = expenseRecordMapper.selectList(new LambdaQueryWrapper<ExpenseRecord>()
-                .in(ExpenseRecord::getStoreId, storeIds)
-                .between(ExpenseRecord::getOccurredDate, start, end));
-        return records.stream()
-                .map(ExpenseRecord::getAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return resp;
     }
 
     private String formatMoney(BigDecimal amount) {

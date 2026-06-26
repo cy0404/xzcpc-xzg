@@ -32,7 +32,8 @@ onLoad(async (query: any) => {
   if (query?.applicationId) {
     reapplyId.value = query.applicationId
     try {
-      const data: any = await checkApplicationStatus(reapplyId.value)
+      const loginRes: any = await uni.login()
+      const data: any = await checkApplicationStatus(reapplyId.value, loginRes.code)
       if (data?.found) {
         storeId.value = data.storeId || storeId.value
         storeName.value = data.storeName || storeName.value

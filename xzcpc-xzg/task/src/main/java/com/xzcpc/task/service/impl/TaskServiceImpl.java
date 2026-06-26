@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.common.model.StoreInfo;
+import com.xzcpc.common.util.BizCodeUtil;
 import com.xzcpc.task.dto.TaskCreateRequest;
 import com.xzcpc.task.entity.Task;
 import com.xzcpc.task.entity.TaskZone;
@@ -72,7 +73,7 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
             List<Integer> matchedIds = templateMapper.selectList(
                     new LambdaQueryWrapper<Template>()
                             .like(Template::getTemplateName, templateName))
-                    .stream().map(Template::getTemplateId).collect(Collectors.toList());
+                    .stream().map(Template::getId).collect(Collectors.toList());
             if (matchedIds.isEmpty()) {
                 return new Page<>(pageNum, pageSize);
             }
@@ -85,7 +86,7 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         if (records.isEmpty()) return result;
 
         Map<Integer, String> templateNameMap = templateMapper.selectList(null).stream()
-                .collect(Collectors.toMap(Template::getTemplateId, Template::getTemplateName));
+                .collect(Collectors.toMap(Template::getId, Template::getTemplateName));
         Set<Integer> templateIds = records.stream()
                 .map(Task::getTemplateId).filter(id -> id != null).collect(Collectors.toSet());
         Set<Integer> taskIds = records.stream()
@@ -112,9 +113,6 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
                     if (task.getXiaochengxuid() == null) task.setXiaochengxuid(store.getXiaochengxuid());
                     if (task.getWarehouseCode() == null) task.setWarehouseCode(store.getCangkuid());
                 }
-            }
-            if (task.getTaskId() == null || task.getTaskId() == 0) {
-                task.setTaskId(task.getId());
             }
             if (task.getTemplateId() != null) {
                 task.setTemplateName(templateNameMap.get(task.getTemplateId()));
@@ -148,10 +146,9 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
             task.setDeadline(request.getDeadline());
             task.setStatus("not_started");
             task.setCreatedBy("admin");
+            task.setId(null);
+            task.setBizCode(BizCodeUtil.of("TASK"));
             taskMapper.insert(task);
-            task.setTaskId(task.getId());
-            task.setBizCode("TASK" + String.format("%08d", task.getId()));
-            taskMapper.updateById(task);
 
             snapshotTemplate(task.getId(), task.getTemplateId());
             count++;
@@ -161,12 +158,11 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
 
     @Override
     public void create(Task task) {
+        task.setId(null);
         task.setStatus("not_started");
         task.setCreatedBy("admin");
+        task.setBizCode(BizCodeUtil.of("TASK"));
         taskMapper.insert(task);
-        task.setTaskId(task.getId());
-        task.setBizCode("TASK" + String.format("%08d", task.getId()));
-        taskMapper.updateById(task);
         snapshotTemplate(task.getId(), task.getTemplateId());
     }
 
@@ -188,16 +184,15 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         Map<Integer, List<TemplateZoneMaterial>> materialsByZone = zoneMaterials.stream()
                 .collect(Collectors.groupingBy(TemplateZoneMaterial::getZoneId));
 
+        List<TaskZoneMaterial> batchMaterials = new java.util.ArrayList<>();
         for (TemplateZone tz : templateZones) {
             TaskZone taskZone = new TaskZone();
             taskZone.setTaskId(taskId);
             taskZone.setZoneName(tz.getZoneName());
             taskZone.setSortNo(tz.getSortNo());
             taskZone.setSourceType("template");
-            taskZoneMapper.insert(taskZone);
-            taskZone.setTaskZoneId(taskZone.getId());
-            taskZone.setBizCode("TKZ" + String.format("%08d", taskZone.getId()));
-            taskZoneMapper.updateById(taskZone);
+            taskZone.setBizCode(BizCodeUtil.of("TKZ"));
+            taskZoneMapper.insert(taskZone);  // 单个插入，保证拿到 ID
 
             List<TemplateZoneMaterial> materials = materialsByZone.getOrDefault(tz.getId(), List.of());
             for (TemplateZoneMaterial tm : materials) {
@@ -211,11 +206,13 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
                 tzm.setInventoryUnit(tm.getInventoryUnit() != null ? tm.getInventoryUnit() : "");
                 tzm.setSortNo(tm.getSortNo());
                 tzm.setInputStatus("not_entered");
-                taskZoneMaterialMapper.insert(tzm);
-                tzm.setTaskZoneMaterialId(tzm.getId());
-                tzm.setBizCode("TZM" + String.format("%08d", tzm.getId()));
-                taskZoneMaterialMapper.updateById(tzm);
+                tzm.setBizCode(BizCodeUtil.of("TZM"));
+                batchMaterials.add(tzm);
             }
+        }
+        // 批量插入所有物料（一条 SQL）
+        if (!batchMaterials.isEmpty()) {
+            taskZoneMaterialMapper.insertBatch(batchMaterials);
         }
     }
 
@@ -224,9 +221,6 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         Task task = taskMapper.selectById(id);
         if (task == null) {
             throw new BusinessException("任务不存在");
-        }
-        if (task.getTaskId() == null || task.getTaskId() == 0) {
-            task.setTaskId(task.getId());
         }
         if (task.getStoreId() != null
                 && (task.getStoreName() == null || task.getXiaochengxuid() == null || task.getWarehouseCode() == null)) {
@@ -401,4 +395,6 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
                 .eq(TaskZone::getTaskId, id));
         taskMapper.deleteById(id);
     }
+
+    // ====== 工具方法 ======
 }

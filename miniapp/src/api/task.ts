@@ -19,3 +19,11 @@ export function fetchTaskSummary(id: number) {
 export function fetchTaskResult(id: number) {
   return request({ url: `/tasks/${id}/result` })
 }
+
+export function searchTaskMaterial(taskId: number, keyword: string) {
+  return request({ url: `/tasks/${taskId}/materials/search`, data: { keyword }, showLoading: false })
+}
+
+export function fetchUnenteredMaterials(taskId: number) {
+  return request({ url: `/tasks/${taskId}/unentered-materials`, showLoading: false })
+}

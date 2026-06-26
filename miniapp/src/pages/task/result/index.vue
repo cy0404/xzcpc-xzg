@@ -15,6 +15,9 @@ const tabIndex = ref<0 | 1>(0)
 
 onLoad((options: any) => {
   taskId.value = Number(options.taskId)
+  if (options.justSubmitted === '1') {
+    uni.showToast({ title: '提交成功', icon: 'success' })
+  }
   loadResult()
 })
 
@@ -106,8 +109,7 @@ function formatUnitInputs(mat: any) {
             <MaterialIcon :name="mat.materialName" :size="80" />
             <view class="zone-material-info">
               <text class="zm-name">{{ mat.materialName }}</text>
-              <text class="zm-spec">{{ mat.spec || '--' }}</text>
-              <text v-if="formatUnitInputs(mat)" class="zm-detail">{{ formatUnitInputs(mat) }}</text>
+                            <text v-if="formatUnitInputs(mat)" class="zm-detail">{{ formatUnitInputs(mat) }}</text>
             </view>
             <view class="zone-material-qty">
               <text class="zm-qty" :class="{ 'danger-text': isAbnormal(mat) }">{{ mat.quantity }}</text>
@@ -127,8 +129,7 @@ function formatUnitInputs(mat: any) {
             <MaterialIcon :name="item.materialName" :size="70" />
             <view class="row-left">
               <text class="row-name">{{ item.materialName }}</text>
-              <text class="row-sub">{{ item.spec || '--' }}</text>
-            </view>
+                          </view>
             <view class="row-mid">
               <text v-if="formatUnitInputs(item)" class="row-multi">{{ formatUnitInputs(item) }}</text>
               <text class="row-zone">分区数：{{ item.zoneCount }}</text>

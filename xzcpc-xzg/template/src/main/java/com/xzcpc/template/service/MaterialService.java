@@ -46,4 +46,7 @@ public interface MaterialService {
 
     /** 查询全部父级分类（去重） */
     List<String> getAllParentCategories();
+
+    /** 按 qmCode 精确查找物料，未找到返回 null */
+    MaterialInfo getByQmCode(String qmCode);
 }

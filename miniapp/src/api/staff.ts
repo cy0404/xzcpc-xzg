@@ -37,9 +37,11 @@ export function resignStaff(employeeId: string, data: any) {
   return request({ url: `/staff/${employeeId}/resign`, method: 'PUT', data })
 }
 
-/** 公开接口：查询登记申请状态，无需登录 */
-export function checkApplicationStatus(applicationId: string) {
-  return publicRequest({ url: '/public/application/' + applicationId })
+/** 查询登记申请状态。传 wxCode 验证身份后可获取完整信息。 */
+export function checkApplicationStatus(applicationId: string, wxCode?: string) {
+  let url = '/public/application/' + applicationId
+  if (wxCode) url += '?wxCode=' + encodeURIComponent(wxCode)
+  return publicRequest({ url })
 }
 
 /** 公开接口：根据 code + storeId 检查是否有已有申请 */

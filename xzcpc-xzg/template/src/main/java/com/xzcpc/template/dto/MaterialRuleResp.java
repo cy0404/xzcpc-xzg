@@ -18,6 +18,7 @@ public class MaterialRuleResp {
     private String spec;
     private String ruleId;
     private String baseUnit;
+    private String stockUnit;
     private BigDecimal unitPrice;
     private LocalDateTime updatedAt;
     private String ruleStatus;

@@ -22,6 +22,7 @@ public class MaterialInventoryRule {
     private String materialId;
     private String baseUnit;
     private String inventoryUnits;
+    private String stockUnit;
     private BigDecimal unitPrice;
 
     @TableField(fill = FieldFill.INSERT)

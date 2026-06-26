@@ -29,6 +29,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -205,16 +206,7 @@ public class MpOwnerBindServiceImpl implements MpOwnerBindService {
             case "auto_bound":
             case "approved":
                 // 重新查询门店信息（可能已有变化）
-                if (app.getMatchStoreIds() != null && !app.getMatchStoreIds().isEmpty()) {
-                    String[] ids = app.getMatchStoreIds().split(",");
-                    storeNames = java.util.Arrays.stream(ids)
-                            .map(id -> {
-                                Store s = storeMapper.selectOne(
-                                        new LambdaQueryWrapper<Store>().eq(Store::getStoreId, id));
-                                return s != null ? s.getStoreName() : id;
-                            })
-                            .collect(Collectors.toList());
-                }
+                storeNames = fetchStoreNames(app.getMatchStoreIds());
                 message = "auto_bound".equals(status) ? "绑定成功，欢迎回来" : "审核通过";
                 break;
             case "rejected":
@@ -251,7 +243,7 @@ public class MpOwnerBindServiceImpl implements MpOwnerBindService {
 
         try {
             File qrFile = wxMaService.getQrcodeService()
-                    .createWxaCodeUnlimit(bindCode, "pages/bind/owner-register");
+                    .createWxaCodeUnlimit(bindCode, "pages/bind/owner-register-qr/index");
             byte[] qrBytes = Files.readAllBytes(qrFile.toPath());
             log.info("生成小程序码成功 bindCode={}", bindCode);
             return qrBytes;
@@ -289,16 +281,7 @@ public class MpOwnerBindServiceImpl implements MpOwnerBindService {
         OwnerMyStatusResp.LatestApplication latest = null;
         if (latestApp != null) {
             List<String> storeNames = Collections.emptyList();
-            if (latestApp.getMatchStoreIds() != null && !latestApp.getMatchStoreIds().isEmpty()) {
-                String[] ids = latestApp.getMatchStoreIds().split(",");
-                storeNames = java.util.Arrays.stream(ids)
-                        .map(id -> {
-                            Store s = storeMapper.selectOne(
-                                    new LambdaQueryWrapper<Store>().eq(Store::getStoreId, id));
-                            return s != null ? s.getStoreName() : id;
-                        })
-                        .collect(Collectors.toList());
-            }
+            storeNames = fetchStoreNames(latestApp.getMatchStoreIds());
             latest = OwnerMyStatusResp.LatestApplication.builder()
                     .bindCode(latestApp.getBindCode())
                     .status(latestApp.getBindStatus())
@@ -332,16 +315,7 @@ public class MpOwnerBindServiceImpl implements MpOwnerBindService {
         }
 
         List<String> storeNames = Collections.emptyList();
-        if (latest.getMatchStoreIds() != null && !latest.getMatchStoreIds().isEmpty()) {
-            String[] ids = latest.getMatchStoreIds().split(",");
-            storeNames = java.util.Arrays.stream(ids)
-                    .map(id -> {
-                        Store s = storeMapper.selectOne(
-                                new LambdaQueryWrapper<Store>().eq(Store::getStoreId, id));
-                        return s != null ? s.getStoreName() : id;
-                    })
-                    .collect(Collectors.toList());
-        }
+        storeNames = fetchStoreNames(latest.getMatchStoreIds());
 
         return OwnerBindStatusResp.builder()
                 .status(latest.getBindStatus())
@@ -357,6 +331,23 @@ public class MpOwnerBindServiceImpl implements MpOwnerBindService {
     }
 
     // ==================== 工具方法 ====================
+
+    /**
+     * 根据逗号分隔的 storeId 批量查询门店名称（避免 N+1）。
+     */
+    private List<String> fetchStoreNames(String matchStoreIds) {
+        if (matchStoreIds == null || matchStoreIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        String[] ids = matchStoreIds.split(",");
+        List<Store> stores = storeMapper.selectList(
+                new LambdaQueryWrapper<Store>().in(Store::getStoreId, (Object[]) ids));
+        Map<String, String> nameMap = stores.stream()
+                .collect(Collectors.toMap(Store::getStoreId, Store::getStoreName, (a, b) -> a));
+        return java.util.Arrays.stream(ids)
+                .map(id -> nameMap.getOrDefault(id, id))
+                .collect(Collectors.toList());
+    }
 
     private static String maskPhone(String phone) {
         if (phone == null || phone.length() < 7) {

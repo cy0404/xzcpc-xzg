@@ -1,18 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
-import { request } from '@/utils/request'
-import { useUserStore } from '@/store/user'
-
-const userStore = useUserStore()
+import { computed, ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 
 const bindCode = ref('')
-const status = ref('pending')
+const state = ref('pending')
 const name = ref('')
 const phone = ref('')
 const storeCount = ref(0)
 const storeNames = ref<string[]>([])
-const submitTime = ref('')
 
 const phoneMasked = computed(() => {
   const p = phone.value
@@ -20,191 +15,159 @@ const phoneMasked = computed(() => {
   return p.substring(0, 3) + '****' + p.substring(7)
 })
 
-const primaryText = computed(() => {
-  if (status.value === 'auto_bound' || status.value === 'approved') return '进入老板首页'
-  if (status.value === 'rejected') return '联系总部'
-  return '知道了'
-})
-
-const secondaryText = computed(() => {
-  if (status.value === 'pending') return '联系总部'
-  if (status.value === 'rejected') return '返回微信'
-  return '返回微信'
-})
-
-const badgeText = computed(() => {
-  if (status.value === 'pending') return '总部核验中'
-  if (status.value === 'rejected') return '未通过'
-  return ''
-})
-
-const badgeStyle = computed(() => {
-  if (status.value === 'pending') return 'badge-pending'
-  if (status.value === 'rejected') return 'badge-rejected'
-  return ''
+const now = computed(() => {
+  const d = new Date()
+  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' +
+    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
 })
 
 onLoad((query: any) => {
-  bindCode.value = query?.bindCode || ''
-  status.value = query?.state || 'pending'
+  bindCode.value = query?.bindCode || query?.scene || ''
+  state.value = query?.state || 'pending'
   name.value = decodeURIComponent(query?.name || '') || '--'
   phone.value = query?.phone || ''
   storeCount.value = parseInt(query?.storeCount || '0')
   storeNames.value = query?.storeNames ? decodeURIComponent(query.storeNames).split(',').filter(Boolean) : []
-  submitTime.value = formatNow()
 })
 
-onShow(() => {
-  // pending 状态时每次回看页面都刷新后端状态
-  if (status.value === 'pending' && bindCode.value) {
-    checkStatus()
-  }
-})
-
-function formatNow(): string {
-  const d = new Date()
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-async function checkStatus() {
-  try {
-    const data: any = await request({ url: `/auth/owner/status?bindCode=${bindCode.value}`, showLoading: false, silent: true })
-    if (data && data.status !== 'pending') {
-      status.value = data.status
-      if (data.status === 'approved' || data.status === 'auto_bound') {
-        storeCount.value = data.storeCount || 0
-        storeNames.value = data.storeNames || []
-      }
-    }
-  } catch {
-    // 静默失败
-  }
-}
-
-async function onPrimary() {
-  if (status.value === 'auto_bound' || status.value === 'approved') {
-    // 先登录获取 token
-    try {
-      await userStore.wxLogin('')
-    } catch {
-      uni.showToast({ title: '登录失败，请重试', icon: 'none' })
-      return
-    }
-    // 按门店数跳转
-    if (userStore.storeCount > 1) {
-      // 多门店 → 多门店总览
-      uni.redirectTo({ url: '/pages/owner-home/index' })
-    } else {
-      // 单门店 → 首页
-      uni.switchTab({ url: '/pages/home/index/index' })
-    }
-  } else if (status.value === 'rejected') {
-    uni.showModal({ title: '联系总部', content: '请联系总部人工处理', showCancel: false })
-  } else {
-    // pending：保存 bindCode 到本地，跳登录页
-    if (bindCode.value) {
-      uni.setStorageSync('_pending_bind_code', bindCode.value)
-    }
-    uni.reLaunch({ url: '/pages/login/index' })
-  }
-}
-
-function onSecondary() {
-  if (status.value === 'pending') {
-    uni.showModal({ title: '联系总部', content: '请联系总部人工处理', showCancel: false })
-  } else {
-    uni.reLaunch({ url: '/pages/login/index' })
-  }
+function goLogin() { uni.reLaunch({ url: '/pages/login/index' }) }
+function goBack() {
+  uni.redirectTo({ url: '/pages/bind/owner-register-qr/index' + (bindCode.value ? '?bindCode=' + bindCode.value : '') })
 }
 </script>
 
 <template>
   <view class="page">
-    <view class="header">
-      <view class="hint">老板绑定</view>
-    </view>
 
-    <!-- ====== 🟢 自动绑定成功 / 审核通过 ====== -->
-    <view class="hero" v-if="status === 'auto_bound' || status === 'approved'">
-      <view class="hero-icon icon-success">✓</view>
-      <text class="hero-title">绑定成功，欢迎回来</text>
-      <text class="hero-desc">已关联 {{ storeCount }} 家门店</text>
+    <!-- ===== 绑定成功 ===== -->
+    <template v-if="state === 'auto_bound' || state === 'approved'">
+      <view class="hero">
+        <view class="hero-icon hero-icon--success">
+          <text class="icon-text">✓</text>
+        </view>
+        <text class="hero-title">绑定成功，欢迎回来</text>
+        <text class="hero-desc">已关联 {{ storeCount }} 家门店</text>
 
-      <view class="store-list" v-if="storeNames.length">
-        <view class="store-item" v-for="(sn, idx) in storeNames" :key="idx">
-          <view class="si-icon">🏪</view>
-          <text class="si-name">{{ sn }}</text>
+        <view class="store-list" v-if="storeNames.length">
+          <view class="store-item" v-for="(sn, idx) in storeNames" :key="idx">
+            <view class="store-icon-wrap">
+              <text class="store-icon">🏪</text>
+            </view>
+            <text class="store-name">{{ sn }}</text>
+          </view>
         </view>
       </view>
-    </view>
+    </template>
 
-    <!-- ====== 🟠 总部核验中 ====== -->
-    <view class="hero" v-else-if="status === 'pending'">
-      <view class="hero-icon icon-pending">⏳</view>
-      <text class="hero-title">登记申请已提交</text>
-      <text class="hero-desc">总部核验通过后，会自动绑定当前微信并开放门店管理权限。</text>
-    </view>
-
-    <!-- ====== 🔴 审核拒绝 ====== -->
-    <view class="hero" v-else-if="status === 'rejected'">
-      <view class="hero-icon icon-rejected">✕</view>
-      <text class="hero-title">信息未通过验证</text>
-      <text class="hero-desc">请联系总部人工处理。为保障门店账号安全，页面不会展示具体未通过原因。</text>
-    </view>
-
-    <!-- 信息卡片（pending/rejected 显示） -->
-    <view class="info-card" v-if="status === 'pending' || status === 'rejected'">
-      <view class="ir"><text class="il">姓名</text><text class="iv">{{ name }}</text></view>
-      <view class="ir"><text class="il">手机号</text><text class="iv">{{ phoneMasked }}</text></view>
-      <view class="ir"><text class="il">提交时间</text><text class="iv">{{ submitTime || '--' }}</text></view>
-      <view class="ir last">
-        <text class="il">当前状态</text>
-        <view class="badge" :class="badgeStyle">{{ badgeText }}</view>
+    <!-- ===== 总部核验中 ===== -->
+    <template v-else-if="state === 'pending'">
+      <view class="hero">
+        <view class="hero-icon hero-icon--pending">
+          <text class="icon-text">⏳</text>
+        </view>
+        <text class="hero-title">登记申请已提交</text>
+        <text class="hero-desc">总部核验通过后，会自动绑定当前微信并开放门店管理权限。</text>
       </view>
-    </view>
+
+      <view class="info-card">
+        <view class="info-row">
+          <text class="info-label">姓名</text>
+          <text class="info-value">{{ name }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">手机号</text>
+          <text class="info-value">{{ phoneMasked }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">提交时间</text>
+          <text class="info-value">{{ now }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">当前状态</text>
+          <view class="info-badge badge--pending">
+            <text>总部核验中</text>
+          </view>
+        </view>
+      </view>
+    </template>
+
+    <!-- ===== 审核拒绝 ===== -->
+    <template v-else-if="state === 'rejected'">
+      <view class="hero">
+        <view class="hero-icon hero-icon--rejected">
+          <text class="icon-text">✕</text>
+        </view>
+        <text class="hero-title">信息未通过验证</text>
+        <text class="hero-desc">请联系总部人工处理。为保障门店账号安全，页面不会展示具体未通过原因。</text>
+      </view>
+
+      <view class="info-card">
+        <view class="info-row">
+          <text class="info-label">姓名</text>
+          <text class="info-value">{{ name }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">手机号</text>
+          <text class="info-value">{{ phoneMasked }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">提交时间</text>
+          <text class="info-value">{{ now }}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">当前状态</text>
+          <view class="info-badge badge--rejected">
+            <text>未通过</text>
+          </view>
+        </view>
+      </view>
+    </template>
 
     <!-- 底部按钮 -->
-    <view class="bottom">
-      <view class="btn" @click="onPrimary">{{ primaryText }}</view>
-      <view class="btn-sec" @click="onSecondary">{{ secondaryText }}</view>
+    <view class="bottom-bar">
+      <view v-if="state === 'auto_bound' || state === 'approved'" class="primary-btn" @click="goLogin">进入首页</view>
+      <view v-else class="primary-btn" @click="goBack">返回</view>
     </view>
   </view>
 </template>
 
 <style lang="scss" scoped>
-.page { min-height: 100vh; background: #F7F8F6; display: flex; flex-direction: column; }
+$bg: #F7F8F6;
+$surface: #FFFFFF;
+$primary: #2F8F57;
+$primary-soft: #E7F4EB;
+$text-1: #1F2421;
+$text-2: #66706A;
+$text-3: #98A19C;
+$border: #E8ECE9;
+$warning: #E58A2D;
+$danger: #E05A47;
 
-// 顶栏
-.header { display: flex; justify-content: flex-end; padding: 24rpx 32rpx; }
-.hint { font-size: 24rpx; color: #66706A; background: #fff; padding: 8rpx 24rpx; border-radius: 100rpx; box-shadow: 0 4rpx 16rpx rgba(31,36,33,0.06); }
+.page{min-height:100vh;background:$bg;display:flex;flex-direction:column;padding-bottom:calc(180rpx + env(safe-area-inset-bottom))}
 
-// 状态区
-.hero { display: flex; flex-direction: column; align-items: center; padding: 80rpx 32rpx 0; text-align: center; }
-.hero-icon { width: 140rpx; height: 140rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 64rpx; margin-bottom: 32rpx; }
-.icon-success { background: #F1F8F3; color: #2F8F57; }
-.icon-pending { background: #FFF8EE; color: #E58A2D; }
-.icon-rejected { background: #FFF4F2; color: #E05A47; }
-.hero-title { font-size: 44rpx; font-weight: 700; color: #1F2421; line-height: 56rpx; }
-.hero-desc { margin-top: 16rpx; max-width: 520rpx; font-size: 26rpx; color: #66706A; line-height: 40rpx; }
+.hero{display:flex;flex-direction:column;align-items:center;padding:96rpx 32rpx 0;text-align:center}
+.hero-icon{width:160rpx;height:160rpx;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.hero-icon--success{background:#F1F8F3;color:$primary}
+.hero-icon--pending{background:#FFF8EE;color:$warning}
+.hero-icon--rejected{background:#FFF4F2;color:$danger}
+.icon-text{font-size:84rpx;font-weight:700}
+.hero-title{margin-top:40rpx;font-size:48rpx;font-weight:600;color:$text-1}
+.hero-desc{margin-top:16rpx;max-width:600rpx;font-size:28rpx;color:$text-2;line-height:1.5}
 
-// 门店列表
-.store-list { width: 100%; margin-top: 48rpx; display: flex; flex-direction: column; gap: 16rpx; }
-.store-item { display: flex; align-items: center; gap: 20rpx; padding: 24rpx; border-radius: 20rpx; background: #fff; border: 1px solid #E8ECE9; }
-.si-icon { font-size: 32rpx; flex-shrink: 0; }
-.si-name { font-size: 28rpx; font-weight: 500; color: #1F2421; }
+.store-list{width:100%;margin-top:40rpx;display:flex;flex-direction:column;gap:16rpx}
+.store-item{display:flex;align-items:center;gap:24rpx;padding:24rpx;border-radius:24rpx;border:1px solid $border;background:$surface}
+.store-icon-wrap{width:72rpx;height:72rpx;border-radius:50%;background:$primary-soft;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.store-icon{font-size:38rpx}
+.store-name{font-size:28rpx;font-weight:500;color:$text-1}
 
-// 信息卡片
-.info-card { margin: 48rpx 32rpx 0; padding: 28rpx; border-radius: 20rpx; background: #fff; border: 1px solid #E8ECE9; box-shadow: 0 4rpx 16rpx rgba(31,36,33,0.04); }
-.ir { display: flex; align-items: center; justify-content: space-between; padding: 18rpx 0; border-bottom: 1px solid #EEF1EF; }
-.last { border-bottom: 0; }
-.il { font-size: 28rpx; color: #66706A; flex-shrink: 0; }
-.iv { font-size: 28rpx; font-weight: 500; color: #1F2421; text-align: right; }
-.badge { padding: 4rpx 16rpx; border-radius: 8rpx; font-size: 24rpx; font-weight: 500; }
-.badge-pending { background: #FFF8EE; color: #E58A2D; }
-.badge-rejected { background: #FFF4F2; color: #E05A47; }
+.info-card{margin:56rpx 32rpx 0;padding:32rpx;border-radius:24rpx;border:1px solid $border;background:$surface;box-shadow:0 4px 16px rgba(31,36,33,.04)}
+.info-row{display:flex;align-items:center;justify-content:space-between;padding:16rpx 0}
+.info-label{font-size:28rpx;color:$text-2;flex-shrink:0}
+.info-value{font-size:28rpx;font-weight:500;color:$text-1;text-align:right}
+.info-badge{padding:4rpx 16rpx;border-radius:8rpx;font-size:24rpx;font-weight:500}
+.badge--pending{background:#FFF8EE;color:$warning}
+.badge--rejected{background:#FFF4F2;color:$danger}
 
-// 底部
-.bottom { margin-top: auto; padding: 56rpx 32rpx 0; }
-.btn { height: 96rpx; border-radius: 24rpx; background: #2F8F57; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 30rpx; font-weight: 600; box-shadow: 0 8rpx 24rpx rgba(31,36,33,0.1); }
-.btn-sec { height: 88rpx; display: flex; align-items: center; justify-content: center; margin-top: 20rpx; border-radius: 24rpx; color: #2F8F57; font-size: 28rpx; font-weight: 600; }
+.bottom-bar{margin-top:auto;padding:56rpx 32rpx 0}
+.primary-btn{width:100%;height:96rpx;border-radius:24rpx;background:$primary;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600;box-shadow:0 8px 24px rgba(31,36,33,.1)}
 </style>

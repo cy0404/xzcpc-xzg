@@ -13,8 +13,8 @@
       <a-row :gutter="[16, 16]">
         <a-col :xs="24" :sm="12" :md="6">
           <div class="filter-label">门店选择</div>
-          <a-select v-model:value="filters.storeId" placeholder="全部门店" allow-clear style="width: 100%">
-            <a-select-option v-for="store in stores" :key="store.id" :value="store.id">
+          <a-select v-model:value="filters.storeId" placeholder="全部门店" allow-clear show-search :filter-option="filterStore" style="width: 100%">
+            <a-select-option v-for="store in stores" :key="store.id" :value="store.id" :label="store.name">
               {{ store.name }}
             </a-select-option>
           </a-select>
@@ -166,6 +166,10 @@ function getFilteredFallback() {
     if (filters.name && !item.name.includes(filters.name.trim())) return false
     return true
   })
+}
+
+function filterStore(input: string, option: any) {
+  return (option.label || option.value || '').toLowerCase().includes(input.toLowerCase())
 }
 
 async function fetchStores() {

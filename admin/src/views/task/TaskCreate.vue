@@ -67,7 +67,7 @@
                 placeholder="请选择模板"
                 @change="onTemplateChange"
               >
-                <a-select-option v-for="t in templates" :key="t.templateId" :value="t.templateId">
+                <a-select-option v-for="t in templates" :key="t.id" :value="t.id">
                   {{ t.templateName }}
                 </a-select-option>
               </a-select>
@@ -110,7 +110,7 @@
 
             <div class="preview-zones-label">包含分区结构</div>
             <div class="zone-preview-list">
-              <div v-for="(zone, idx) in preview.zones" :key="zone.zoneId" class="zone-preview-item">
+              <div v-for="(zone, idx) in preview.zones" :key="zone.id" class="zone-preview-item">
                 <component :is="zoneIcons[idx % zoneIcons.length]" class="zone-preview-icon" />
                 <span>{{ zone.zoneName }}</span>
               </div>
@@ -198,8 +198,8 @@ async function fetchTemplates() {
     const res = (await getTemplates({ pageSize: 100, pageNum: 1 })) as any
     templates.value = (res.data?.records || []).filter((t: any) => t.status === 1)
     if (templates.value.length > 0) {
-      form.templateId = templates.value[0].templateId
-      await onTemplateChange(templates.value[0].templateId)
+      form.templateId = templates.value[0].id
+      await onTemplateChange(templates.value[0].id)
     }
   } catch (e: any) {
     message.error('获取模板列表失败：' + (e.message || ''))

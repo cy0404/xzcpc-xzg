@@ -27,6 +27,10 @@ onShow(async () => {
 function goDetail(task: any) { uni.navigateTo({ url: `/pages/task/detail/index?taskId=${task.taskId}` }) }
 function goResult(task: any) { uni.navigateTo({ url: `/pages/task/result/index?taskId=${task.taskId}` }) }
 function goContinue(task: any) { goDetail(task) }
+function enterCurrentTask() {
+  const first = currentTasks.value[0]
+  if (first) goDetail(first)
+}
 function nowMonth() { const d = new Date(); return `${d.getFullYear()}年${d.getMonth()+1}月` }
 function fmtDeadline(d: string) { if (!d) return '--'; return d.replace('T',' ').substring(0,16) }
 function taskProgress(t: any) { if (!t?.totalMaterials) return 0; return Math.round((t.enteredMaterials / t.totalMaterials) * 100) }
@@ -89,7 +93,9 @@ function taskProgress(t: any) { if (!t?.totalMaterials) return 0; return Math.ro
       </view>
     </template>
 
-    <view class="fab-bar"></view>
+    <view class="fab-bar" v-if="taskCount > 0">
+      <view class="fab-btn" @click="enterCurrentTask">进入当前盘点任务</view>
+    </view>
   </view>
 </template>
 

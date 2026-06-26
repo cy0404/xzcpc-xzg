@@ -15,9 +15,11 @@ const pendingAppCount = ref(0)
 const pendingTaskCount = ref(0)
 const staffCount = ref(0)
 const monthlyExpense = ref(0)
+const monthlyExpenseCount = ref(0)
 const appBanner = ref<{ status: string; storeNames: string[]; rejectReason?: string } | null>(null)
 const firstTask = computed(() => taskStore.currentTasks?.[0] || null)
 const isOwner = computed(() => userStore.role === '老板')
+const canManageWorkHours = computed(() => userStore.role === '老板' || userStore.role === '店长')
 const hasStaffManage = computed(() => userStore.permissions.includes('staff:manage'))
 const showStoreDrawer = ref(false)
 const storeList = ref<any[]>([])
@@ -75,6 +77,7 @@ async function loadStats() {
     const end = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
     const res: any = await request({ url: '/expenses', data: { startDate: start, endDate: end, pageSize: 999 }, showLoading: false, silent: true })
     const records = res?.records || []
+    monthlyExpenseCount.value = records.length
     monthlyExpense.value = records.reduce((sum: number, r: any) => sum + (r.amount || 0), 0)
   } catch { /* ignore */ }
 }
@@ -124,6 +127,14 @@ const pendingTotal = computed(() => {
   return (hasStaffManage.value ? pendingAppCount.value : 0) + pendingTaskCount.value
 })
 
+const taskRemaining = computed(() => {
+  return taskStore.currentTasks.reduce((s: number, t: any) => {
+    const total = t.totalMaterials || 0
+    const entered = t.enteredMaterials || 0
+    return s + Math.max(total - entered, 0)
+  }, 0)
+})
+
 function goPending() {
   if (hasStaffManage.value && pendingAppCount.value > 0) {
     uni.navigateTo({ url: '/pages/staff/approval/index' })
@@ -154,6 +165,10 @@ function goExpenseList() {
 
 function goExpenseForm() {
   uni.navigateTo({ url: '/pages/expense/form/index' })
+}
+
+function goWorkHours() {
+  uni.navigateTo({ url: '/pages/work-hours/index/index' })
 }
 
 function goOwnerHome() {
@@ -189,7 +204,7 @@ function showNotice() {
           <text class="sp-switch-btn" v-if="isOwner && userStore.storeCount > 1">⇄</text>
         </view>
       </view>
-      <view class="header-right">
+      <view class="header-right" v-if="false">
         <view class="bell-wrap">
           <text class="bell-icon">🔔</text>
           <view class="bell-dot" v-if="hasStaffManage && pendingAppCount > 0"></view>
@@ -232,54 +247,72 @@ function showNotice() {
     </view>
 
     <view class="section" v-if="pendingTotal > 0">
-      <view class="sec-top"><text class="sec-title">待处理事项</text><text class="sec-count">{{ pendingTotal }} 项</text></view>
+      <view class="sec-top">
+        <text class="sec-title">待处理事项</text>
+        <text class="sec-count">{{ pendingTotal }} 项</text>
+      </view>
       <view class="todo-list">
-        <view class="todo-card green" @click="goCurrentTask">
-          <view class="tc-icon-wrap"><text class="tc-icon">✅</text></view>
+        <view class="todo-card todo-green" @click="goCurrentTask" v-if="firstTask || pendingTaskCount > 0">
+          <view class="tc-icon-wrap tc-icon-green"><text class="tc-icon">✓</text></view>
           <view class="tc-body">
             <text class="tc-title">完成本月门店盘点</text>
-            <text class="tc-desc">{{ firstTask ? '进行中' : '暂无任务' }}</text>
+            <text class="tc-desc">{{ firstTask ? `${taskRemaining} 项待录入` : '暂无任务' }}</text>
           </view>
-          <text class="tc-btn" v-if="firstTask">去盘点</text>
+          <view class="tc-btn tc-btn-solid" v-if="firstTask">去盘点</view>
         </view>
-        <view class="todo-card" @click="goStaffApproval" v-if="hasStaffManage && pendingAppCount > 0">
-          <view class="tc-icon-wrap"><text class="tc-icon">👤</text></view>
+        <view class="todo-card todo-white" @click="goStaffApproval" v-if="hasStaffManage && pendingAppCount > 0">
+          <view class="tc-icon-wrap tc-icon-grey"><text class="tc-icon">👤</text></view>
           <view class="tc-body">
             <text class="tc-title">审批新员工登记</text>
             <text class="tc-desc">{{ pendingAppCount }} 项待审批</text>
           </view>
-          <text class="tc-btn outline">去审批</text>
+          <view class="tc-btn tc-btn-outline">去审批</view>
         </view>
       </view>
     </view>
 
     <view class="section">
-      <text class="sec-title" style="margin-bottom:20rpx">常用工具</text>
+      <text class="sec-title sec-title-block">常用工具</text>
       <view class="tool-grid">
-        <view class="tool-item" @click="goCurrentTask">
-          <view class="ti-icon-wrap green"><text class="ti-icon">📦</text></view>
-          <text class="ti-name">盘点</text>
-          <text class="ti-desc">快速完成库存盘点</text>
+        <view class="tool-item tool-green" @click="goCurrentTask">
+          <view class="ti-text">
+            <text class="ti-name">盘点</text>
+            <text class="ti-desc">{{ firstTask ? `${taskRemaining} 项待录入` : '快速完成库存盘点' }}</text>
+          </view>
+          <text class="ti-deco">📋</text>
         </view>
-        <view class="tool-item" @click="goExpenseList">
-          <view class="ti-icon-wrap"><text class="ti-icon">🧾</text></view>
-          <text class="ti-name">支出登记</text>
-          <text class="ti-desc">记录门店支出</text>
+        <view class="tool-item tool-blue" @click="goExpenseList">
+          <view class="ti-text">
+            <text class="ti-name">支出登记</text>
+            <text class="ti-desc">本月 {{ monthlyExpenseCount }} 笔</text>
+          </view>
+          <text class="ti-deco">🧾</text>
         </view>
-        <view class="tool-item" @click="goStaffList" v-if="hasStaffManage">
-          <view class="ti-icon-wrap"><text class="ti-icon">👥</text></view>
-          <text class="ti-name">人员管理</text>
-          <text class="ti-desc">查看员工与审批</text>
+        <view class="tool-item tool-yellow" @click="goStaffList" v-if="hasStaffManage">
+          <view class="ti-text">
+            <text class="ti-name">人员管理</text>
+            <text class="ti-desc">{{ staffCount }} 人在职</text>
+          </view>
+          <text class="ti-deco">👥</text>
         </view>
-        <view class="tool-item" @click="goMyProfile" v-else>
-          <view class="ti-icon-wrap"><text class="ti-icon">👤</text></view>
-          <text class="ti-name">我的信息</text>
-          <text class="ti-desc">查看个人资料</text>
+        <view class="tool-item tool-purple" @click="goMyProfile" v-else>
+          <view class="ti-text">
+            <text class="ti-name">我的信息</text>
+            <text class="ti-desc">查看个人资料</text>
+          </view>
+          <text class="ti-deco">👤</text>
+        </view>
+        <view class="tool-item tool-orange" v-if="canManageWorkHours" @click="goWorkHours">
+          <view class="ti-text">
+            <text class="ti-name">工时录入</text>
+            <text class="ti-desc">记录门店总工时</text>
+          </view>
+          <text class="ti-deco">⏱</text>
         </view>
       </view>
     </view>
 
-    <view class="section" v-if="isOwner">
+    <view class="section" v-if="false">
       <text class="sec-title" style="margin-bottom:20rpx">门店公告</text>
       <view class="learn-item" @click="showNotice">
         <view class="li-icon-wrap"><text class="li-icon">📢</text></view>
@@ -338,16 +371,43 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .sc-item{text-align:center}.sci-icon-wrap{width:72rpx;height:72rpx;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#FAFBF9;margin-bottom:12rpx}.sci-icon-wrap.green{background:$ps}
 .sci-icon{font-size:32rpx}.sci-label{display:block;font-size:24rpx;color:$t3}.sci-val{display:block;margin-top:4rpx;font-size:40rpx;font-weight:800;color:$t1}
 .section{margin-top:48rpx}
-.sec-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20rpx}
-.sec-title{font-size:36rpx;font-weight:700;color:$t1}.sec-count{font-size:26rpx;color:$t2}
-.todo-list{display:flex;flex-direction:column;gap:16rpx}
-.todo-card{display:flex;align-items:center;gap:20rpx;padding:28rpx 24rpx;border-radius:20rpx;background:$s;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}.todo-card.green{background:#F1F8F3}
-.tc-icon-wrap{width:80rpx;height:80rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#FAFBF9;flex-shrink:0}
-.tc-icon{font-size:36rpx}.tc-body{flex:1;min-width:0}.tc-title{font-size:30rpx;font-weight:600;color:$t1;display:block}.tc-desc{font-size:26rpx;color:$t2;margin-top:4rpx}
-.tc-btn{padding:14rpx 32rpx;border-radius:100rpx;background:$p;color:#fff;font-size:26rpx;font-weight:500;flex-shrink:0}.tc-btn.outline{background:$s;color:$p;border:2rpx solid $p}
-.tool-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16rpx}
-.tool-item{padding:32rpx 24rpx;border-radius:20rpx;background:$s;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}.ti-icon-wrap{width:88rpx;height:88rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#FAFBF9;margin-bottom:16rpx}.ti-icon-wrap.green{background:$ps}
-.ti-icon{font-size:40rpx}.ti-name{display:block;font-size:30rpx;font-weight:600;color:$t1}.ti-desc{display:block;font-size:24rpx;color:$t3;margin-top:8rpx}
+.sec-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24rpx}
+.sec-title{font-size:36rpx;font-weight:700;color:$t1}
+.sec-title-block{display:block;margin-bottom:24rpx}
+.sec-count{font-size:26rpx;color:$t3}
+
+/* 待处理事项 */
+.todo-list{display:flex;flex-direction:column;gap:20rpx}
+.todo-card{display:flex;align-items:center;gap:20rpx;padding:28rpx 24rpx;border-radius:24rpx;border:2rpx solid $b;box-shadow:0 6rpx 24rpx rgba(31,36,33,.06)}
+.todo-green{background:#F1F8F3;border-color:#D4E8DA}
+.todo-white{background:$s;border-color:$b;box-shadow:0 6rpx 24rpx rgba(31,36,33,.06)}
+.tc-icon-wrap{width:80rpx;height:80rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tc-icon-green{background:#E7F4EB}
+.tc-icon-grey{background:#F3F5F4}
+.tc-icon{font-size:34rpx;line-height:1}
+.tc-body{flex:1;min-width:0}
+.tc-title{font-size:30rpx;font-weight:700;color:$t1;display:block;line-height:1.35}
+.tc-desc{font-size:24rpx;color:$t2;margin-top:8rpx;display:block}
+.tc-btn{padding:14rpx 28rpx;border-radius:999rpx;font-size:24rpx;font-weight:600;flex-shrink:0;white-space:nowrap}
+.tc-btn-solid{background:$p;color:#fff}
+.tc-btn-outline{background:$s;color:$p;border:2rpx solid $p}
+
+/* 常用工具 */
+.tool-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20rpx}
+.tool-item{position:relative;min-height:136rpx;padding:20rpx 24rpx;border-radius:24rpx;overflow:hidden;box-sizing:border-box;border:2rpx solid $b;box-shadow:0 6rpx 24rpx rgba(31,36,33,.06)}
+.tool-green{background:#F1F8F3;border-color:#D4E8DA}
+.tool-blue{background:#EFF6FF;border-color:#D6E8F7}
+.tool-yellow{background:#FFF8E8;border-color:#F5E6C8}
+.tool-purple{background:#F3EEFF;border-color:#E5DBF5}
+.tool-orange{background:#FFF4EE;border-color:#F5DDD0}
+.ti-text{position:relative;z-index:1}
+.ti-name{display:block;font-size:30rpx;font-weight:700;color:$t1;line-height:1.3}
+.ti-desc{display:block;font-size:24rpx;color:$t2;margin-top:10rpx;line-height:1.3}
+.ti-deco{position:absolute;right:16rpx;bottom:12rpx;font-size:44rpx;line-height:1;opacity:.18;z-index:0}
+.tool-green .ti-deco{opacity:.24}
+.tool-blue .ti-deco{opacity:.22}
+.tool-yellow .ti-deco{opacity:.23}
+.tool-orange .ti-deco{opacity:.22}
 .learn-item{display:flex;align-items:center;gap:20rpx;padding:24rpx;border-radius:20rpx;background:$s;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}.li-icon-wrap{width:96rpx;height:96rpx;border-radius:16rpx;display:flex;align-items:center;justify-content:center;background:#F1F8F3;flex-shrink:0}.li-icon{font-size:44rpx}.li-body{flex:1;min-width:0}.li-title{font-size:28rpx;font-weight:600;color:$t1;display:block}.li-desc{font-size:24rpx;color:$t3;margin-top:4rpx}.li-arrow{font-size:40rpx;color:$t3}
 .mask{position:fixed;inset:0;z-index:100;background:rgba(31,36,33,.4);display:flex;align-items:flex-end}
 .drawer{width:100%;max-height:70vh;border-radius:32rpx 32rpx 0 0;background:$s;display:flex;flex-direction:column;overflow:hidden}
@@ -358,7 +418,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .dr-name{font-size:30rpx;font-weight:500;color:$t1}.dr-check{font-size:32rpx;color:$p;font-weight:700}
 .dr-item--owner{background:$ps;border:2rpx solid $p;margin-bottom:8rpx}.dr-arrow{font-size:36rpx;color:$p}
 .notice-mask{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.95);overflow-y:auto}
-.notice-close{position:fixed;top:24rpx;right:24rpx;z-index:201;width:64rpx;height:64rpx;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;font-size:32rpx}
+.notice-close{position:fixed;top:24rpx;right:24rpx;z-index:201;width:80rpx;height:80rpx;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;font-size:32rpx}
 .notice-img{display:block;width:100%}
 .notice-img{width:100%}
 </style>

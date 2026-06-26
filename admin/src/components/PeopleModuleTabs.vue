@@ -29,9 +29,14 @@ const router = useRouter()
 const tabs = [
   { key: 'list', label: '员工列表', path: '/people' },
   { key: 'dashboard', label: '员工统计', path: '/people/dashboard' },
+  { key: 'bindings', label: '门店绑定记录', path: '/people/bindings' },
 ]
 
-const activeKey = computed(() => (route.path.startsWith('/people/dashboard') ? 'dashboard' : 'list'))
+const activeKey = computed(() => {
+  if (route.path.startsWith('/people/dashboard')) return 'dashboard'
+  if (route.path.startsWith('/people/bindings')) return 'bindings'
+  return 'list'
+})
 
 function go(path: string) {
   if (route.path !== path) router.push(path)

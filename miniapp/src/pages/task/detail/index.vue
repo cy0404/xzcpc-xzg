@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, nextTick } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { fetchTaskDetail } from '@/api/task'
-import { addZone, deleteZone, sortZones } from '@/api/zone'
+import { fetchTaskDetail, searchTaskMaterial } from '@/api/task'
+import { addZone, deleteZone, sortZones, updateZoneName } from '@/api/zone'
+import { materialDisplayName } from '@/utils/formatter'
 import Skeleton from '@/components/Skeleton.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
@@ -15,10 +16,205 @@ const saving = ref(false)
 const showSaveConfirm = ref(false)
 const showDeleteConfirm = ref(false) // 批量删除确认
 
+// === 物料搜索 ===
+const searchKey = ref('')
+const searchLoading = ref(false)
+const searchResults = ref<any[]>([])
+const showSearchPicker = ref(false)
+const isNavigating = ref(false)
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let searchSeq = 0
+
+// === 语音搜索 ===
+const voiceLoading = ref(false)
+const recording = ref(false)
+const voiceRecognizing = ref(false)
+const voiceCooldown = ref(false)
+let voiceManager: any = null
+let voiceManagerReady = false
+const voiceCancelled = ref(false)
+const touchStartY = ref(0)
+let longPressTimer: any = null
+let cooldownSafetyTimer: any = null
+
+function startCooldownLock() {
+  voiceCooldown.value = true
+  clearTimeout(cooldownSafetyTimer)
+  cooldownSafetyTimer = setTimeout(() => {
+    voiceCooldown.value = false
+    voiceRecognizing.value = false
+  }, 1000)
+}
+
+function clearCooldownLock() {
+  voiceCooldown.value = false
+  voiceRecognizing.value = false
+  clearTimeout(cooldownSafetyTimer)
+}
+
+function getVoiceManager() {
+  if (voiceManager) return voiceManager
+  // #ifdef MP-WEIXIN
+  try {
+    // @ts-ignore
+    voiceManager = requirePlugin('WechatSI').getRecordRecognitionManager()
+    voiceManagerReady = true
+  } catch { voiceManagerReady = false }
+  // #endif
+  return voiceManager
+}
+
+function cleanupVoice() {
+  recording.value = false
+  voiceLoading.value = false
+  // voiceRecognizing / voiceCooldown 不在此处重置，由 onStop/onError 回调统一重置
+}
+
+function startVoice(e: any) {
+  e?.preventDefault?.()
+  if (voiceLoading.value || recording.value || voiceRecognizing.value || voiceCooldown.value) return
+  voiceCancelled.value = false
+  const t = e.touches?.[0]
+  if (t) touchStartY.value = t.clientY
+  clearTimeout(longPressTimer)
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    voiceLoading.value = true
+    const mgr = getVoiceManager()
+    if (!mgr || !voiceManagerReady) {
+      voiceLoading.value = false
+      uni.showToast({ title: '语音插件未加载', icon: 'none' })
+      return
+    }
+    mgr.onStart = () => { recording.value = true; voiceLoading.value = false }
+    mgr.onStop = (res: any) => {
+      clearCooldownLock()
+      if (res.result && !voiceCancelled.value) {
+        searchKey.value = res.result
+        doSearch(res.result, 'confirm')
+      }
+    }
+    mgr.onError = (res: any) => {
+      clearCooldownLock()
+      recording.value = false
+      voiceLoading.value = false
+      uni.showToast({ title: res.msg || '识别失败', icon: 'none' })
+    }
+    try { mgr.start({ duration: 30000, lang: 'zh_CN' }) } catch { cleanupVoice() }
+  }, 80)
+}
+
+function onVoiceMove(e: any) {
+  if (!recording.value) return
+  const touch = e.touches[0]
+  voiceCancelled.value = (touchStartY.value - touch.clientY) > 65
+}
+
+function cancelVoice() {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; voiceLoading.value = false; return }
+  if (!recording.value) return
+  recording.value = false
+  startCooldownLock()
+  if (voiceManager) { try { voiceManager.stop() } catch { cleanupVoice() } }
+}
+
+function stopVoice(e: any) {
+  e?.preventDefault?.()
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; voiceLoading.value = false; return }
+  if (!recording.value || !voiceManager) return
+  if (voiceCancelled.value) {
+    recording.value = false
+    startCooldownLock()
+    try { voiceManager.stop() } catch { cleanupVoice() }
+    uni.showToast({ title: '已取消', icon: 'none' })
+  } else {
+    // 立即关闭浮层，显示"识别中"状态，提升松手响应体感
+    recording.value = false
+    voiceRecognizing.value = true
+    try { voiceManager.stop() } catch { cleanupVoice() }
+  }
+}
+
+function goToMaterial(item: any) {
+  if (isNavigating.value) return
+  isNavigating.value = true
+  if (searchDebounceTimer) { clearTimeout(searchDebounceTimer); searchDebounceTimer = null }
+  searchSeq++
+  searchLoading.value = false
+  const zn = encodeURIComponent(item.zoneName || '')
+  const sn = encodeURIComponent(detail.value?.storeName || '')
+  const mid = encodeURIComponent(item.materialId || '')
+  const mn = encodeURIComponent(item.materialName || '')
+  showSearchPicker.value = false
+  searchResults.value = []
+  uni.navigateTo({
+    url: `/pages/task/zone-entry/index?taskId=${taskId.value}&zoneId=${item.taskZoneId}&zoneName=${zn}&storeName=${sn}&focusMaterialId=${mid}&focusMaterialName=${mn}&fromSearch=1`,
+  })
+}
+
+async function doSearch(keyword: string, mode: 'input' | 'confirm' = 'confirm') {
+  if (isNavigating.value) return
+  const kw = (keyword || '').trim()
+  if (!kw) {
+    searchResults.value = []
+    showSearchPicker.value = false
+    if (mode === 'confirm') uni.showToast({ title: '请输入物料名称', icon: 'none' })
+    return
+  }
+  const seq = ++searchSeq
+  searchLoading.value = true
+  try {
+    const raw: any = await searchTaskMaterial(Number(taskId.value), kw)
+    if (seq !== searchSeq || isNavigating.value) return
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : []
+    if (list.length === 0) {
+      searchResults.value = []
+      showSearchPicker.value = false
+      if (mode === 'confirm') uni.showToast({ title: '未找到该物料', icon: 'none' })
+    } else if (list.length === 1) {
+      goToMaterial(list[0])
+    } else {
+      searchResults.value = list
+      showSearchPicker.value = true
+    }
+  } catch (e: any) {
+    if (seq !== searchSeq || isNavigating.value) return
+    console.error('[detail] search error:', e)
+    if (mode === 'confirm') uni.showToast({ title: e?.message || '搜索失败', icon: 'none' })
+  } finally {
+    if (seq === searchSeq && !isNavigating.value) searchLoading.value = false
+  }
+}
+
+function onSearchInput() {
+  if (isNavigating.value) return
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  const kw = searchKey.value.trim()
+  if (!kw) {
+    searchResults.value = []
+    showSearchPicker.value = false
+    return
+  }
+  searchDebounceTimer = setTimeout(() => doSearch(kw, 'input'), 400)
+}
+
+function onSearchConfirm() {
+  doSearch(searchKey.value, 'confirm')
+}
+
+watch(searchKey, (val) => {
+  if (!val.trim()) {
+    searchResults.value = []
+    showSearchPicker.value = false
+  }
+})
+
 // 模式
 const sortMode = ref(false)
 const editValue = ref('')
 const editingIdx = ref(-1)
+const editingZoneNameId = ref<number | null>(null)
+const editingZoneName = ref('')
 const listKey = ref(0)
 const selected = ref<Set<number>>(new Set())
 
@@ -50,8 +246,11 @@ const hasChanges = computed(() => {
   return a !== b || deletedIds.value.length > 0
 })
 
-onLoad((q: any) => { taskId.value = q?.taskId || '' })
-onShow(() => { if (taskId.value) loadDetail() })
+onLoad((q: any) => { taskId.value = q?.taskId || ''; getVoiceManager() })
+onShow(() => {
+  isNavigating.value = false
+  if (taskId.value) loadDetail()
+})
 
 async function loadDetail() {
   loading.value = true
@@ -90,6 +289,20 @@ async function confirmEdit() {
   listKey.value++
 }
 function cancelEdit() { editingIdx.value = -1 }
+function startEditZoneName(zone: any) { editingZoneNameId.value = zone.taskZoneId; editingZoneName.value = zone.zoneName || '' }
+async function confirmZoneName() {
+  const id = editingZoneNameId.value
+  if (id == null) return
+  const name = editingZoneName.value.trim()
+  if (!name) { uni.showToast({ title: '分区名称不能为空', icon: 'none' }); return }
+  try {
+    await updateZoneName(Number(taskId.value), id, name)
+    const zone = (sortMode.value ? editList.value : detail.value.zones).find((z: any) => z.taskZoneId === id)
+    if (zone) zone.zoneName = name
+    listKey.value++
+  } catch { /* error toast from api */ }
+  editingZoneNameId.value = null
+}
 function moveZone(from: number, dir: -1 | 1) {
   const to = from + dir
   if (to < 0 || to >= editList.value.length) return
@@ -158,11 +371,6 @@ async function saveAndExit() {
   try { await saveChanges(); exitEdit() } catch {}
 }
 
-// 进入当前分区盘点
-function enterCurrentZone() {
-  const first = zones.value[0]
-  if (first) goZoneEntry(first)
-}
 </script>
 
 <template>
@@ -188,13 +396,18 @@ function enterCurrentZone() {
           <view class="pcs"><text class="pcs-label">未录入</text><text class="pcs-val danger">{{ remaining }}</text></view>
         </view>
       </view>
+      <!-- 物料搜索框 -->
+      <view class="search-bar">
+        <view class="sb-input-wrap">
+          <text class="sb-search-icon">🔍</text>
+          <input class="sb-input" type="text" v-model="searchKey" placeholder="搜索物料，跳转分区" confirm-type="search" @input="onSearchInput" @confirm="onSearchConfirm" />
+          <text v-if="searchKey" class="sb-clear" @click.stop="searchKey=''">✕ 清空</text>
+        </view>
+      </view>
+
       <view class="section">
         <view class="section-top">
-          <view><text class="section-title">分区列表</text><text class="refresh-icon" @click="loadDetail" v-if="!sortMode">↻</text><text class="section-sub" v-if="sortMode">点击序号或箭头排序，勾选删除</text><text class="section-sub" v-else>点击卡片进入盘点</text></view>
-          <view class="section-actions">
-            <view v-if="!sortMode" class="edit-mode-btn" @click="enterEdit"><text>编辑</text></view>
-            <view v-if="!isSubmitted && !sortMode" class="add-zone-btn" @click="showAdd = true"><text>＋ 添加分区</text></view>
-          </view>
+          <view><text class="section-title">分区列表</text><text class="refresh-icon" @click="loadDetail" v-if="!sortMode">↻</text><text class="section-sub" v-if="sortMode" style="color:#E58A2D">点击序号或箭头排序 · 点击分区名更改名称</text><text class="section-sub" v-else>点击卡片进入盘点</text></view>
         </view>
         <view v-if="displayList.length" class="zone-list">
           <view v-for="(zone, idx) in displayList" :key="zone.taskZoneId + '-v' + listKey" class="zone-card"
@@ -220,7 +433,13 @@ function enterCurrentZone() {
                 <text v-else>⌛</text>
               </view>
               <view class="zc-info">
-                <view class="zc-top-row"><text class="zc-name">{{ zone.zoneName }}</text><text class="zc-count">{{ zone.entered || 0 }}/{{ zone.total || 0 }}</text></view>
+                <view class="zc-top-row">
+                  <template v-if="sortMode && editingZoneNameId === zone.taskZoneId">
+                    <input class="zone-name-input" v-model="editingZoneName" :focus="true" @blur="confirmZoneName" @confirm="confirmZoneName" />
+                  </template>
+                  <text v-else class="zc-name" @click.stop="sortMode ? startEditZoneName(zone) : null">{{ zone.zoneName }}</text>
+                  <text class="zc-count">{{ zone.entered || 0 }}/{{ zone.total || 0 }}</text>
+                </view>
                 <view class="zc-bar-wrap" v-if="(zone.entered||0) > 0 && (!zone.total || zone.entered < zone.total)"><view class="zc-bar-fill" :style="{width:zoneProgress(zone)+'%'}"></view></view>
                 <text class="zc-bar-text" v-else-if="zone.entered && zone.total && zone.entered >= zone.total">已完成</text>
                 <text class="zc-bar-text" v-else>未开始</text>
@@ -234,7 +453,6 @@ function enterCurrentZone() {
         </view>
         <EmptyState v-else text="暂无分区，请添加分区后开始盘点" />
       </view>
-    </template>
 
     <!-- 底部栏 -->
     <view v-if="!isSubmitted" class="bottom-bar" :class="{edit:sortMode}">
@@ -245,7 +463,14 @@ function enterCurrentZone() {
       </template>
       <template v-else>
         <view class="bb-summary" @click="goSummary">查看汇总</view>
-        <view class="bb-continue" @click="enterCurrentZone">盘点当前分区</view>
+        <view class="bb-voice" :class="{ recording }" @touchstart="startVoice" @touchmove="onVoiceMove" @touchend="stopVoice">
+          <view class="bb-mic">
+            <view class="bb-mic-body"></view>
+            <view class="bb-mic-bracket"></view>
+            <view class="bb-mic-stand"></view>
+          </view>
+          <text>{{ voiceLoading ? '准备中...' : voiceRecognizing ? '识别中...' : recording ? '松开停止' : '语音搜索' }}</text>
+        </view>
       </template>
     </view>
 
@@ -281,6 +506,41 @@ function enterCurrentZone() {
         </view>
       </view>
     </view>
+
+    <!-- 搜索结果选择 -->
+    <view v-if="showSearchPicker" class="mask" @click="showSearchPicker = false">
+      <view class="sheet search-sheet" @click.stop>
+        <view class="sh"></view>
+        <view class="sheet-head"><text class="st">选择物料</text><text class="sx" @click="showSearchPicker=false">✕</text></view>
+        <view class="search-results">
+          <view class="search-results-inner">
+            <view v-for="(item, idx) in searchResults" :key="item.materialId + '-' + item.taskZoneId + '-' + idx" class="sr-item" @click="goToMaterial(item)">
+              <text class="sri-name">{{ materialDisplayName(item) }}</text>
+              <text class="sri-zone">{{ item.zoneName }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 录音浮层（含加载中状态） -->
+    <view v-if="recording || voiceLoading" class="voice-overlay" :class="{ cancelling: voiceCancelled }" @touchmove.stop.prevent="onVoiceMove" @touchend.stop.prevent="stopVoice" @click="cancelVoice">
+      <view v-if="voiceLoading" class="vw-loading-spinner"></view>
+      <view v-else-if="!voiceCancelled" class="vw-mic">
+        <view class="vw-mic-body"></view>
+        <view class="vw-mic-bracket"></view>
+        <view class="vw-mic-stand"></view>
+      </view>
+      <view v-else class="vw-cancel">
+        <text class="vw-cancel-icon">✕</text>
+      </view>
+      <text class="vw-text">{{ voiceLoading ? '请稍候...' : voiceCancelled ? '松开取消' : '正在聆听...' }}</text>
+      <view class="vw-bars" v-if="!voiceCancelled && !voiceLoading">
+        <view class="vw-bar" v-for="i in 20" :key="i" :style="{animationDelay: (i*0.08)+'s'}"></view>
+      </view>
+      <text class="vw-hint">↑ 上滑取消</text>
+    </view>
+  </template>
   </view>
 </template>
 
@@ -301,28 +561,46 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .bar-fill{height:100%;border-radius:999rpx;background:$p;transition:width .3s}
 .pc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8rpx;margin-top:28rpx;text-align:center}
 .pcs-label{display:block;font-size:24rpx;color:$t2}.pcs-val{display:block;margin-top:8rpx;font-size:40rpx;font-weight:800;color:$t1}.pcs-val.green{color:$p}.pcs-val.danger{color:$d}
+/* 物料搜索框 */
+.search-bar{display:flex;align-items:center;gap:16rpx;margin-bottom:24rpx}
+.sb-input-wrap{flex:1;display:flex;align-items:center;background:$s;border-radius:16rpx;border:2rpx solid $b;padding:0 20rpx;height:80rpx}
+.sb-search-icon{font-size:28rpx;margin-right:12rpx;flex-shrink:0}
+.sb-input{flex:1;font-size:28rpx;color:$t1}
+.sb-clear{font-size:28rpx;color:$t3;padding:8rpx}.sb-go{font-size:26rpx;color:$p;font-weight:600;padding:8rpx 16rpx;flex-shrink:0}
+.sb-btn{width:80rpx;height:80rpx;border-radius:16rpx;background:$ps2;display:flex;align-items:center;justify-content:center;font-size:32rpx;flex-shrink:0}
+.sb-btn.recording{background:$d}
+.sb-searching{font-size:26rpx;color:$t2;flex-shrink:0}
+.search-sheet{max-height:70vh;display:flex;flex-direction:column}
+.search-results{flex:1;max-height:50vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.search-results-inner{padding:0 32rpx calc(env(safe-area-inset-bottom) + 24rpx);box-sizing:border-box}
+.sr-item{display:flex;align-items:center;gap:24rpx;padding:24rpx 0;border-bottom:2rpx solid #EEF1EF;box-sizing:border-box;width:100%}
+.sri-name{flex:1;min-width:0;font-size:30rpx;font-weight:600;color:$t1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sri-zone{flex-shrink:0;font-size:26rpx;color:$t2;text-align:right;white-space:nowrap;max-width:240rpx;overflow:hidden;text-overflow:ellipsis}
+
 .section{margin-top:8rpx}
 .section-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16rpx;margin-bottom:20rpx}
 .section-title{display:inline;font-size:36rpx;font-weight:700;color:$t1}.section-sub{display:block;margin-top:8rpx;font-size:26rpx;color:$t2}
 .refresh-icon{display:inline-block;margin-left:12rpx;font-size:36rpx;color:$p;vertical-align:middle}
 .section-actions{display:flex;align-items:center;gap:16rpx;flex-shrink:0}
-.edit-mode-btn{display:inline-flex;align-items:center;padding:16rpx 24rpx;border-radius:16rpx;border:2rpx solid $b;background:$s;color:$t1;font-size:26rpx;font-weight:600;white-space:nowrap;flex-shrink:0}
+.edit-mode-btn{font-size:26rpx;font-weight:600;color:$p;white-space:nowrap;flex-shrink:0}
 .add-zone-btn{display:inline-flex;align-items:center;gap:8rpx;padding:16rpx 24rpx;border-radius:16rpx;background:$ps2;color:#fff;font-size:26rpx;font-weight:600;white-space:nowrap;flex-shrink:0;box-shadow:0 2rpx 8rpx rgba(31,36,33,.04)}
 .zone-list{display:flex;flex-direction:column;gap:16rpx}
-.zone-card{display:flex;align-items:center;gap:16rpx;padding:24rpx 20rpx;background:$s;border-radius:20rpx;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}
+.zone-card{display:flex;align-items:center;gap:26rpx;padding:24rpx 20rpx;background:$s;border-radius:20rpx;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}
 .zone-card.done{background:#FAFBF9}
 .zc-check{flex-shrink:0;display:flex;align-items:center}
 .check-box{width:44rpx;height:44rpx;border-radius:8rpx;border:2rpx solid $b;display:flex;align-items:center;justify-content:center;font-size:28rpx;color:#fff}
 .check-box.on{background:$p;border-color:$p}
+.zc-order{width:100rpx;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.order-num{width:80rpx;height:56rpx;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:700;color:$t1;border:2rpx solid $b;border-radius:10rpx;background:#FAFBF9}
+.order-input{width:80rpx;height:64rpx;text-align:center;font-size:30rpx;font-weight:700;border:2rpx solid $b;border-radius:12rpx;color:$t1;background:#FAFBF9}
 .zc-order{width:72rpx;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-.order-num{width:56rpx;height:56rpx;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:700;color:$p;border:2rpx solid $p;border-radius:10rpx;background:$ps}
-.order-input{width:64rpx;height:64rpx;text-align:center;font-size:30rpx;font-weight:700;border:2rpx solid $p;border-radius:12rpx;color:$p;background:$ps}
 .zc-content{flex:1;display:flex;align-items:center;gap:16rpx;min-width:0}
 .zc-icon{width:72rpx;height:72rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32rpx;color:#B0B0B0;background:#F2F2F2;flex-shrink:0}
 .zc-icon.done{background:$ps;color:$p}.zc-icon.prog{background:$ps2;color:#fff}
 .zc-info{flex:1;min-width:0}
 .zc-top-row{display:flex;align-items:center;justify-content:space-between;gap:12rpx}
 .zc-name{font-size:30rpx;font-weight:700;color:$t1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zone-name-input{flex:1;min-width:0;font-size:30rpx;font-weight:700;color:$t1;padding:4rpx 8rpx;border:2rpx solid $p;border-radius:8rpx;background:#fff}
 .zc-count{font-size:26rpx;color:$t2;flex-shrink:0}
 .zc-bar-wrap{height:8rpx;border-radius:999rpx;background:#EEF1EF;margin-top:12rpx;overflow:hidden}
 .zc-bar-fill{height:100%;border-radius:999rpx;background:$p}
@@ -332,11 +610,15 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .arrow-btn.disabled{opacity:.3}
 .bottom-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:grid;grid-template-columns:1fr 1fr;gap:24rpx;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 16rpx);background:#fff;border-top:2rpx solid #EEF1EF;box-shadow:0 -4rpx 16rpx rgba(31,36,33,.04)}
 .bottom-bar.edit{display:flex}.bottom-bar.edit .bb-back{flex:1}.bottom-bar.edit .bb-del{flex:1}
-.bb-summary{height:96rpx;border-radius:16rpx;border:2rpx solid $b;background:$s;color:$ps2;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
-.bb-continue{height:96rpx;border-radius:16rpx;background:$ps2;color:#fff;display:flex;align-items:center;justify-content:center;gap:8rpx;font-size:30rpx;font-weight:600}
-.bb-back{height:96rpx;border-radius:16rpx;border:2rpx solid $b;background:$s;color:$t1;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
-.bb-confirm{flex:2;height:96rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:700}
-.bb-del{height:96rpx;border-radius:16rpx;background:$d;color:#fff;display:flex;align-items:center;justify-content:center;gap:8rpx;font-size:30rpx;font-weight:600}
+.bb-summary{height:88rpx;border-radius:16rpx;border:2rpx solid $b;background:$s;color:$ps2;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:600}
+.bb-voice{height:88rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;gap:8rpx;font-size:26rpx;font-weight:600}.bb-voice.recording{background:$d}
+.bb-mic{width:28rpx;height:38rpx;display:flex;flex-direction:column;align-items:center;flex-shrink:0;margin-top:4rpx}
+.bb-mic-body{width:18rpx;height:22rpx;border:2rpx solid #fff;border-radius:11rpx;box-sizing:border-box}
+.bb-mic-bracket{width:20rpx;height:4rpx;border:0 solid #fff;border-bottom-width:2rpx;border-left-width:2rpx;border-right-width:2rpx;border-radius:0 0 11rpx 11rpx;margin-top:-2rpx}
+.bb-mic-stand{width:2rpx;height:5rpx;background:#fff;border-radius:1rpx;margin-top:0}
+.bb-back{height:88rpx;border-radius:16rpx;border:2rpx solid $b;background:$s;color:$t1;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
+.bb-confirm{flex:2;height:88rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:700}
+.bb-del{height:88rpx;border-radius:16rpx;background:$d;color:#fff;display:flex;align-items:center;justify-content:center;gap:8rpx;font-size:28rpx;font-weight:600}
 .bb-del.disabled{opacity:.5}
 .mask{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;background:rgba(31,36,33,.4)}
 .sheet{width:100%;max-height:85vh;border-radius:32rpx 32rpx 0 0;background:$s;display:flex;flex-direction:column}
@@ -349,4 +631,15 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .sb-cancel{height:96rpx;border-radius:999rpx;background:#FAFBF9;color:$t1;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
 .sb-confirm{height:96rpx;border-radius:999rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
 .sb-danger{height:96rpx;border-radius:999rpx;background:$d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
+
+/* 录音浮层 */
+.voice-overlay{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(31,36,33,.85)}.voice-overlay.cancelling{background:rgba(224,90,71,.85)}.voice-overlay.cancelling .vw-bar{background:#E05A47}
+.vw-loading-spinner{width:60rpx;height:60rpx;border:4rpx solid rgba(255,255,255,.2);border-top-color:rgba(255,255,255,.9);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:24rpx}@keyframes spin{to{transform:rotate(360deg)}}
+.vw-mic{width:70rpx;height:96rpx;display:flex;flex-direction:column;align-items:center;margin-bottom:20rpx}.vw-mic-body{width:44rpx;height:52rpx;border:6rpx solid rgba(255,255,255,.9);border-radius:26rpx;box-sizing:border-box}.vw-mic-bracket{width:52rpx;height:8rpx;border:0 solid rgba(255,255,255,.9);border-bottom-width:6rpx;border-left-width:6rpx;border-right-width:6rpx;border-radius:0 0 26rpx 26rpx;margin-top:-3rpx}.vw-mic-stand{width:6rpx;height:16rpx;background:rgba(255,255,255,.9);border-radius:3rpx;margin-top:0}
+.vw-cancel{width:120rpx;height:120rpx;border-radius:50%;border:4rpx solid rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;margin-bottom:20rpx}.vw-cancel-icon{font-size:56rpx;color:rgba(255,255,255,.8);font-weight:300}
+.vw-text{font-size:28rpx;color:rgba(255,255,255,.7);margin-bottom:28rpx}
+.vw-bars{display:flex;align-items:center;gap:6rpx;height:80rpx}
+.vw-bar{width:6rpx;border-radius:3rpx;background:$p;animation:waveBar .6s ease-in-out infinite alternate}
+@keyframes waveBar{0%{height:12rpx}100%{height:80rpx}}
+.vw-hint{position:absolute;bottom:80rpx;font-size:24rpx;color:rgba(255,255,255,.35)}
 </style>

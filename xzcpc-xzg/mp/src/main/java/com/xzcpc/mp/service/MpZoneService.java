@@ -15,4 +15,5 @@ public interface MpZoneService {
     Map<String, Object> addZone(Integer taskId, AddZoneReq req, String storeId);
     void deleteZone(Integer taskId, Integer zoneId, String storeId);
     void sortZones(Integer taskId, SortReq req, String storeId);
+    void updateZoneName(Integer taskId, Integer zoneId, String zoneName, String storeId);
 }

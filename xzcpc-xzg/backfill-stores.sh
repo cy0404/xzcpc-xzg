@@ -10,7 +10,7 @@
 #===============================================================================
 
 API_URL="http://162.14.122.80:5174/api/publish/entities/mendianxinxi/records"
-API_KEY="aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM"
+API_KEY="${STORE_API_KEY:?请先 export STORE_API_KEY}"
 
 echo "-- ============================================================"
 echo "-- 存量任务门店信息回填 SQL（自动生成）"

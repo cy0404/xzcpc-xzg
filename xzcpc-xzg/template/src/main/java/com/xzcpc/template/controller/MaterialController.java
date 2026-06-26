@@ -82,4 +82,5 @@ public class MaterialController {
     public R<List<String>> parentCategories() {
         return R.ok(materialService.getAllParentCategories());
     }
+
 }

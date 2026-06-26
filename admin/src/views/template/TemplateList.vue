@@ -24,9 +24,9 @@
           </div>
           <div
             v-for="item in dataSource"
-            :key="item.templateId"
+            :key="item.id"
             class="template-card"
-            :class="{ selected: item.templateId === selectedTemplateId }"
+            :class="{ selected: item.id === selectedTemplateId }"
             @click="selectTemplate(item)"
           >
             <div class="template-card-name">{{ item.templateName }}</div>
@@ -102,7 +102,7 @@
               >
                 <div
                   v-for="r in materialLocateResults"
-                  :key="r.materialId + '-' + r.zoneId"
+                  :key="r.materialId + '-' + r.id"
                   class="locate-dropdown-item"
                   @mousedown.prevent="locateMaterial(r)"
                 >
@@ -163,7 +163,7 @@
           <a-spin :spinning="zonesLoading">
             <div
               v-for="(zone, idx) in sortedZones"
-              :key="zone.zoneId"
+              :key="zone.id"
               class="zone-card"
               :class="{ 'zone-card--dragging': dragZoneIdx === idx, 'zone-card--dragover': dragOverZoneIdx === idx }"
               :draggable="!isTemplateEnabled"
@@ -176,8 +176,8 @@
               <div class="zone-card-header">
                 <span
                   class="zone-collapse-icon"
-                  :class="{ collapsed: collapsedZoneIds.has(zone.zoneId) }"
-                  @click.stop="toggleCollapse(zone.zoneId)"
+                  :class="{ collapsed: collapsedZoneIds.has(zone.id) }"
+                  @click.stop="toggleCollapse(zone.id)"
                 >
                   <RightOutlined />
                 </span>
@@ -205,22 +205,22 @@
                 </a-dropdown>
               </div>
 
-              <div v-if="!collapsedZoneIds.has(zone.zoneId) && zone.materials?.length" class="zone-material-list">
+              <div v-if="!collapsedZoneIds.has(zone.id) && zone.materials?.length" class="zone-material-list">
                 <div
                   v-for="(mat, matIdx) in zone.materials"
                   :key="mat.materialId"
                   class="material-item"
                   :class="{
-                    'material-item--dragging': dragMatZoneId === zone.zoneId && dragMatIdx === matIdx,
-                    'material-item--dragover': dragOverMatZoneId === zone.zoneId && dragOverMatIdx === matIdx,
+                    'material-item--dragging': dragMatZoneId === zone.id && dragMatIdx === matIdx,
+                    'material-item--dragover': dragOverMatZoneId === zone.id && dragOverMatIdx === matIdx,
                     'material-item--highlight': highlightMatId === mat.materialId,
                   }"
                   :data-mat-id="mat.materialId"
                   :draggable="!isTemplateEnabled"
-                  @dragstart="isTemplateEnabled ? null : onMatDragStart(zone.zoneId, matIdx, $event)"
-                  @dragover.prevent="isTemplateEnabled ? null : onMatDragOver(zone.zoneId, matIdx)"
+                  @dragstart="isTemplateEnabled ? null : onMatDragStart(zone.id, matIdx, $event)"
+                  @dragover.prevent="isTemplateEnabled ? null : onMatDragOver(zone.id, matIdx)"
                   @dragleave="isTemplateEnabled ? null : onMatDragLeave"
-                  @drop="isTemplateEnabled ? null : onMatDrop(zone.zoneId, matIdx)"
+                  @drop="isTemplateEnabled ? null : onMatDrop(zone.id, matIdx)"
                   @dragend="isTemplateEnabled ? null : onMatDragEnd"
                 >
                   <HolderOutlined class="drag-icon material-drag" />
@@ -239,7 +239,7 @@
                   </a-popconfirm>
                 </div>
               </div>
-              <div v-else-if="!collapsedZoneIds.has(zone.zoneId)" class="zone-empty">暂无物料，点击「添加物料」</div>
+              <div v-else-if="!collapsedZoneIds.has(zone.id)" class="zone-empty">暂无物料，点击「添加物料」</div>
             </div>
           </a-spin>
 
@@ -481,7 +481,7 @@ import {
 } from '../../api/template'
 
 interface ZoneItem {
-  zoneId: number
+  id: number
   zoneName: string
   sortNo?: number | null
   materialCount?: number
@@ -595,7 +595,7 @@ function onZoneDrop(_idx: number) {
   dragZoneIdx.value = null
   dragOverZoneIdx.value = null
   // 拖拽排序影响所有分区，全部标记为脏
-  zones.value.forEach(z => changedZoneIds.value.add(z.zoneId))
+  zones.value.forEach(z => changedZoneIds.value.add(z.id))
   changedZoneIds.value = new Set(changedZoneIds.value)
   markDirty()
 }
@@ -620,7 +620,7 @@ function onMatDragStart(zoneId: number, matIdx: number, e: DragEvent) {
 function onMatDragOver(zoneId: number, matIdx: number) {
   if (dragMatZoneId.value === null || dragMatIdx.value === null) return
   if (dragMatZoneId.value !== zoneId || dragMatIdx.value === matIdx) return
-  const zone = zones.value.find(z => z.zoneId === zoneId)
+  const zone = zones.value.find(z => z.id === zoneId)
   if (!zone?.materials) return
   const list = [...zone.materials]
   const [moved] = list.splice(dragMatIdx.value, 1)
@@ -702,13 +702,13 @@ const highlightMatId = ref<string | null>(null)
 const materialLocateResults = computed(() => {
   const kw = materialLocateKeyword.value.trim()
   if (!kw) return []
-  const results: { zoneId: number; zoneName: string; materialId: string; materialName: string; spec?: string }[] = []
+  const results: { id: number; zoneName: string; materialId: string; materialName: string; spec?: string }[] = []
   for (const zone of zones.value) {
     if (!zone.materials) continue
     for (const mat of zone.materials) {
       if (mat.materialName && mat.materialName.includes(kw)) {
         results.push({
-          zoneId: zone.zoneId,
+          zoneId: zone.id,
           zoneName: zone.zoneName,
           materialId: mat.materialId,
           materialName: mat.materialName,
@@ -802,7 +802,7 @@ async function loadZonesWithMaterials() {
     // 并行加载每个分区的物料
     await Promise.all(zoneList.map(async (zone) => {
       try {
-        const matRes: any = await api.get(`/templates/${selectedTemplateId.value}/zones/${zone.zoneId}/materials`)
+        const matRes: any = await api.get(`/templates/${selectedTemplateId.value}/zones/${zone.id}/materials`)
         const mats: ZoneMaterial[] = (matRes.data || []).map((m: any) => ({
           materialId: String(m.materialId),
           materialName: m.materialName || '',
@@ -828,11 +828,11 @@ async function loadZonesWithMaterials() {
     // 保存原始物料快照（zoneId → materialId 集合），保存时直接对比，无需再查服务器
     const snap = new Map<number, Set<string>>()
     zoneList.forEach(z => {
-      snap.set(z.zoneId, new Set((z.materials || []).map(m => String(m.materialId))))
+      snap.set(z.id, new Set((z.materials || []).map(m => String(m.materialId))))
     })
     originalZoneMatIds.value = snap
     // 默认全部收缩
-    collapsedZoneIds.value = new Set(zoneList.map(z => z.zoneId))
+    collapsedZoneIds.value = new Set(zoneList.map(z => z.id))
   } catch (e: any) {
     message.error(e.message || '获取分区列表失败')
   } finally {
@@ -842,7 +842,7 @@ async function loadZonesWithMaterials() {
 
 async function selectTemplate(record: any) {
   // 有未保存更改时，弹窗确认
-  if (hasUnsavedChanges.value && record.templateId !== selectedTemplateId.value) {
+  if (hasUnsavedChanges.value && record.id !== selectedTemplateId.value) {
     pendingTargetRecord.value = record
     confirmModalVisible.value = true
     return
@@ -852,9 +852,9 @@ async function selectTemplate(record: any) {
 
 async function switchToTemplate(record: any) {
   pendingTargetRecord.value = null
-  selectedTemplateId.value = record.templateId
+  selectedTemplateId.value = record.id
   try {
-    const detailRes: any = await getTemplateDetail(record.templateId)
+    const detailRes: any = await getTemplateDetail(record.id)
     selectedTemplate.value = detailRes.data
   } catch (e: any) {
     message.error(e.message || '获取模板详情失败')
@@ -938,8 +938,8 @@ async function saveAllChanges() {
         : Promise.resolve(),
       getTemplateZones(tid),
     ])
-    const serverZoneIds: number[] = (serverZonesRes.data || []).map((z: any) => z.zoneId)
-    const localZoneIds = new Set(zones.value.filter(z => z.zoneId > 0).map(z => z.zoneId))
+    const serverZoneIds: number[] = (serverZonesRes.data || []).map((z: any) => z.id)
+    const localZoneIds = new Set(zones.value.filter(z => z.id > 0).map(z => z.id))
 
     // 2. 并行删除服务器有但本地没有的分区
     await Promise.all(
@@ -951,18 +951,18 @@ async function saveAllChanges() {
     // 3. 逐个处理变动的分区（串行，避免上百并发请求打爆连接池）
     const changedIds = changedZoneIds.value
     for (const zone of zones.value) {
-      const isChanged = changedIds.has(zone.zoneId)
-      if (zone.zoneId < 0) {
+      const isChanged = changedIds.has(zone.id)
+      if (zone.id < 0) {
         // 新增分区 → 获取真实 ID → 批量添加物料
         const addRes: any = await addTemplateZone(tid, {
           zoneName: zone.zoneName,
           sortNo: zone.sortNo,
         })
-        const realZoneId = addRes.data?.id || addRes.data?.zoneId
+        const realZoneId = addRes.data?.id
         if (!realZoneId) {
           throw new Error(`分区「${zone.zoneName}」创建成功但未能获取ID，请刷新页面重试`)
         }
-        zone.zoneId = realZoneId
+        zone.id = realZoneId
         if (zone.materials?.length) {
           await Promise.all(zone.materials.map(mat =>
             addZoneMaterial(tid, realZoneId, {
@@ -973,24 +973,24 @@ async function saveAllChanges() {
             }),
           ))
         }
-      } else if (serverZoneIds.includes(zone.zoneId)) {
+      } else if (serverZoneIds.includes(zone.id)) {
         if (isChanged) {
-          const origIds = originalZoneMatIds.value.get(zone.zoneId) || new Set<string>()
+          const origIds = originalZoneMatIds.value.get(zone.id) || new Set<string>()
           const localMats = zone.materials || []
           const localMatIds = new Set(localMats.map(m => String(m.materialId)))
           const toDelete = [...origIds].filter(id => !localMatIds.has(id))
           const toAdd = localMats.filter(m => !origIds.has(String(m.materialId)))
 
           // 先更新分区
-          await updateTemplateZone(tid, zone.zoneId, {
+          await updateTemplateZone(tid, zone.id, {
             zoneName: zone.zoneName,
             sortNo: zone.sortNo,
           })
           // 再批量增删物料（同分区内并行）
           if (toDelete.length || toAdd.length) {
             await Promise.all([
-              ...toDelete.map(id => deleteZoneMaterial(tid, zone.zoneId, id)),
-              ...toAdd.map(lm => addZoneMaterial(tid, zone.zoneId, {
+              ...toDelete.map(id => deleteZoneMaterial(tid, zone.id, id)),
+              ...toAdd.map(lm => addZoneMaterial(tid, zone.id, {
                 materialId: lm.materialId,
                 materialName: lm.materialName || '',
                 spec: lm.spec || '',
@@ -1007,8 +1007,8 @@ async function saveAllChanges() {
     // 4. 只对变动分区保存排序
     const sortPromises: Promise<any>[] = []
     if (changedIds.size > 0) {
-      const sortedIds = zones.value.filter(z => z.zoneId > 0).map((z, i) => ({
-        zoneId: z.zoneId,
+      const sortedIds = zones.value.filter(z => z.id > 0).map((z, i) => ({
+        id: z.id,
         sortNo: z.sortNo ?? i + 1,
       }))
       if (sortedIds.length > 0) {
@@ -1016,9 +1016,9 @@ async function saveAllChanges() {
       }
     }
     for (const zone of zones.value) {
-      if (zone.zoneId > 0 && zone.materials?.length && changedIds.has(zone.zoneId)) {
+      if (zone.id > 0 && zone.materials?.length && changedIds.has(zone.id)) {
         sortPromises.push(
-          updateZoneMaterialSort(tid, zone.zoneId,
+          updateZoneMaterialSort(tid, zone.id,
             zone.materials.map((m, i) => ({ materialId: m.materialId, sortNo: i + 1 })),
           ).catch(() => {}),
         )
@@ -1202,10 +1202,10 @@ function toggleCollapse(zoneId: number) {
 }
 
 /** 搜索物料后定位：展开对应分区、滚动到物料、高亮闪烁 */
-function locateMaterial(result: { zoneId: number; materialId: string }) {
+function locateMaterial(result: { id: number; materialId: string }) {
   // 展开该分区
   const next = new Set(collapsedZoneIds.value)
-  next.delete(result.zoneId)
+  next.delete(result.id)
   collapsedZoneIds.value = next
 
   // 高亮物料
@@ -1246,7 +1246,7 @@ function showAddZoneModal() {
 }
 
 function showEditZoneModal(zone: ZoneItem) {
-  editingZoneId.value = zone.zoneId
+  editingZoneId.value = zone.id
   zoneForm.zoneName = zone.zoneName
   zoneForm.sortNo = zone.sortNo ?? undefined
   zoneModalVisible.value = true
@@ -1269,22 +1269,22 @@ async function handleZoneSubmit() {
 
     if (editingZoneId.value) {
       // 编辑已有分区
-      const zone = zones.value.find(z => z.zoneId === editingZoneId.value)
+      const zone = zones.value.find(z => z.id === editingZoneId.value)
       if (zone) {
         zone.zoneName = zoneForm.zoneName
         zone.sortNo = zoneForm.sortNo
-        markZoneDirty(zone.zoneId)
+        markZoneDirty(zone.id)
       }
     } else {
       // 新增分区（临时 ID）
       const newZone: ZoneItem = {
-        zoneId: tempZoneIdCounter.value--,
+        id: tempZoneIdCounter.value--,
         zoneName: zoneForm.zoneName,
         sortNo: zoneForm.sortNo,
         materials: [],
       }
       zones.value.push(newZone)
-      markZoneDirty(newZone.zoneId)
+      markZoneDirty(newZone.id)
     }
     zoneModalVisible.value = false
     resetZoneForm()
@@ -1298,8 +1298,8 @@ async function handleZoneSubmit() {
 
 /** 本地删除分区 */
 function handleDeleteZoneLocal(zone: ZoneItem) {
-  zones.value = zones.value.filter(z => z.zoneId !== zone.zoneId)
-  markZoneDirty(zone.zoneId)
+  zones.value = zones.value.filter(z => z.id !== zone.id)
+  markZoneDirty(zone.id)
 }
 
 function resetZoneForm() {
@@ -1312,7 +1312,7 @@ function resetZoneForm() {
 // ========== 物料操作（本地缓存，不入库） ==========
 
 function showAddMaterialModal(zone: ZoneItem) {
-  currentMaterialZoneId.value = zone.zoneId
+  currentMaterialZoneId.value = zone.id
   currentZoneName.value = zone.zoneName
   currentZoneMaterials.value = zone.materials || []
   materialKeyword.value = ''
@@ -1347,7 +1347,7 @@ function searchMaterials() {
 /** 本地添加物料到分区 */
 function handleAddMaterialLocal(item: MaterialItem) {
   if (currentMaterialZoneId.value === null) return
-  const zone = zones.value.find(z => z.zoneId === currentMaterialZoneId.value)
+  const zone = zones.value.find(z => z.id === currentMaterialZoneId.value)
   if (!zone) return
   if (!zone.materials) zone.materials = []
   const alreadyExists = zone.materials.some(m => String(m.materialId) === String(item.materialId))
@@ -1366,16 +1366,16 @@ function handleAddMaterialLocal(item: MaterialItem) {
   })
   item._added = true
   zone.materialCount = (zone.materialCount ?? 0) + 1
-  markZoneDirty(zone.zoneId)
+  markZoneDirty(zone.id)
 }
 
 /** 本地从分区移除物料 */
 function handleRemoveMaterialLocal(zone: ZoneItem, material: ZoneMaterial) {
-  const z = zones.value.find(z => z.zoneId === zone.zoneId)
+  const z = zones.value.find(z => z.id === zone.id)
   if (!z || !z.materials) return
   z.materials = z.materials.filter(m => String(m.materialId) !== String(material.materialId))
   z.materialCount = Math.max((z.materialCount ?? 0) - 1, 0)
-  markZoneDirty(zone.zoneId)
+  markZoneDirty(zone.id)
 }
 
 function resetMaterialSearch() {

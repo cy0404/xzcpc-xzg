@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { fetchTaskSummary, submitTask } from '@/api/task'
+import { fetchTaskSummary, submitTask, fetchUnenteredMaterials } from '@/api/task'
 import BrandDialog from '@/components/BrandDialog.vue'
+import { materialDisplayName } from '@/utils/formatter'
 
 const taskId = ref(0)
 const loading = ref(true)
 const submitting = ref(false)
 const summary = ref<any>(null)
 const confirmVisible = ref(false)
+const unenteredNames = ref('')
+const unenteredLoading = ref(false)
 
 onLoad((options: any) => {
   taskId.value = Number(options.taskId)
@@ -48,12 +51,25 @@ async function handleSubmit() {
   submitting.value = true
   try {
     await submitTask(taskId.value)
-    uni.showToast({ title: '提交成功', icon: 'success' })
-    setTimeout(() => {
-      uni.redirectTo({ url: `/pages/task/result/index?taskId=${taskId.value}` })
-    }, 1200)
-  } finally {
+    uni.redirectTo({ url: `/pages/task/result/index?taskId=${taskId.value}&justSubmitted=1` })
+  } catch {
     submitting.value = false
+  }
+}
+
+async function onTapSubmit() {
+  if (submitting.value) return
+  if (allDone.value) {
+    confirmVisible.value = true
+  } else {
+    unenteredLoading.value = true
+    try {
+      const list: any[] = await fetchUnenteredMaterials(taskId.value) || []
+      unenteredNames.value = list.map((m: any) => materialDisplayName(m)).join('、')
+    } finally {
+      unenteredLoading.value = false
+    }
+    confirmVisible.value = true
   }
 }
 
@@ -70,7 +86,7 @@ function unitBreakdownText(item: any) {
       const prefix = bd.isWeight ? '净重' : ''
       return `${prefix}${formatQty(bd.qty)}${bd.unit || ''}`
     })
-    .join(' / ')
+    .join(' · ')
 }
 
 function goBack() {
@@ -142,11 +158,11 @@ function goBack() {
               class="table-row"
             >
               <view class="row-left">
-                <text class="row-name">{{ item.materialName }}</text>
-                <text class="row-sub">{{ item.zoneCount || 0 }}个分区</text>
-                <view v-if="item.isMultiUnit && item.unitBreakdown" class="unit-breakdown">
-                  <text class="ub-label">多单位</text>
-                  <text class="ub-text">{{ unitBreakdownText(item) }}</text>
+                <text class="row-name">{{ materialDisplayName(item) }}</text>
+                <view class="row-sub-line">
+                  <text class="zone-tag">{{ item.zoneCount || 0 }}个分区</text>
+                  <text v-if="item.isMultiUnit && item.unitBreakdown" class="ub-text">{{ unitBreakdownText(item) }}</text>
+                  <text v-else class="ub-text">{{ formatQty(item.totalQty) }} {{ item.baseUnit || item.unit || '' }}</text>
                 </view>
               </view>
               <view class="row-right">
@@ -175,10 +191,10 @@ function goBack() {
       </view>
       <view
         class="bar-btn primary"
-        :class="{ disabled: submitting || !allDone }"
-        @click="confirmVisible = true"
+        :class="{ disabled: submitting }"
+        @click="onTapSubmit"
       >
-        <text>{{ submitting ? '提交中...' : '提交任务' }}</text>
+        <text>{{ unenteredLoading ? '加载中...' : submitting ? '提交中...' : '提交任务' }}</text>
       </view>
     </view>
 
@@ -192,7 +208,13 @@ function goBack() {
       @confirm="handleSubmit"
       @cancel="confirmVisible = false"
     >
-      确认提交本次月盘任务吗？提交后将<text class="warn-text">无法继续修改</text>。
+      <template v-if="unenteredNames">
+        <text>以下物料未盘点，确认后默认写为 0：</text>
+        <text class="unentered-names">{{ unenteredNames }}</text>
+      </template>
+      <template v-else>
+        提交后将<text class="warn-text">无法继续修改</text>。
+      </template>
     </BrandDialog>
   </view>
 </template>
@@ -357,35 +379,21 @@ function goBack() {
   color: #1F2421;
 }
 
-.row-sub {
-  display: block;
-  margin-top: 4rpx;
-  font-size: 26rpx;
-  color: #66706A;
-}
-
-.row-right {
-  display: flex;
-  align-items: baseline;
-  flex-shrink: 0;
-  text-align: right;
-}
-
-.unit-breakdown {
+.row-sub-line {
   display: flex;
   align-items: center;
   gap: 8rpx;
   margin-top: 6rpx;
 }
 
-.ub-label {
+.zone-tag {
   display: inline-block;
   padding: 2rpx 14rpx;
   font-size: 22rpx;
   line-height: 38rpx;
   border-radius: 100rpx;
-  color: #2F8F57;
-  background: #E7F4EB;
+  color: #66706A;
+  background: #EEF1EF;
   flex-shrink: 0;
 }
 
@@ -492,5 +500,18 @@ function goBack() {
 .warn-text {
   color: #E84B61;
   font-weight: 600;
+}
+
+.unentered-names {
+  display: block;
+  margin-top: 16rpx;
+  padding: 20rpx;
+  background: #FFF4F2;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #66706A;
+  line-height: 1.6;
+  max-height: 300rpx;
+  overflow-y: auto;
 }
 </style>

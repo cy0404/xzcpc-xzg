@@ -20,7 +20,7 @@ CREATE TABLE material (
 
 -- 2. 标准模板
 CREATE TABLE template (
-    template_id    INT AUTO_INCREMENT PRIMARY KEY,
+    id             INT AUTO_INCREMENT PRIMARY KEY,
     template_name  VARCHAR(200)  NOT NULL COMMENT '模板名称',
     status         TINYINT       NOT NULL DEFAULT 1 COMMENT '1启用 0停用',
     created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -29,12 +29,12 @@ CREATE TABLE template (
 
 -- 3. 模板分区
 CREATE TABLE template_zone (
-    zone_id        INT AUTO_INCREMENT PRIMARY KEY,
+    id             INT AUTO_INCREMENT PRIMARY KEY,
     template_id    INT           NOT NULL COMMENT '关联模板',
     zone_name      VARCHAR(100)  NOT NULL COMMENT '分区名称',
     sort_no        INT           DEFAULT NULL COMMENT '排序号',
     created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (template_id) REFERENCES template(template_id)
+    FOREIGN KEY (template_id) REFERENCES template(id)
 ) COMMENT '模板分区';
 
 -- 4. 模板分区物料关系
@@ -46,7 +46,7 @@ CREATE TABLE template_zone_material (
     spec           VARCHAR(100)  NOT NULL DEFAULT '' COMMENT '规格快照',
     inventory_unit VARCHAR(50)   NOT NULL DEFAULT '' COMMENT '盘点单位快照',
     sort_no        INT           DEFAULT NULL COMMENT '排序号',
-    FOREIGN KEY (zone_id) REFERENCES template_zone(zone_id),
+    FOREIGN KEY (zone_id) REFERENCES template_zone(id),
     UNIQUE KEY uk_zone_material (zone_id, material_id)
 ) COMMENT '模板分区物料关系';
 
@@ -67,7 +67,8 @@ CREATE TABLE store_zone_material (
 
 -- 6. 月盘任务
 CREATE TABLE task (
-    task_id        INT AUTO_INCREMENT PRIMARY KEY,
+    id             INT AUTO_INCREMENT PRIMARY KEY,
+    biz_code       VARCHAR(50)   DEFAULT NULL COMMENT '业务编码',
     store_id       VARCHAR(50)   NOT NULL COMMENT '门店ID',
     store_name     VARCHAR(200)  DEFAULT NULL COMMENT '门店名称快照',
     store_code     VARCHAR(50)   DEFAULT NULL COMMENT '门店编码快照',
@@ -86,13 +87,13 @@ CREATE TABLE task (
 
 -- 7. 任务分区快照
 CREATE TABLE task_zone (
-    task_zone_id   INT AUTO_INCREMENT PRIMARY KEY,
+    id             INT AUTO_INCREMENT PRIMARY KEY,
     task_id        INT           NOT NULL COMMENT '关联任务',
     zone_name      VARCHAR(100)  NOT NULL COMMENT '分区名称快照',
     sort_no        INT           DEFAULT NULL COMMENT '排序号',
     source_type    VARCHAR(50)   NOT NULL DEFAULT '' COMMENT '来源类型',
     zone_saved     TINYINT       NOT NULL DEFAULT 0 COMMENT '0未保存 1已保存（店长点过保存本分区）',
-    FOREIGN KEY (task_id) REFERENCES task(task_id)
+    FOREIGN KEY (task_id) REFERENCES task(id)
 ) COMMENT '任务分区快照';
 
 -- 8. 任务分区物料快照
@@ -109,8 +110,8 @@ CREATE TABLE task_zone_material (
     input_qty              DECIMAL(10,2) DEFAULT NULL COMMENT '录入数量',
     remark                 VARCHAR(500)  DEFAULT NULL COMMENT '备注',
     input_status           VARCHAR(20)   NOT NULL DEFAULT 'not_entered' COMMENT 'not_entered|entered|zero_entered',
-    FOREIGN KEY (task_id) REFERENCES task(task_id),
-    FOREIGN KEY (task_zone_id) REFERENCES task_zone(task_zone_id),
+    FOREIGN KEY (task_id) REFERENCES task(id),
+    FOREIGN KEY (task_zone_id) REFERENCES task_zone(id),
     UNIQUE KEY uk_task_zone_material (task_zone_id, material_id)
 ) COMMENT '任务分区物料快照';
 
@@ -120,7 +121,7 @@ CREATE TABLE task_material_summary (
     task_id        INT           NOT NULL COMMENT '关联任务',
     material_id    VARCHAR(50)   NOT NULL COMMENT '物料ID',
     total_qty      DECIMAL(10,2) NOT NULL DEFAULT 0 COMMENT '跨分区汇总数量',
-    FOREIGN KEY (task_id) REFERENCES task(task_id),
+    FOREIGN KEY (task_id) REFERENCES task(id),
     UNIQUE KEY uk_task_material (task_id, material_id)
 ) COMMENT '任务物料汇总';
 

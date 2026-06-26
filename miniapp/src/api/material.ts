@@ -4,6 +4,7 @@ export function fetchCandidates(taskId: number, zoneId: number, keyword = '') {
   return request({
     url: `/tasks/${taskId}/zones/${zoneId}/candidates`,
     data: { keyword },
+    showLoading: false,
   })
 }
 
@@ -27,5 +28,13 @@ export function sortMaterials(taskId: number, zoneId: number, ids: number[]) {
     url: `/tasks/${taskId}/zones/${zoneId}/materials/sort`,
     method: 'PUT',
     data: { ids },
+  })
+}
+
+export function scanMaterial(taskId: number, zoneId: number, qmCode: string) {
+  return request({
+    url: `/tasks/${taskId}/zones/${zoneId}/materials/scan`,
+    data: { qmCode },
+    silent: true,
   })
 }

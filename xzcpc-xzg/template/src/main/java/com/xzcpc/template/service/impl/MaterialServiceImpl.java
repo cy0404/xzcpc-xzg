@@ -23,7 +23,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -49,6 +48,9 @@ public class MaterialServiceImpl implements MaterialService {
     @Value("${material.api.key}")
     private String apiKey;
 
+    @Value("${app.upload.path:./upload}")
+    private String uploadPath;
+
     // ==================== 本地 DB 查询 ====================
 
     @Override
@@ -56,7 +58,7 @@ public class MaterialServiceImpl implements MaterialService {
     public List<MaterialInfo> getAllMaterials() {
         List<Material> materials = materialMapper.selectList(
                 new LambdaQueryWrapper<Material>().orderByDesc(Material::getUpdatedAt).orderByDesc(Material::getId));
-        if (materials.isEmpty()) {
+        if (materials.isEmpty() && syncEnabled()) {
             syncFromApi();
             materials = materialMapper.selectList(
                     new LambdaQueryWrapper<Material>().orderByDesc(Material::getUpdatedAt).orderByDesc(Material::getId));
@@ -87,11 +89,41 @@ public class MaterialServiceImpl implements MaterialService {
             wrapper.like(Material::getMaterialName, keyword.trim());
         }
         List<Material> materials = materialMapper.selectList(wrapper);
-        if (materials.isEmpty() && !StringUtils.hasText(keyword)) {
+        if (materials.isEmpty() && !StringUtils.hasText(keyword) && syncEnabled()) {
             syncFromApi();
             materials = materialMapper.selectList(wrapper);
         }
         return fillInventoryUnit(materials);
+    }
+
+    @Override
+    public MaterialInfo getByQmCode(String qmCode) {
+        if (!StringUtils.hasText(qmCode)) return null;
+        Material material = materialMapper.selectOne(new LambdaQueryWrapper<Material>()
+                .eq(Material::getQmCode, qmCode.trim()));
+        if (material == null) return null;
+        MaterialInfo info = toInfo(material);
+        MaterialInventoryRule rule = ruleMapper.selectOne(new LambdaQueryWrapper<MaterialInventoryRule>()
+                .eq(MaterialInventoryRule::getMaterialId, material.getMaterialId()));
+        if (rule != null && StringUtils.hasText(rule.getBaseUnit())) {
+            info.setPandiandanwei(rule.getBaseUnit());
+        }
+        return info;
+    }
+
+    @Override
+    public MaterialInfo getMaterialInfoById(String materialId) {
+        if (!StringUtils.hasText(materialId)) return null;
+        Material material = materialMapper.selectOne(new LambdaQueryWrapper<Material>()
+                .eq(Material::getMaterialId, materialId));
+        if (material == null) return null;
+        MaterialInfo info = toInfo(material);
+        MaterialInventoryRule rule = ruleMapper.selectOne(new LambdaQueryWrapper<MaterialInventoryRule>()
+                .eq(MaterialInventoryRule::getMaterialId, material.getMaterialId()));
+        if (rule != null && StringUtils.hasText(rule.getBaseUnit())) {
+            info.setPandiandanwei(rule.getBaseUnit());
+        }
+        return info;
     }
 
     @Override
@@ -145,10 +177,17 @@ public class MaterialServiceImpl implements MaterialService {
      * 每天凌晨 3 点全量同步 + 首次查询时懒加载。
      * 从外部 API 翻页拉取物料主数据，upsert 到本地 material 表。
      */
-    @Scheduled(cron = "0 0 3 * * *")
+    // @Scheduled(cron = "0 0 3 * * *")  // 已关闭定时同步
     public void scheduledSync() {
+        if (!syncEnabled()) return;
         syncFromApi();
     }
+
+    /** 可通过配置 app.sync.enabled=false 关闭所有外部API同步 */
+    @org.springframework.beans.factory.annotation.Value("${app.sync.enabled:false}")
+    private boolean syncEnabled;
+
+    private boolean syncEnabled() { return syncEnabled; }
 
     @Override
     public int syncFromApi() {
@@ -288,22 +327,6 @@ public class MaterialServiceImpl implements MaterialService {
             throw new BusinessException(404, "物料不存在");
         }
         return material;
-    }
-
-    @Override
-    public MaterialInfo getMaterialInfoById(String materialId) {
-        if (!StringUtils.hasText(materialId)) return null;
-        Material material = materialMapper.selectOne(new LambdaQueryWrapper<Material>()
-                .eq(Material::getMaterialId, materialId));
-        if (material == null) return null;
-        MaterialInfo info = toInfo(material);
-        MaterialInventoryRule rule = ruleMapper.selectOne(
-                new LambdaQueryWrapper<MaterialInventoryRule>()
-                        .eq(MaterialInventoryRule::getMaterialId, material.getMaterialId()));
-        if (rule != null && StringUtils.hasText(rule.getBaseUnit())) {
-            info.setPandiandanwei(rule.getBaseUnit());
-        }
-        return info;
     }
 
     @Override

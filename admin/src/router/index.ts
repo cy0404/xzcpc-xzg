@@ -97,6 +97,12 @@ const router = createRouter({
       meta: { roles: ['headquarters_admin', 'hr_admin'] },
     },
     {
+      path: '/people/bindings',
+      name: 'OwnerRegistrations',
+      component: () => import('../views/people/OwnerRegistrationList.vue'),
+      meta: { roles: ['headquarters_admin', 'hr_admin'] },
+    },
+    {
       path: '/people/:id',
       name: 'EmployeeDetail',
       component: () => import('../views/people/EmployeeDetail.vue'),

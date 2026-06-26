@@ -7,3 +7,4 @@ export function getCategories() {
 export function getParentCategories() {
   return api.get<string[]>('/materials/parent-categories')
 }
+

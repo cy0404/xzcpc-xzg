@@ -5,10 +5,10 @@ spring:
   datasource:
     url: jdbc:mysql://162.14.122.80:3306/store_inventory?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&connectTimeout=5000&socketTimeout=15000
     username: store_inventory
-    password: Xzcpc@2026
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 20
+      maximum-pool-size: 10
       minimum-idle: 5
       idle-timeout: 300000
       max-lifetime: 600000
@@ -26,12 +26,12 @@ logging:
 # ---------- 飞书应用配置 ----------
 feishu:
   app-id: cli_aa90f3d66d7adbb7
-  app-secret: wcQCAqZQML7YZn8h6vK0TdOy3t88fnP7
+  app-secret: ${FEISHU_APP_SECRET}
 
 # ---------- 总部端管理员 JWT ----------
 admin:
   jwt:
-    secret: xzcpc-admin-jwt-secret-key-2026-production
+    secret: ${ADMIN_JWT_SECRET}
     expire-hours: 72
   local-dev-login:
     enabled: false

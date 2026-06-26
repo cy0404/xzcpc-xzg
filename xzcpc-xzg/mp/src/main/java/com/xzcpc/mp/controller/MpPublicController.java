@@ -23,10 +23,13 @@ public class MpPublicController {
     private final WxMaService wxMaService;
 
     /**
-     * 公开接口：根据申请 ID 查询登记申请状态，无需登录。
+     * 查询登记申请状态。
+     * - 无 wxCode → 仅返回 found / status / rejectReason（公开安全信息）
+     * - 有 wxCode 且 openid 匹配 → 返回完整信息（重新申请时回填表单用）
      */
     @GetMapping("/application/{applicationId}")
-    public R<Map<String, Object>> applicationStatus(@PathVariable String applicationId) {
+    public R<Map<String, Object>> applicationStatus(@PathVariable String applicationId,
+                                                    @RequestParam(required = false) String wxCode) {
         EmployeeRegistrationApplication app = applicationMapper.selectOne(
                 new LambdaQueryWrapper<EmployeeRegistrationApplication>()
                         .eq(EmployeeRegistrationApplication::getApplicationId, applicationId)
@@ -38,24 +41,38 @@ public class MpPublicController {
             return R.ok(result);
         }
 
+        // 校验 wxCode 归属：只有本人才能看到完整信息
+        boolean isOwner = false;
+        if (wxCode != null && !wxCode.isBlank()) {
+            try {
+                WxMaJscode2SessionResult sessionResult = wxMaService.jsCode2SessionInfo(wxCode);
+                isOwner = sessionResult.getOpenid().equals(app.getOpenid());
+            } catch (Exception e) {
+                log.warn("applicationStatus 换取 openid 失败", e);
+            }
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("found", true);
-        result.put("applicationId", app.getApplicationId());
-        result.put("name", app.getName());
-        result.put("mobile", app.getMobile());
-        result.put("gender", app.getGender());
-        result.put("birthday", app.getBirthday() != null ? app.getBirthday().toString() : "");
-        result.put("storeName", app.getStoreName());
-        result.put("storeId", app.getStoreId());
-        result.put("expectedRole", app.getExpectedRole());
-        result.put("employmentType", app.getEmploymentType());
-        result.put("entryDate", app.getEntryDate() != null ? app.getEntryDate().toString() : "");
-        result.put("emergencyContactName", app.getEmergencyContactName());
-        result.put("emergencyContactPhone", app.getEmergencyContactPhone());
-        result.put("remark", app.getRemark());
         result.put("status", app.getStatus());
         result.put("rejectReason", app.getRejectReason());
-        result.put("createdAt", app.getCreatedAt());
+
+        if (isOwner) {
+            result.put("applicationId", app.getApplicationId());
+            result.put("name", app.getName());
+            result.put("mobile", app.getMobile());
+            result.put("gender", app.getGender());
+            result.put("birthday", app.getBirthday() != null ? app.getBirthday().toString() : "");
+            result.put("storeName", app.getStoreName());
+            result.put("storeId", app.getStoreId());
+            result.put("expectedRole", app.getExpectedRole());
+            result.put("employmentType", app.getEmploymentType());
+            result.put("entryDate", app.getEntryDate() != null ? app.getEntryDate().toString() : "");
+            result.put("emergencyContactName", app.getEmergencyContactName());
+            result.put("emergencyContactPhone", app.getEmergencyContactPhone());
+            result.put("remark", app.getRemark());
+            result.put("createdAt", app.getCreatedAt());
+        }
         return R.ok(result);
     }
 
@@ -108,4 +125,5 @@ public class MpPublicController {
         result.put("createdAt", app.getCreatedAt());
         return R.ok(result);
     }
+
 }

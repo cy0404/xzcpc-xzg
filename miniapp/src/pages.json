@@ -80,6 +80,12 @@
       }
     },
     {
+      "path": "pages/work-hours/index/index",
+      "style": {
+        "navigationBarTitleText": "工时录入"
+      }
+    },
+    {
       "path": "pages/staff/list/index",
       "style": {
         "navigationBarTitleText": "门店人员"
@@ -151,6 +157,12 @@
       "style": {
         "navigationBarTitleText": "",
         "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/bind/owner-register-qr/index",
+      "style": {
+        "navigationBarTitleText": "管理员登记"
       }
     },
     {

@@ -14,9 +14,18 @@
       "minified": true
     },
     "usingComponents": true,
-    "permission": {},
+    "permission": {
+      "scope.record": {
+        "desc": "用于语音搜索盘点物料"
+      }
+    },
     "requiredBackgroundModes": [],
-    "plugins": {},
+    "plugins": {
+        "WechatSI": {
+          "version": "0.3.7",
+          "provider": "wx069ba97219f66d99"
+        }
+      },
     "lazyCodeLoading": "requiredComponents"
   }
 }

@@ -73,7 +73,7 @@
         :data-source="dataSource"
         :pagination="tablePagination"
         :loading="loading"
-        row-key="taskId"
+        row-key="id"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -178,12 +178,12 @@ function formatDate(dateStr: string): string {
 }
 
 function goResult(record: any) {
-  router.push(`/tasks/${record.taskId}/result`)
+  router.push(`/tasks/${record.id}/result`)
 }
 
 async function handleDelete(record: any) {
   try {
-    await deleteTask(record.taskId)
+    await deleteTask(record.id)
     message.success('删除成功')
     fetchData()
   } catch (e: any) {

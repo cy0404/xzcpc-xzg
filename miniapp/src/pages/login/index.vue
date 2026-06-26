@@ -93,11 +93,13 @@ function onLoginClick() {
     <view class="hero">
       <!-- Logo -->
       <view class="logo-wrap">
-        <image class="logo-img" src="/static/logo.png" mode="aspectFit" />
+        <image class="logo-img" src="/static/icons/logo.png" mode="aspectFit" />
       </view>
 
       <text class="app-name">象掌柜</text>
       <text class="app-subtitle">象子茶铺的门店经营工具</text>
+
+      <text class="notice-text">本小程序仅限象子茶铺在职员工使用</text>
 
       <!-- 底部按钮 -->
       <view class="bottom-actions">
@@ -221,6 +223,14 @@ $border: #E8ECE9;
   font-weight: 500;
   color: $text-1;
   line-height: 44rpx;
+}
+
+.notice-text {
+  display: block;
+  margin-top: 20rpx;
+  font-size: 24rpx;
+  color: $text-3;
+  text-align: center;
 }
 
 // ====== 协议勾选 ======

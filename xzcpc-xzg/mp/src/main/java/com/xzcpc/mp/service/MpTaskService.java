@@ -1,5 +1,6 @@
 package com.xzcpc.mp.service;
 
+import java.util.List;
 import java.util.Map;
 
 public interface MpTaskService {
@@ -8,4 +9,6 @@ public interface MpTaskService {
     void submit(Integer taskId, String storeId, String openid);
     Map<String, Object> summary(Integer taskId, String storeId);
     Map<String, Object> result(Integer taskId, String storeId);
+    /** 获取任务中所有未录入物料列表（按分区分组） */
+    List<Map<String, Object>> getUnenteredMaterials(Integer taskId, String storeId);
 }

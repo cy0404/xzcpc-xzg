@@ -153,6 +153,7 @@ public class MaterialRuleServiceImpl implements MaterialRuleService {
             rule.setRuleId("TMP"); // 先设临时值，等拿到自增 id 后再更新正式编码
             rule.setMaterialId(materialId);
             rule.setBaseUnit(req.getBaseUnit().trim());
+            rule.setStockUnit(req.getStockUnit());
             rule.setInventoryUnits(toInventoryUnits(req));
             rule.setUnitPrice(req.getUnitPrice());
             ruleMapper.insert(rule);
@@ -219,6 +220,7 @@ public class MaterialRuleServiceImpl implements MaterialRuleService {
 
         resp.setRuleId(rule.getRuleId());
         resp.setBaseUnit(rule.getBaseUnit());
+        resp.setStockUnit(rule.getStockUnit());
         resp.setUnitPrice(rule.getUnitPrice());
         resp.setUpdatedAt(rule.getUpdatedAt());
         resp.setRuleStatus(STATUS_MAINTAINED);

@@ -21,6 +21,13 @@ const rawToolGroups = [
         icon: '支',
         url: '/pages/expense/list/index',
       },
+      {
+        title: '工时录入',
+        desc: '记录门店总工时',
+        icon: '工',
+        url: '/pages/work-hours/index/index',
+        roles: ['老板', '店长'],
+      },
     ],
   },
   {
@@ -40,7 +47,11 @@ const rawToolGroups = [
 const toolGroups = computed(() => rawToolGroups
   .map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.permission || userStore.permissions.includes(item.permission)),
+    items: group.items.filter((item) => {
+      if (item.roles && !item.roles.includes(userStore.role)) return false
+      if (item.permission && !userStore.permissions.includes(item.permission)) return false
+      return true
+    }),
   }))
   .filter((group) => group.items.length > 0))
 

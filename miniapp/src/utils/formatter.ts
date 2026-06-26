@@ -38,3 +38,13 @@ export function formatMoney(value: number | string | null | undefined): string {
   if (!Number.isFinite(num)) return '0.00'
   return num.toFixed(2)
 }
+
+/** 物料展示名：如果二级分类是"半成品"，自动追加后缀 */
+export function materialDisplayName(material: { materialName?: string; category?: string } | null | undefined): string {
+  const name = material?.materialName || ''
+  const cat = material?.category || ''
+  if (cat === '半成品' && !name.includes('（半成品）')) {
+    return name + '（半成品）'
+  }
+  return name
+}

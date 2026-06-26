@@ -2,6 +2,7 @@ package com.xzcpc.task.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.xzcpc.common.event.MaterialChangedEvent;
+import com.xzcpc.common.util.BizCodeUtil;
 import com.xzcpc.common.event.TemplateChangedEvent;
 import com.xzcpc.task.entity.Task;
 import com.xzcpc.task.entity.TaskZone;
@@ -152,10 +153,8 @@ public class TemplateChangeListener {
             taskZone.setZoneName(tz.getZoneName());
             taskZone.setSortNo(tz.getSortNo());
             taskZone.setSourceType("template");
+            taskZone.setBizCode(BizCodeUtil.of("TKZ"));
             taskZoneMapper.insert(taskZone);
-            taskZone.setTaskZoneId(taskZone.getId());
-            taskZone.setBizCode("TKZ" + String.format("%08d", taskZone.getId()));
-            taskZoneMapper.updateById(taskZone);
 
             List<TemplateZoneMaterial> materials = materialsByZone.getOrDefault(tz.getId(), List.of());
             for (TemplateZoneMaterial tm : materials) {
@@ -169,10 +168,8 @@ public class TemplateChangeListener {
                 tzm.setInventoryUnit(tm.getInventoryUnit() != null ? tm.getInventoryUnit() : "");
                 tzm.setSortNo(tm.getSortNo());
                 tzm.setInputStatus("not_entered");
+                tzm.setBizCode(BizCodeUtil.of("TZM"));
                 taskZoneMaterialMapper.insert(tzm);
-                tzm.setTaskZoneMaterialId(tzm.getId());
-                tzm.setBizCode("TZM" + String.format("%08d", tzm.getId()));
-                taskZoneMaterialMapper.updateById(tzm);
             }
         }
     }

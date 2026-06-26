@@ -28,6 +28,7 @@ export interface MaterialRuleRecord {
   spec?: string
   ruleId?: string
   baseUnit?: string
+  stockUnit?: string
   unitPrice?: number
   updatedAt?: string
   ruleStatus: 'maintained' | 'pending'
@@ -58,6 +59,7 @@ export function getBaseUnits() {
 
 export function saveMaterialRule(materialId: string, data: {
   baseUnit: string
+  stockUnit: string
   unitPrice: number
   units: MaterialRuleUnit[]
   conversions: MaterialUnitConversion[]

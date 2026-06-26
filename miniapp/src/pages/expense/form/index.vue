@@ -108,10 +108,12 @@ async function submit() {
   <view v-if="showItems" class="mask" @click="showItems=false">
     <view class="sheet" @click.stop>
       <view class="sh"></view>
-      <text class="st">选择支出项目</text>
-      <view class="type-grid">
-        <view v-for="item in items" :key="item.itemId" class="type-btn" :class="{on:itemId===item.itemId}" @click="selectItem(item)">
-          <text>{{ item.name }}</text>
+      <text class="st sheet-title">选择支出项目</text>
+      <view class="grid-scroll">
+        <view class="type-grid">
+          <view v-for="item in items" :key="item.itemId" class="type-btn" :class="{on:itemId===item.itemId}" @click="selectItem(item)">
+            <text>{{ item.name }}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -135,9 +137,11 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .bottom{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);background:$s;border-top:2rpx solid #EEF1EF}
 .btn{width:100%;height:96rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30rpx;font-weight:700}
 .mask{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;background:rgba(31,36,33,.4)}
-.sheet{width:100%;max-height:70vh;border-radius:32rpx 32rpx 0 0;background:$s;padding:24rpx 32rpx calc(env(safe-area-inset-bottom) + 24rpx)}
-.sh{width:80rpx;height:6rpx;border-radius:999rpx;background:$b;margin:8rpx auto 20rpx}.st{display:block;font-size:34rpx;font-weight:700;color:$t1;margin-bottom:20rpx}
-.type-grid{display:flex;flex-wrap:wrap;gap:16rpx;max-height:60vh;overflow-y:auto;padding:8rpx 0}
-.type-btn{width:calc((100% - 32rpx) / 3);padding:18rpx 4rpx;border-radius:16rpx;background:#FAFBF9;border:2rpx solid $b;text-align:center;font-size:26rpx;color:$t1;display:flex;align-items:center;justify-content:center;min-height:64rpx;box-sizing:border-box}
+.sheet{width:100%;max-height:70vh;border-radius:32rpx 32rpx 0 0;background:$s;padding:24rpx 0 calc(env(safe-area-inset-bottom) + 24rpx)}
+.sh{width:80rpx;height:6rpx;border-radius:999rpx;background:$b;margin:8rpx auto 20rpx}
+.sheet-title{padding:0 10%;display:block;font-size:34rpx;font-weight:700;color:$t1;margin-bottom:20rpx}
+.grid-scroll{max-height:60vh;overflow-y:auto;padding:0 10%}
+.type-grid{display:flex;flex-wrap:wrap;gap:32rpx;padding:8rpx 0}
+.type-btn{width:calc((100% - 32rpx) / 2);padding:18rpx 4rpx;border-radius:16rpx;background:#FAFBF9;border:2rpx solid $b;text-align:center;font-size:26rpx;color:$t1;display:flex;align-items:center;justify-content:center;min-height:64rpx;box-sizing:border-box}
 .type-btn.on{background:$ps;border-color:$p;color:$p;font-weight:600}
 </style>

@@ -5,6 +5,12 @@ spring:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
 
+app:
+  sync:
+    enabled: false  # 暂时关闭物料/门店外部API同步
+  upload:
+    path: ./upload
+
 logging:
   level:
     com.xzcpc: DEBUG
@@ -13,13 +19,13 @@ logging:
 
 store:
   api:
-    url: http://119.45.162.160:5174/api/publish/entities/mendianxinxi/records
-    key: aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM
+    url: ${STORE_API_URL:http://119.45.162.160:5174/api/publish/entities/mendianxinxi/records}
+    key: ${STORE_API_KEY}
 
 material:
   api:
-    url: http://119.45.162.160:5174/api/publish/entities/yuancailiao/records
-    key: aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM
+    url: ${MATERIAL_API_URL:http://119.45.162.160:5174/api/publish/entities/yuancailiao/records}
+    key: ${STORE_API_KEY}
 
 mybatis-plus:
   configuration:
@@ -32,25 +38,25 @@ mybatis-plus:
 wx:
   miniapp:
     appid: wx0000000000000001
-    secret: 00000000000000000000000000000001
+    secret: ${WX_APP_SECRET}
     msg-data-format: JSON
 
 mp:
   jwt:
-    secret: xzcpc-mp-jwt-secret-key-2026-production-change-this
+    secret: ${MP_JWT_SECRET}
     expire-hours: 168
 
 # 飞书应用配置（H5 登录）
 feishu:
   app-id: cli_aa90f3d66d7adbb7
-  app-secret: wcQCAqZQML7YZn8h6vK0TdOy3t88fnP7
+  app-secret: ${FEISHU_APP_SECRET}
 
 # 总部端管理员 JWT
 report:
   api:
-    token: U09MTyBHZW5lcmF0ZWQgMjAyNg==
+    token: ${REPORT_API_TOKEN}
 
 admin:
   jwt:
-    secret: xzcpc-admin-jwt-secret-key-2026-production
+    secret: ${ADMIN_JWT_SECRET}
     expire-hours: 72

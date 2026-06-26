@@ -11,15 +11,23 @@
 
     <a-card class="filter-card" :bordered="false">
       <a-row :gutter="[16, 16]">
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="4">
+          <div class="filter-label">父级分类</div>
+          <a-select v-model:value="filters.parentCategory" allow-clear placeholder="全部" style="width: 100%">
+            <a-select-option v-for="item in parentCategoryOptions" :key="item" :value="item">
+              {{ item }}
+            </a-select-option>
+          </a-select>
+        </a-col>
+        <a-col :xs="24" :sm="12" :md="4">
           <div class="filter-label">物料分类</div>
-          <a-select v-model:value="filters.category" allow-clear placeholder="全部分类" style="width: 100%">
+          <a-select v-model:value="filters.category" allow-clear placeholder="全部" style="width: 100%">
             <a-select-option v-for="item in categoryOptions" :key="item" :value="item">
               {{ item }}
             </a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="4">
           <div class="filter-label">基础盘点单位</div>
           <a-select v-model:value="filters.baseUnit" allow-clear placeholder="全部单位" style="width: 100%">
             <a-select-option v-for="item in baseUnitOptions" :key="item" :value="item">
@@ -133,6 +141,11 @@
             <a-input-number v-model:value="form.unitPrice" :min="0" style="width: 100%" />
             <div class="field-tip">单价按基础单位维护</div>
           </a-col>
+          <a-col :span="12">
+            <div class="field-label">库存单位</div>
+            <a-input v-model:value="form.stockUnit" placeholder="如：件、箱，留空则用基础单位" />
+            <div class="field-tip">盘点报表汇总时换算到大单位展示</div>
+          </a-col>
         </a-row>
 
         <!-- 单位换算关系 -->
@@ -167,7 +180,7 @@ import {
   type MaterialRuleRecord,
   type MaterialUnitConversion,
 } from '../../api/materialRule'
-import { getCategories } from '../../api/material'
+import { getCategories, getParentCategories } from '../../api/material'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -177,6 +190,7 @@ const currentRecord = ref<MaterialRuleRecord | null>(null)
 const pagination = reactive({ current: 1, pageSize: 10, total: 0 })
 const filters = reactive({
   keyword: '',
+  parentCategory: undefined as string | undefined,
   category: undefined as string | undefined,
   baseUnit: undefined as string | undefined,
   conversionType: undefined as string | undefined,
@@ -184,6 +198,7 @@ const filters = reactive({
 
 const form = reactive({
   baseUnit: '',
+  stockUnit: '',
   unitPrice: 0,
   units: [] as { unitName: string }[],
   conversions: [] as MaterialUnitConversion[],
@@ -200,17 +215,20 @@ const computedUnits = computed(() => {
 })
 
 const columns = [
-  { title: '物料名称', dataIndex: 'materialName', key: 'materialName', width: 160 },
+  { title: '企迈编码', dataIndex: 'qmCode', key: 'qmCode', width: 120 },
+  { title: '父级分类', dataIndex: 'parentCategory', key: 'parentCategory', width: 100 },
   { title: '分类', dataIndex: 'category', key: 'category', width: 100 },
-  { title: '规格', dataIndex: 'spec', key: 'spec', width: 120 },
-  { title: '基础单位', dataIndex: 'baseUnit', key: 'baseUnit', width: 110 },
+  { title: '物料名称', dataIndex: 'materialName', key: 'materialName', width: 150 },
+  { title: '规格', dataIndex: 'spec', key: 'spec', width: 110 },
+  { title: '基础单位', dataIndex: 'baseUnit', key: 'baseUnit', width: 100 },
   { title: '换算关系', dataIndex: 'conversions', key: 'conversions' },
-  { title: '盘点单价', dataIndex: 'unitPrice', key: 'unitPrice', width: 130, align: 'right' as const },
-  { title: '最近更新', dataIndex: 'updatedAt', key: 'updatedAt', width: 120 },
-  { title: '操作', key: 'action', width: 80 },
+  { title: '盘点单价', dataIndex: 'unitPrice', key: 'unitPrice', width: 120, align: 'right' as const },
+  { title: '最近更新', dataIndex: 'updatedAt', key: 'updatedAt', width: 110 },
+  { title: '操作', key: 'action', width: 70 },
 ]
 
 const categoryOptions = ref<string[]>([])
+const parentCategoryOptions = ref<string[]>([])
 const baseUnitOptions = ref<string[]>([])
 const tablePagination = computed(() => ({
   current: pagination.current,
@@ -251,6 +269,7 @@ async function fetchData() {
   try {
     const res = (await getMaterialRules({
       keyword: filters.keyword,
+      parentCategory: filters.parentCategory,
       category: filters.category,
       baseUnit: filters.baseUnit,
       conversionType: filters.conversionType,
@@ -275,8 +294,12 @@ async function fetchBaseUnits() {
 
 async function fetchCategories() {
   try {
-    const res = (await getCategories()) as any
-    categoryOptions.value = res.data || []
+    const [catRes, parentRes] = await Promise.all([
+      getCategories() as any,
+      getParentCategories() as any,
+    ])
+    categoryOptions.value = catRes.data || []
+    parentCategoryOptions.value = parentRes.data || []
   } catch {
     // 分类加载失败不影响主流程
   }
@@ -289,6 +312,7 @@ function handleSearch() {
 
 function handleReset() {
   filters.keyword = ''
+  filters.parentCategory = undefined
   filters.category = undefined
   filters.baseUnit = undefined
   filters.conversionType = undefined
@@ -304,11 +328,9 @@ function handleTableChange(pager: any) {
 function openEdit(record: MaterialRuleRecord) {
   currentRecord.value = record
   form.baseUnit = record.baseUnit || ''
+  form.stockUnit = record.stockUnit || ''
   form.unitPrice = Number(record.unitPrice || 0)
-  form.conversions = (record.conversions || []).map(item => ({
-    ...item,
-    toUnit: record.baseUnit || '',
-  }))
+  form.conversions = (record.conversions || []).map(item => ({ ...item }))
   editVisible.value = true
 }
 
@@ -330,9 +352,10 @@ async function handleSave() {
   try {
     await saveMaterialRule(currentRecord.value.materialId, {
       baseUnit: form.baseUnit.trim(),
+      stockUnit: form.stockUnit.trim(),
       unitPrice: Number(form.unitPrice || 0),
       units: computedUnits.value.map(u => ({ unitName: u })),
-      conversions: form.conversions,
+      conversions: form.conversions.map(c => ({ ...c, toUnit: form.baseUnit.trim() })),
       weightConversions: [],
     })
     message.success('物料盘点规则已保存')

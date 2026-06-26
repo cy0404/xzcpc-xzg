@@ -20,7 +20,7 @@ public class AdminJwtUtil {
     private final SecretKey key;
     private final long expireMs;
 
-    public AdminJwtUtil(@Value("${admin.jwt.secret:xzcpc-admin-jwt-secret-key-2026}") String secret,
+    public AdminJwtUtil(@Value("${admin.jwt.secret}") String secret,
                         @Value("${admin.jwt.expire-hours:72}") long expireHours) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expireMs = expireHours * 3600 * 1000;

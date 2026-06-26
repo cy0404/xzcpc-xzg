@@ -12,7 +12,6 @@ public class Task { // 月盘任务实体
     private Integer id;
 
     private String bizCode;
-    private Integer taskId;
     private String storeId;
     private String taskName;
     private String taskMonth;

@@ -14,10 +14,12 @@ import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class MpLoginInterceptor implements HandlerInterceptor {
@@ -28,8 +30,22 @@ public class MpLoginInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        String uri = request.getRequestURI();
+        // 公开接口：无需登录
+        if (uri.contains("/public/") || uri.contains("/auth/wx/login")) {
+            return true;
+        }
+        // 老板登记公开接口（stores/register/qrcode/status/query-stores/confirm-bind/my-status/qrcode-img）
+        if (uri.contains("/auth/owner/")
+                && (uri.endsWith("/stores") || uri.endsWith("/register")
+                    || uri.contains("/qrcode") || uri.contains("/status")
+                    || uri.contains("/query-stores") || uri.contains("/confirm-bind")
+                    || uri.contains("/my-status"))) {
+            return true;
+        }
         String token = request.getHeader("Authorization");
         if (!StringUtils.hasText(token) || !token.startsWith("Bearer ")) {
+            log.warn("No valid token for: {} {}", request.getMethod(), request.getRequestURI());
             throw new BusinessException(401, "未登录或Token已失效");
         }
         token = token.substring(7);
@@ -51,7 +67,6 @@ public class MpLoginInterceptor implements HandlerInterceptor {
             UserContextHolder.set(user);
 
             // 已离职员工拒绝访问（/auth/** 除外，/me 需要正常返回 bound=false）
-            String uri = request.getRequestURI();
             if (!uri.contains("/auth/") && StringUtils.hasText(session.getStoreId())) {
                 Long count = employeeMapper.selectCount(new LambdaQueryWrapper<Employee>()
                         .eq(Employee::getStoreId, session.getStoreId())
