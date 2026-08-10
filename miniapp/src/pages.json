@@ -19,6 +19,12 @@
       }
     },
     {
+      "path": "pages/business/report-detail/index",
+      "style": {
+        "navigationBarTitleText": "财报详情"
+      }
+    },
+    {
       "path": "pages/profile/index/index",
       "style": {
         "navigationBarTitleText": "我的"
@@ -88,7 +94,8 @@
     {
       "path": "pages/staff/list/index",
       "style": {
-        "navigationBarTitleText": "门店人员"
+        "navigationBarTitleText": "门店人员",
+        "enablePullDownRefresh": true
       }
     },
     {
@@ -140,17 +147,90 @@
       }
     },
     {
-      "path": "pages/owner-home/index",
-      "style": {
-        "navigationBarTitleText": "门店总览"
-      }
-    },
-    {
       "path": "pages/inventory/scan/index",
       "style": {
         "navigationBarTitleText": "扫码盘点",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/loss-report/list/index",
+      "style": {
+        "navigationBarTitleText": "门店报损",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/issue/list/index",
+      "style": { "navigationBarTitleText": "问题处理", "enablePullDownRefresh": true }
+    },
+    {
+      "path": "pages/issue/detail/index",
+      "style": { "navigationBarTitleText": "问题详情", "enablePullDownRefresh": true }
+    },
+    {
+      "path": "pages/issue/video/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/supervisor-visit/detail/index",
+      "style": { "navigationBarTitleText": "拜访单详情", "enablePullDownRefresh": true }
+    },
+    {
+      "path": "pages/supervisor-visit/action-detail/index",
+      "style": { "navigationBarTitleText": "拜访任务详情" }
+    },
+    {
+      "path": "pages/webview/index",
+      "style": { "navigationBarTitleText": "上报问题" }
+    },
+    {
+      "path": "pages/bind/owner-redirect/index",
+      "style": { "navigationBarTitleText": "" }
+    },
+    {
+      "path": "pages/loss-report/detail/index",
+      "style": { "navigationBarTitleText": "报损详情" }
+    },
+    {
+      "path": "pages/loss-report/form/index",
+      "style": { "navigationBarTitleText": "到货验收报损" }
+    },
+    {
+      "path": "pages/loss-report/form-daily/index",
+      "style": { "navigationBarTitleText": "日常报损" }
+    },
+    {
+      "path": "pages/loss-report/standard/index",
+      "style": { "navigationBarTitleText": "验收标准" }
+    },
+    {
+      "path": "pages/loss-report/camera/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/loss-report/camera-h5/index",
+      "style": { "navigationBarTitleText": "拍摄" }
+    },
+    {
+      "path": "pages/transfer/list/index",
+      "style": { "navigationBarTitleText": "调货管理", "enablePullDownRefresh": true }
+    },
+    {
+      "path": "pages/transfer/detail/index",
+      "style": { "navigationBarTitleText": "调货详情" }
+    },
+    {
+      "path": "pages/transfer/form/index",
+      "style": { "navigationBarTitleText": "发起调货" }
+    },
+    {
+      "path": "pages/transfer/item-select/index",
+      "style": { "navigationBarTitleText": "品项选购" }
+    },
+    {
+      "path": "pages/transfer/return/index",
+      "style": { "navigationBarTitleText": "还货/还钱" }
     },
     {
       "path": "pages/bind/owner-register",
