@@ -4,6 +4,8 @@ import { BASE_URL } from '@/utils/constants'
 export interface ExpenseType {
   typeId: string
   name: string
+  firstTypeId?: string
+  firstTypeName?: string
   description?: string
   status?: string
 }
@@ -14,6 +16,8 @@ export interface ExpenseRecord {
   storeName: string
   typeId: string
   typeName: string
+  firstTypeId?: string
+  firstTypeName?: string
   amount: number
   occurredDate: string
   handlerName: string
@@ -31,10 +35,6 @@ export interface ExpensePageResp {
 
 export function fetchExpenseTypes() {
   return request<ExpenseType[]>({ url: '/expense-types' })
-}
-
-export function fetchExpenseItems() {
-  return request<any[]>({ url: '/expense-items' })
 }
 
 export function fetchExpenses(params?: {
@@ -77,10 +77,16 @@ export function deleteExpense(expenseId: string) {
   return request({ url: `/expenses/${expenseId}`, method: 'DELETE' })
 }
 
+export function fetchExpenseMaterial(expenseId: string) {
+  return request<any>({ url: `/expenses/${expenseId}/material` })
+}
+
 export function uploadVoucher(filePath: string) {
   return new Promise<{url: string}>((resolve, reject) => {
+    // 获取基础 URL（去掉 /api/mp 尾缀）
+    const baseUrl = BASE_URL.replace(/\/api\/mp\/?$/, '')
     uni.uploadFile({
-      url: BASE_URL.replace(/\/api\/mp$/, '') + '/api/mp/upload/voucher',
+      url: `${baseUrl}/api/mp/upload/voucher`,
       filePath,
       name: 'file',
       header: { 'Authorization': `Bearer ${uni.getStorageSync('token')}` },

@@ -5,6 +5,7 @@ export const ROLE_OPTIONS = [
   { value: 'finance_admin', label: '财务负责人' },
   { value: 'hr_admin', label: '人事负责人' },
   { value: 'operation_admin', label: '运营负责人' },
+  { value: 'supervisor_admin', label: '督导' },
   { value: 'normal_user', label: '普通用户' },
 ]
 

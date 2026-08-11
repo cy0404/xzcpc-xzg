@@ -3,12 +3,13 @@ package com.xzcpc.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xzcpc.common.entity.LoginLog;
-import com.xzcpc.common.entity.OperationLog;
 import com.xzcpc.common.response.R;
 import com.xzcpc.common.service.LoginLogService;
 import com.xzcpc.common.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 /**
  * 日志查询接口（总部端）
@@ -21,15 +22,16 @@ public class LogController {
     private final OperationLogService operationLogService;
     private final LoginLogService loginLogService;
 
-    /** 分页查询操作日志 */
+    /** 分页查询操作日志（手写 SQL 分页，不走 MyBatis-Plus COUNT） */
     @GetMapping("/operation")
-    public R<IPage<OperationLog>> operationPage(
+    public R<Map<String, Object>> operationPage(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String module,
-            @RequestParam(required = false) String operation) {
-        return R.ok(operationLogService.page(new Page<>(page, size), username, module, operation));
+            @RequestParam(required = false) String operation,
+            @RequestParam(required = false) String source) {
+        return R.ok(operationLogService.page(page, size, username, module, operation, source));
     }
 
     /** 分页查询登录日志 */
@@ -39,6 +41,8 @@ public class LogController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String loginType) {
-        return R.ok(loginLogService.page(new Page<>(page, size), username, loginType));
+        Page<LoginLog> p = new Page<>(page, size);
+        p.setSearchCount(false);
+        return R.ok(loginLogService.page(p, username, loginType));
     }
 }

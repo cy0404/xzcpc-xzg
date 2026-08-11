@@ -66,6 +66,7 @@ public class MpZoneServiceImpl implements MpZoneService {
             item.put("baseQty", m.getBaseQty() != null ? m.getBaseQty() : m.getInputQty());
             item.put("conversionSnapshot", m.getConversionSnapshot());
             item.put("unitInputs", m.getUnitInputs() != null ? m.getUnitInputs() : "");
+            item.put("appendRecords", m.getAppendRecords() != null ? m.getAppendRecords() : "");
             com.xzcpc.template.dto.MaterialRuleResp rule = ruleMap.get(m.getMaterialId());
             item.put("category", rule != null && rule.getCategory() != null ? rule.getCategory() : "");
             item.put("inventoryRule", rule != null ? rule : pendingFallback(m.getMaterialId()));
@@ -166,6 +167,7 @@ public class MpZoneServiceImpl implements MpZoneService {
         applySnapshot(material, snapshot);
         material.setRemark(req.getRemark());
         material.setUnitInputs(req.getUnitInputs());
+        material.setAppendRecords(req.getAppendRecords());
         if (snapshot.baseQty() != null) {
             material.setInputStatus("entered");
             material.setEnteredAt(java.time.LocalDateTime.now());

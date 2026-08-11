@@ -47,6 +47,8 @@ function onEmpTypeChange(e: any) { form.value.employmentType = empTypes[e.detail
 
 async function save() {
   if (saving.value) return
+  if (!form.value.mobile) { uni.showToast({ title: '请填写手机号', icon: 'none' }); return }
+  if (!/^1[3-9]\d{9}$/.test(form.value.mobile)) { uni.showToast({ title: '手机号格式不正确', icon: 'none' }); return }
   saving.value = true
   try {
     await updateStaff(employeeId.value, form.value)
@@ -86,7 +88,9 @@ async function save() {
       <picker :range="empTypes" @change="onEmpTypeChange">
         <view class="row"><text class="k">用工类型 *</text><text class="v sel">{{ form.employmentType || '请选择' }} ›</text></view>
       </picker>
-      <view class="row last"><text class="k">入职日期 *</text><text class="v">{{ form.entryDate }}</text></view>
+      <picker mode="date" :value="form.entryDate" @change="(e:any)=>form.entryDate=e.detail.value">
+        <view class="row last"><text class="k">入职日期 *</text><text class="v sel">{{ form.entryDate || '请选择' }} ›</text></view>
+      </picker>
     </view>
 
     <!-- 补充说明 -->

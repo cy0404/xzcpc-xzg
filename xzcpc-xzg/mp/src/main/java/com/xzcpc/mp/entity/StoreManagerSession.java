@@ -18,6 +18,8 @@ public class StoreManagerSession {
     private String storeId;
     private String storeName;
     private String token;
+    /** P0: 登录时缓存的角色 store_manager|owner|staff */
+    private String role;
     private LocalDateTime lastLoginAt;
 
     @TableField(fill = FieldFill.INSERT)

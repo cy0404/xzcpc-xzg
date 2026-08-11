@@ -1,0 +1,50 @@
+-- ============================================================
+-- 清空测试库 store_inventory_test 所有表
+-- 用法: mysql -h 162.14.122.80 -u store_inventory -p store_inventory_test < database/clear-test-db.sql
+-- ============================================================
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS `admin_permission`;
+DROP TABLE IF EXISTS `barcode_supplement`;
+DROP TABLE IF EXISTS `container_config`;
+DROP TABLE IF EXISTS `difference_process_log`;
+DROP TABLE IF EXISTS `employee`;
+DROP TABLE IF EXISTS `employee_registration_application`;
+DROP TABLE IF EXISTS `expense_record`;
+DROP TABLE IF EXISTS `expense_type`;
+DROP TABLE IF EXISTS `inventory_difference`;
+DROP TABLE IF EXISTS `inventory_difference_backup_20260727`;
+DROP TABLE IF EXISTS `inventory_template_recommendation`;
+DROP TABLE IF EXISTS `issue`;
+DROP TABLE IF EXISTS `login_log`;
+DROP TABLE IF EXISTS `logistics_record`;
+DROP TABLE IF EXISTS `loss_report`;
+DROP TABLE IF EXISTS `loss_report_log`;
+DROP TABLE IF EXISTS `material`;
+DROP TABLE IF EXISTS `material_conversion_rule`;
+DROP TABLE IF EXISTS `material_inventory_rule`;
+DROP TABLE IF EXISTS `material_loss_notify_config`;
+DROP TABLE IF EXISTS `notification_log`;
+DROP TABLE IF EXISTS `operation_log`;
+DROP TABLE IF EXISTS `owner_bind_pending`;
+DROP TABLE IF EXISTS `owner_registration`;
+DROP TABLE IF EXISTS `self_purchase_material`;
+DROP TABLE IF EXISTS `store_contact`;
+DROP TABLE IF EXISTS `store_info`;
+DROP TABLE IF EXISTS `store_manager_session`;
+DROP TABLE IF EXISTS `store_zone_material`;
+DROP TABLE IF EXISTS `store_work_hours`;
+DROP TABLE IF EXISTS `supervisor_store_access`;
+DROP TABLE IF EXISTS `supervisor_visit`;
+DROP TABLE IF EXISTS `supervisor_visit_action`;
+DROP TABLE IF EXISTS `sys_config`;
+DROP TABLE IF EXISTS `task`;
+DROP TABLE IF EXISTS `task_material_summary`;
+DROP TABLE IF EXISTS `task_zone`;
+DROP TABLE IF EXISTS `task_zone_material`;
+DROP TABLE IF EXISTS `template`;
+DROP TABLE IF EXISTS `template_zone`;
+DROP TABLE IF EXISTS `template_zone_material`;
+DROP TABLE IF EXISTS `transfer_order`;
+DROP TABLE IF EXISTS `transfer_order_item`;
+DROP TABLE IF EXISTS `transfer_return_record`;
+SET FOREIGN_KEY_CHECKS = 1;

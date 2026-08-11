@@ -10,6 +10,13 @@ import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.AfterThrowing;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.core.DefaultParameterNameDiscoverer;
+import org.springframework.core.ParameterNameDiscoverer;
+import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.Expression;
+import org.springframework.expression.ExpressionParser;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -27,6 +34,9 @@ import java.lang.reflect.Method;
 public class OperationLogAspect {
 
     private final OperationLogService operationLogService;
+
+    private static final ParameterNameDiscoverer paramDiscoverer = new DefaultParameterNameDiscoverer();
+    private static final ExpressionParser spelParser = new SpelExpressionParser();
 
     @AfterReturning("@annotation(com.xzcpc.common.annotation.OpLog)")
     public void afterReturning(JoinPoint joinPoint) {
@@ -47,7 +57,7 @@ public class OperationLogAspect {
             OperationLog entity = new OperationLog();
             entity.setModule(annotation.module());
             entity.setOperation(annotation.operation());
-            entity.setDescription(annotation.desc());
+            entity.setDescription(buildDescription(annotation.desc(), method, joinPoint.getArgs()));
             entity.setStatus(e == null ? 1 : 0);
             if (e != null) {
                 String errMsg = e.getMessage();
@@ -65,11 +75,61 @@ public class OperationLogAspect {
             }
 
             // 获取当前用户
-            entity.setUsername(getCurrentUsername());
+            fillUserInfo(entity);
 
             operationLogService.save(entity);
         } catch (Exception ex) {
             log.error("保存操作日志失败", ex);
+        }
+    }
+
+    /**
+     * 构建描述：如果 desc 包含 SpEL 表达式（#{...}），则解析并替换变量。
+     * 方法参数可通过 #paramName 引用（需编译时保留参数名，或用 #a0/#a1 按位置引用）。
+     * 纯文本则直接返回。
+     */
+    private String buildDescription(String desc, Method method, Object[] args) {
+        if (desc == null || desc.isEmpty()) return "";
+        if (!desc.contains("#")) return desc; // 不含 SpEL → 直接返回
+
+        try {
+            StandardEvaluationContext ctx = new StandardEvaluationContext();
+            // 按参数名注册
+            String[] names = paramDiscoverer.getParameterNames(method);
+            if (names != null) {
+                for (int i = 0; i < names.length && i < args.length; i++) {
+                    ctx.setVariable(names[i], args[i]);
+                }
+            }
+            // 按位置注册，兼容没有参数名的情况
+            for (int i = 0; i < args.length; i++) {
+                ctx.setVariable("a" + i, args[i]);
+                ctx.setVariable("p" + i, args[i]);
+            }
+
+            // 使用 SpEL 模板解析：先找 #{...} 片段并替换
+            StringBuilder result = new StringBuilder();
+            int idx = 0;
+            while (idx < desc.length()) {
+                int start = desc.indexOf("#{", idx);
+                if (start == -1) { result.append(desc, idx, desc.length()); break; }
+                result.append(desc, idx, start);
+                int end = desc.indexOf("}", start + 2);
+                if (end == -1) { result.append(desc, start, desc.length()); break; }
+                String expr = desc.substring(start + 2, end);
+                try {
+                    Expression exp = spelParser.parseExpression(expr);
+                    Object val = exp.getValue(ctx);
+                    result.append(val != null ? val.toString() : "");
+                } catch (Exception ex) {
+                    result.append("?").append(expr).append("?");
+                }
+                idx = end + 1;
+            }
+            return result.toString();
+        } catch (Exception e) {
+            log.warn("解析操作日志描述失败: {}", desc, e);
+            return desc;
         }
     }
 
@@ -78,10 +138,11 @@ public class OperationLogAspect {
     private volatile Boolean userCtxAvailable;
 
     /**
-     * 获取当前登录用户标识。
-     * 优先级：总部端 AdminContextHolder > 小程序端 UserContextHolder > "anonymous"
+     * 填充 user_id 和 username。
+     * 总部端：userId = 飞书 open_id，username = 飞书姓名
+     * 小程序端：userId = 微信 openid，username = 员工姓名
      */
-    private String getCurrentUsername() {
+    private void fillUserInfo(OperationLog entity) {
         // 1. 总部端飞书管理员
         if (adminCtxAvailable == null) {
             try {
@@ -96,17 +157,18 @@ public class OperationLogAspect {
                 Class<?> adminCtx = Class.forName("com.xzcpc.common.context.AdminContextHolder");
                 Object adminUser = adminCtx.getMethod("get").invoke(null);
                 if (adminUser != null) {
+                    Object openId = adminUser.getClass().getMethod("getOpenId").invoke(adminUser);
                     Object name = adminUser.getClass().getMethod("getName").invoke(adminUser);
-                    if (name != null && !name.toString().isEmpty()) {
-                        return name.toString();
-                    }
+                    entity.setUserId(openId != null ? openId.toString() : "");
+                    entity.setSource("admin");
+                    entity.setUsername(name != null ? name.toString() : "");
+                    return;
                 }
             } catch (Exception ignored) {
-                // reflection failed
             }
         }
 
-        // 2. 小程序端店长
+        // 2. 小程序端
         if (userCtxAvailable == null) {
             try {
                 Class.forName("com.xzcpc.mp.context.UserContextHolder");
@@ -120,20 +182,20 @@ public class OperationLogAspect {
                 Class<?> ctxClass = Class.forName("com.xzcpc.mp.context.UserContextHolder");
                 Object user = ctxClass.getMethod("get").invoke(null);
                 if (user != null) {
-                    Object storeId = user.getClass().getMethod("getStoreId").invoke(user);
-                    if (storeId != null && !storeId.toString().isEmpty()) {
-                        return storeId.toString();
-                    }
                     Object openid = user.getClass().getMethod("getOpenid").invoke(user);
-                    if (openid != null && !openid.toString().isEmpty()) {
-                        return openid.toString();
-                    }
+                    Object empName = user.getClass().getMethod("getEmployeeName").invoke(user);
+                    entity.setUserId(openid != null ? openid.toString() : "");
+                    entity.setSource("mp");
+                    entity.setUsername(empName != null ? empName.toString() : "");
+                    return;
                 }
             } catch (Exception ignored) {
-                // reflection failed
             }
         }
-        return "anonymous";
+
+        entity.setUserId("");
+        entity.setSource("");
+        entity.setUsername("anonymous");
     }
 
     /**

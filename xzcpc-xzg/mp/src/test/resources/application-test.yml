@@ -1,0 +1,21 @@
+# P0 测试配置
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+
+# JWT 测试用密钥
+mp:
+  jwt:
+    secret: test-secret-key-for-p0-unit-tests-2026
+    expire-hours: 168
+
+# 日志
+logging:
+  level:
+    com.xzcpc: DEBUG

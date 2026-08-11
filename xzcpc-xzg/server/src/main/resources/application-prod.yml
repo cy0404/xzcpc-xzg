@@ -1,7 +1,13 @@
 server:
   port: 4026
+  tomcat:
+    max-http-form-post-size: 50MB
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
   datasource:
     url: jdbc:mysql://162.14.122.80:3306/store_inventory?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&connectTimeout=5000&socketTimeout=15000
     username: store_inventory
@@ -28,7 +34,26 @@ feishu:
   app-id: cli_aa90f3d66d7adbb7
   app-secret: ${FEISHU_APP_SECRET}
 
+# ---------- PostgreSQL 外部数据源（企迈采购/订货/消耗） ----------
+pg:
+  datasource:
+    url: jdbc:postgresql://119.45.162.160:5433/tea_chain
+    username: postgres
+    password: ${PG_PASSWORD:xzcp123456}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
+      idle-timeout: 300000
+      max-lifetime: 600000
+
 # ---------- 总部端管理员 JWT ----------
+app:
+  public-url: https://www.xzcpc-9pd.top
+  upload:
+    path: /data/inventory-upload
+
 admin:
   jwt:
     secret: ${ADMIN_JWT_SECRET}

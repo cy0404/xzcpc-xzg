@@ -38,8 +38,8 @@
         <a-col :xs="24" :sm="12" :md="6">
           <div class="filter-label">换算类型</div>
           <a-select v-model:value="filters.conversionType" allow-clear placeholder="全部类型" style="width: 100%">
-            <a-select-option value="maintained">已维护</a-select-option>
-            <a-select-option value="pending">未维护</a-select-option>
+            <a-select-option value="unit">单位换算</a-select-option>
+            <a-select-option value="weight">称重换算</a-select-option>
           </a-select>
         </a-col>
         <a-col :xs="24" :sm="12" :md="6">
@@ -59,6 +59,7 @@
         :data-source="records"
         :loading="loading"
         :pagination="tablePagination"
+        :scroll="{ x: 1100 }"
         row-key="materialId"
         @change="handleTableChange"
       >
@@ -148,20 +149,47 @@
           </a-col>
         </a-row>
 
-        <!-- 单位换算关系 -->
+        <!-- 规则换算（单位换算） -->
         <div class="rule-section">
           <div class="section-head">
-            <h3>单位换算关系</h3>
-            <span class="section-add-btn" @click="addConversion">添加关系</span>
+            <h3>📐 规则换算</h3>
+            <span class="section-add-btn" @click="addConversion('unit')">添加关系</span>
           </div>
           <div class="section-tip">设定其他单位与基础盘点单位的换算比例，例如 1 箱 = 100 根。</div>
-          <div v-for="(item, index) in form.conversions" :key="index" class="conversion-card">
+          <div v-if="form.conversions.length === 0" class="section-empty">暂无规则换算</div>
+          <div v-for="(item, index) in form.conversions" :key="'u'+index" class="conversion-card">
+            <span class="conv-sort">
+              <span class="sort-arrow" :class="{disabled:index===0}" @click="moveItem(form.conversions, index, -1)">▲</span>
+              <span class="sort-arrow" :class="{disabled:index===form.conversions.length-1}" @click="moveItem(form.conversions, index, 1)">▼</span>
+            </span>
             <a-input-number v-model:value="item.fromQuantity" :min="0" class="conv-num" />
             <a-input v-model:value="item.fromUnit" placeholder="单位" class="conv-unit" />
             <span class="conv-eq">=</span>
             <a-input-number v-model:value="item.toQuantity" :min="0" class="conv-num" />
             <span class="conv-unit readonly">{{ form.baseUnit || '--' }}</span>
-            <span class="delete-text" @click="removeConversion(index)">删除</span>
+            <a-button type="link" danger size="small" @click="removeConversion(index)">删除</a-button>
+          </div>
+        </div>
+
+        <!-- 称重换算 -->
+        <div class="rule-section">
+          <div class="section-head">
+            <h3>⚖️ 称重换算</h3>
+            <span class="section-add-btn" @click="addConversion('weight')">添加关系</span>
+          </div>
+          <div class="section-tip">设定重量单位与盘点单位之间的换算关系，例如 1 kg = 10 根。</div>
+          <div v-if="form.weightConversions.length === 0" class="section-empty">暂无称重换算</div>
+          <div v-for="(item, index) in form.weightConversions" :key="'w'+index" class="conversion-card">
+            <span class="conv-sort">
+              <span class="sort-arrow" :class="{disabled:index===0}" @click="moveItem(form.weightConversions, index, -1)">▲</span>
+              <span class="sort-arrow" :class="{disabled:index===form.weightConversions.length-1}" @click="moveItem(form.weightConversions, index, 1)">▼</span>
+            </span>
+            <a-input-number v-model:value="item.weightQuantity" :min="0" class="conv-num" />
+            <a-input v-model:value="item.weightUnit" placeholder="单位(kg)" class="conv-unit" />
+            <span class="conv-eq">=</span>
+            <a-input-number v-model:value="item.countQuantity" :min="0" class="conv-num" />
+            <span class="conv-unit readonly">{{ form.baseUnit || '--' }}</span>
+            <a-button type="link" danger size="small" @click="removeWeightConversion(index)">删除</a-button>
           </div>
         </div>
       </div>
@@ -179,6 +207,7 @@ import {
   saveMaterialRule,
   type MaterialRuleRecord,
   type MaterialUnitConversion,
+  type MaterialWeightConversion,
 } from '../../api/materialRule'
 import { getCategories, getParentCategories } from '../../api/material'
 
@@ -202,6 +231,7 @@ const form = reactive({
   unitPrice: 0,
   units: [] as { unitName: string }[],
   conversions: [] as MaterialUnitConversion[],
+  weightConversions: [] as MaterialWeightConversion[],
 })
 
 /** 可盘点单位：基础单位 + 所有换算关系的 fromUnit */
@@ -215,16 +245,16 @@ const computedUnits = computed(() => {
 })
 
 const columns = [
+  { title: '物料名称', dataIndex: 'materialName', key: 'materialName', width: 150, fixed: 'left' as const },
   { title: '企迈编码', dataIndex: 'qmCode', key: 'qmCode', width: 120 },
   { title: '父级分类', dataIndex: 'parentCategory', key: 'parentCategory', width: 100 },
   { title: '分类', dataIndex: 'category', key: 'category', width: 100 },
-  { title: '物料名称', dataIndex: 'materialName', key: 'materialName', width: 150 },
   { title: '规格', dataIndex: 'spec', key: 'spec', width: 110 },
   { title: '基础单位', dataIndex: 'baseUnit', key: 'baseUnit', width: 100 },
   { title: '换算关系', dataIndex: 'conversions', key: 'conversions' },
   { title: '盘点单价', dataIndex: 'unitPrice', key: 'unitPrice', width: 120, align: 'right' as const },
   { title: '最近更新', dataIndex: 'updatedAt', key: 'updatedAt', width: 110 },
-  { title: '操作', key: 'action', width: 70 },
+  { title: '操作', key: 'action', width: 70, fixed: 'right' as const },
 ]
 
 const categoryOptions = ref<string[]>([])
@@ -331,15 +361,27 @@ function openEdit(record: MaterialRuleRecord) {
   form.stockUnit = record.stockUnit || ''
   form.unitPrice = Number(record.unitPrice || 0)
   form.conversions = (record.conversions || []).map(item => ({ ...item }))
+  form.weightConversions = (record.weightConversions || []).map(item => ({ ...item }))
   editVisible.value = true
 }
 
-function addConversion() {
-  form.conversions.push({ fromQuantity: 1, fromUnit: '', toQuantity: 1, toUnit: form.baseUnit })
+function addConversion(type: 'unit' | 'weight') {
+  if (type === 'unit') {
+    form.conversions.push({ fromQuantity: 1, fromUnit: '', toQuantity: 1, toUnit: form.baseUnit })
+  } else {
+    form.weightConversions.push({ weightQuantity: 1, weightUnit: '', countQuantity: 1, countUnit: form.baseUnit })
+  }
 }
 
-function removeConversion(index: number) {
-  form.conversions.splice(index, 1)
+function removeConversion(index: number) { form.conversions.splice(index, 1) }
+function removeWeightConversion(index: number) { form.weightConversions.splice(index, 1) }
+
+function moveItem(list: any[], index: number, direction: number) {
+  const target = index + direction
+  if (target < 0 || target >= list.length) return
+  const item = list[index]
+  list.splice(index, 1)
+  list.splice(target, 0, item)
 }
 
 async function handleSave() {
@@ -356,7 +398,7 @@ async function handleSave() {
       unitPrice: Number(form.unitPrice || 0),
       units: computedUnits.value.map(u => ({ unitName: u })),
       conversions: form.conversions.map(c => ({ ...c, toUnit: form.baseUnit.trim() })),
-      weightConversions: [],
+      weightConversions: form.weightConversions.map(c => ({ ...c, countUnit: form.baseUnit.trim() })),
     })
     message.success('物料盘点规则已保存')
     editVisible.value = false
@@ -584,6 +626,37 @@ onMounted(() => {
   &:hover {
     color: #ef4444;
   }
+}
+
+.section-empty {
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 12px;
+  text-align: center;
+  background: #fafbf9;
+  border-radius: 8px;
+}
+
+.conv-sort {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.sort-arrow {
+  font-size: 11px;
+  line-height: 1;
+  color: #0D7A3D;
+  cursor: pointer;
+  user-select: none;
+  padding: 0 2px;
+}
+
+.sort-arrow.disabled {
+  color: #d1d5db;
+  cursor: not-allowed;
 }
 
 /* 换算关系 & 称重换算 — 卡片行 */

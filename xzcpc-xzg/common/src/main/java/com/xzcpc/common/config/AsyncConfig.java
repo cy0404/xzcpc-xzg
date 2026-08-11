@@ -29,4 +29,24 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * 飞书异常告警专用线程池。
+     * <p>
+     * 使用 DiscardPolicy：告警发送队列满时直接丢弃，不阻塞业务线程。
+     */
+    @Bean("alertTaskExecutor")
+    public Executor alertTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(50);
+        executor.setKeepAliveSeconds(60);
+        executor.setThreadNamePrefix("alert-async-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        executor.initialize();
+        return executor;
+    }
 }

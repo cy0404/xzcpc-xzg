@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { computed, ref, watch, nextTick } from 'vue'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { fetchZoneMaterials, saveZone, itemSave } from '@/api/zone'
 import { fetchCandidates, addMaterial, sortMaterials } from '@/api/material'
 import { request } from '@/utils/request'
@@ -19,7 +19,7 @@ const saving = ref(false)
 const materials = ref<any[]>([])
 const searchKey = ref('')
 const showPending = ref(true)
-const showDone = ref(false)
+const showDone = ref(true)
 const focusMaterialId = ref('')
 const focusMaterialName = ref('')
 const locateMode = ref(false)
@@ -38,6 +38,10 @@ const editingIdx = ref(-1)
 const editValue = ref('')
 
 const drawerActiveUnit = ref('')
+const drawerWeightUnit = ref('g')  // g / kg 切换
+const parsedVoiceQty = ref<number | null>(null)
+const parsedVoiceUnit = ref('')
+const voiceHintText = ref('')  // 模糊匹配时的提示文字
 const extDrawerActiveUnit = ref('')
 const showFinishConfirm = ref(false)
 const finishConfirmNames = ref('')
@@ -87,7 +91,23 @@ function startVoice(e: any) {
     mgr.onStart = () => { recording.value = true; voiceLoading.value = false }
     mgr.onStop = (res: any) => {
       clearCooldownLock()
-      if (res.result && !voiceCancelled.value) searchKey.value = res.result
+      if (res.result && !voiceCancelled.value) {
+        locateMode.value = false
+        focusMaterialId.value = ''
+        const parsed = parseVoiceInput(res.result)
+        if (parsed) {
+          parsedVoiceQty.value = parsed.qty
+          parsedVoiceUnit.value = parsed.unit
+          // 如果解析出的物料名与当前 searchKey 相同，watch 不会触发 → 手动打版本号强制触发
+          if (searchKey.value === parsed.name) voiceSearchVersion.value++
+          searchKey.value = parsed.name
+        } else {
+          parsedVoiceQty.value = null
+          parsedVoiceUnit.value = ''
+          if (searchKey.value === res.result) voiceSearchVersion.value++
+          searchKey.value = res.result
+        }
+      }
     }
     mgr.onError = (res: any) => {
       clearCooldownLock()
@@ -150,8 +170,9 @@ function stopVoice(e: any) {
   }
 }
 
-onLoad((options: any) => {
-  taskId.value = Number(options.taskId); zoneId.value = Number(options.zoneId)
+onLoad(async (options: any) => {
+  taskId.value = Number(options.taskId)
+  zoneId.value = options.zoneId ? Number(options.zoneId) : 0
   zoneName.value = options.zoneName ? decodeURIComponent(options.zoneName) : ''
   storeName.value = options.storeName ? decodeURIComponent(options.storeName) : ''
   taskName.value = options.taskName ? decodeURIComponent(options.taskName) : ''
@@ -162,9 +183,26 @@ onLoad((options: any) => {
   if (silentInitialLoad.value) loading.value = false
   uni.setNavigationBarTitle({ title: '物料盘点' })
   resetDrawer(); addSearchVisible.value = false; showEditConfirm.value = false; editMode.value = false
+  // 如果没传 zoneId，自动取第一个分区
+  if (!zoneId.value) {
+    try {
+      const detail: any = await request({ url: `/tasks/${taskId.value}`, showLoading: true })
+      const zones = detail?.zones || []
+      if (zones.length === 0) { uni.showToast({ title: '暂无分区', icon: 'none' }); loading.value = false; return }
+      zoneId.value = zones[0].taskZoneId || zones[0].id
+      zoneName.value = zones[0].zoneName || ''
+    } catch { uni.showToast({ title: '加载失败', icon: 'none' }); loading.value = false; return }
+  }
   loadMaterials()
   // 提前初始化语音插件，避免首次按住时 ~2s 的初始化延迟
   getVoiceManager()
+})
+
+onUnload(() => {
+  clearTimeout(longPressTimer)
+  clearTimeout(cooldownSafetyTimer)
+  clearTimeout(addSearchTimer)
+  clearTimeout(extTimer)
 })
 
 async function loadMaterials() {
@@ -228,6 +266,18 @@ const filteredCompleted = computed(() => searchFilter(airportFilter(completed.va
 const displayList = computed(() => editMode.value ? editList.value : materials.value)
 const hasRule = (m: any) => m.inventoryRule?.ruleStatus === 'maintained'
 const isMultiUnit = (m: any) => hasRule(m) && (m.inventoryRule?.units?.length || 0) > 1
+/** 判断物料是否有称重类型换算：优先 weightConversions，回退 conversionSnapshot */
+const hasWeightUnit = (m: any) => {
+  if ((m?.inventoryRule?.weightConversions || []).length > 0) return true
+  try {
+    const snap = m?.conversionSnapshot
+    if (!snap) return false
+    const arr = typeof snap === 'string' ? JSON.parse(snap) : snap
+    return (arr || []).some((c: any) => c.conversionType === 'weight')
+  } catch { return false }
+}
+/** 判断某个单位是否为称重类型 */
+const isWeightUnit = (m: any, u: string) => u === 'g' && hasWeightUnit(m)
 
 function breakdownText(m: any) { console.log("bd", m.materialName, "ui:", m.unitInputs, "multi:", isMultiUnit(m))
   if (!m.inputStatus || m.inputStatus !== 'entered') return ''
@@ -263,9 +313,25 @@ function getStoredUnitInputs(m: any): Record<string, string> {
 function unitToBaseFactor(m: any, u: string) {
   const b = baseUnit(m)
   if (u === b) return 1
+  if (u === 'kg') {
+    const gFactor = unitToBaseFactor(m, 'g')
+    return gFactor ? gFactor * 1000 : 0
+  }
+  // 单位换算（从 inventoryRule.conversions）
   const c = m.inventoryRule?.conversions?.find((x: any) => x.fromUnit === u)
-  if (!c) return 0
-  return Number(c.toQuantity) / Number(c.fromQuantity)
+  if (c) return Number(c.toQuantity) / Number(c.fromQuantity)
+  // 称重换算（优先 weightConversions，回退 conversionSnapshot）
+  const w = m.inventoryRule?.weightConversions?.find((x: any) => x.weightUnit === u)
+  if (w) return Number(w.countQuantity) / Number(w.weightQuantity)
+  try {
+    const snap = m?.conversionSnapshot
+    if (snap) {
+      const arr = typeof snap === 'string' ? JSON.parse(snap) : snap
+      const ws = (arr || []).find((x: any) => x.conversionType === 'weight' && x.fromUnit === u)
+      if (ws) return Number(ws.toQuantity) / Number(ws.fromQuantity)
+    }
+  } catch {}
+  return 0
 }
 
 function fmtFactor(f: number) {
@@ -278,7 +344,7 @@ function conversionHint(m: any, u: string) {
   if (u === b) return ''
   const f = unitToBaseFactor(m, u)
   if (!f) return ''
-  return `1${u}=${fmtFactor(f)}${b}`
+  return `1${u}≈${fmtFactor(f)}${b}`
 }
 
 function extConversionHint(m: any, u: string) {
@@ -316,7 +382,12 @@ function hasGInput(inputs: Record<string, string>) {
 function unitInputToBase(m: any, u: string, n: number) {
   const b = baseUnit(m)
   if (!n) return 0
-  return u === b ? n : n * unitToBaseFactor(m, u)
+  if (u === b) return n
+  if (u === 'kg') {
+    const gFactor = unitToBaseFactor(m, 'g')
+    return gFactor ? n * gFactor * 1000 : n * unitToBaseFactor(m, 'g') * 1000
+  }
+  return n * unitToBaseFactor(m, u)
 }
 
 function sumInputsToBaseWithGRounding(m: any, inputs: Record<string, string>) {
@@ -327,7 +398,7 @@ function sumInputsToBaseWithGRounding(m: any, inputs: Record<string, string>) {
   for (const [u, v] of Object.entries(inputs)) {
     const n = parseFloat(v || '0')
     if (!n) continue
-    if (u === 'g') {
+    if (u === 'g' || u === 'kg') {
       hasG = true
       gPart += unitInputToBase(m, u, n)
     } else {
@@ -378,6 +449,7 @@ function initDrawerInputsForTab() {
 function openDrawer(m: any) {
   drawerIsEdit.value = false
   drawerTab.value = 'add'
+  drawerWeightUnit.value = 'g'
   drawerItem.value = m
   existingUnitInputs.value = {}
   const stored = getStoredUnitInputs(m)
@@ -387,6 +459,8 @@ function openDrawer(m: any) {
   drawerActiveUnit.value = ruleUnits(m)[0] || bUnit || ''
 }
 
+const currAppendRecords = ref<any[]>([])
+
 function openEditDrawer(m: any) {
   drawerIsEdit.value = true
   drawerTab.value = 'add'
@@ -394,6 +468,9 @@ function openEditDrawer(m: any) {
   existingUnitInputs.value = getStoredUnitInputs(m)
   initDrawerInputsForTab()
   drawerActiveUnit.value = ruleUnits(m)[0] || baseUnit(m) || ''
+  try {
+    currAppendRecords.value = m.appendRecords ? JSON.parse(m.appendRecords) : []
+  } catch { currAppendRecords.value = [] }
 }
 
 function switchDrawerTab(tab: 'add' | 'overwrite') {
@@ -409,10 +486,129 @@ function resetDrawer() {
   drawerUnitInputs.value = {}
   existingUnitInputs.value = {}
   drawerActiveUnit.value = ''
+  currAppendRecords.value = []
+}
+
+function voiceUnitPattern() {
+  const units = new Set<string>()
+  for (const m of materials.value) {
+    const rule = m?.inventoryRule
+    if (rule?.units) for (const u of rule.units) { if (u.unitName) units.add(u.unitName) }
+    if (rule?.baseUnit) units.add(rule.baseUnit)
+  }
+  if (units.size === 0) units.add('个')
+  return [...units].sort((a, b) => b.length - a.length).join('|')
+}
+
+/** 中文数字 → 阿拉伯数字（语音引擎可能将 "1" 识别为 "一"） */
+function cnToArabic(s: string): string {
+  const digits: Record<string, number> = { '零':0,'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9 }
+  const units: Record<string, number> = { '十':10,'百':100,'千':1000,'万':10000 }
+  let result = 0, section = 0, num = 0
+  for (const ch of s) {
+    if (digits[ch] !== undefined) { num = digits[ch] }
+    else if (units[ch] !== undefined) {
+      if (num === 0) num = 1
+      const u = units[ch]
+      if (u >= 10000) { section = (section + num) * u; num = 0 }
+      else { section += num * u; num = 0 }
+    } else { return s } // 非中文数字，原样返回
+  }
+  return String(result + section + num)
+}
+
+function parseVoiceInput(text: string): { name: string; qty: number; unit: string } | null {
+  let t = text.trim()
+  // 中文数字 → 阿拉伯数字
+  t = t.replace(/[零一二两三四五六七八九十百千万]+/g, m => cnToArabic(m))
+  // 优先用动态单位列表匹配
+  const dynUnits = voiceUnitPattern()
+  let re = new RegExp(`^(.+?)\\s*(\\d+\\.?\\d*)\\s*(${dynUnits})$`)
+  let m = t.match(re)
+  if (!m) {
+    m = t.match(/^(.+?)\s*(\d+\.?\d*)\s*(\S+)$/)
+  }
+  if (!m) return null
+  return { name: m[1].trim(), qty: parseFloat(m[2]), unit: m[3] }
+}
+
+/** 尝试用语音解析的数量回填当前已打开的抽屉，单位匹配不上则忽略 */
+function tryVoicePreFill() {
+  if (parsedVoiceQty.value === null) return
+  const u = parsedVoiceUnit.value
+  if (drawerItem.value) {
+    const units = ruleUnits(drawerItem.value)
+    if (!units.includes(u)) { parsedVoiceQty.value = null; parsedVoiceUnit.value = ''; return }
+    drawerUnitInputs.value = { [u]: String(parsedVoiceQty.value) }
+    drawerActiveUnit.value = u
+    parsedVoiceQty.value = null; parsedVoiceUnit.value = ''
+  } else if (extDrawerItem.value) {
+    const ex = extDrawerItem.value as any
+    const extUnits = ex.units?.map((x: any) => x.unitName) || []
+    if (!extUnits.includes(u)) { parsedVoiceQty.value = null; parsedVoiceUnit.value = ''; return }
+    extDrawerUnitInputs.value = { [u]: String(parsedVoiceQty.value) }
+    extDrawerActiveUnit.value = u
+    parsedVoiceQty.value = null; parsedVoiceUnit.value = ''
+  } else {
+    parsedVoiceQty.value = null; parsedVoiceUnit.value = ''
+  }
+}
+
+/** 箭头点击时快照语音值，避免 setTimeout 内被清空 */
+function voicePreFillSnapshot() {
+  const q = parsedVoiceQty.value, u = parsedVoiceUnit.value
+  setTimeout(() => {
+    if (q === null || !drawerItem.value) return
+    const units = ruleUnits(drawerItem.value)
+    if (!units.includes(u)) return
+    drawerUnitInputs.value = { [u]: String(q) }
+    drawerActiveUnit.value = u
+    parsedVoiceQty.value = null; parsedVoiceUnit.value = ''
+  }, 100)
+}
+
+function clearSearch() {
+  searchKey.value = ''
+  locateMode.value = false
+  focusMaterialId.value = ''
+  focusMaterialName.value = ''
+  extResults.value = []
+  parsedVoiceQty.value = null
+  parsedVoiceUnit.value = ''
+  voiceHintText.value = ''
+}
+
+/** 点击待盘物料：多单位打开抽屉，单单位有语音值则快速保存 */
+function handlePendingClick(m: any) {
+  voiceHintText.value = ''
+  if (isMultiUnit(m)) {
+    openDrawer(m)
+    setTimeout(() => tryVoicePreFill(), 100)
+  } else if (parsedVoiceQty.value !== null) {
+    quickSave(m, String(parsedVoiceQty.value))
+    parsedVoiceQty.value = null; parsedVoiceUnit.value = ''
+  }
+}
+
+function handleCompletedClick(m: any) {
+  voiceHintText.value = ''
+  openEditDrawer(m)
+  setTimeout(() => tryVoicePreFill(), 100)
 }
 
 function setDrawerActiveUnit(u: string) {
   drawerActiveUnit.value = u
+}
+function toggleWeightUnit() {
+  drawerWeightUnit.value = drawerWeightUnit.value === 'g' ? 'kg' : 'g'
+  drawerActiveUnit.value = drawerWeightUnit.value
+}
+function weightConversionHint(m: any, u: string) {
+  const factor = u === 'kg' ? unitToBaseFactor(m, 'g') * 1000 : unitToBaseFactor(m, 'g')
+  if (!factor) return ''
+  const b = baseUnit(m)
+  const rel = b === 'g' ? '=' : '≈'
+  return `1${u}${rel}${fmtFactor(factor)}${b}`
 }
 
 function onDrawerKeyboardInput(val: string) {
@@ -430,19 +626,6 @@ function onExtKeyboardInput(val: string) {
 }
 
 function closeDrawer() {
-  const m = drawerItem.value
-  if (!m || saving.value) { resetDrawer(); return }
-  let hasInput = false
-  if (drawerIsEdit.value) {
-    if (drawerTab.value === 'add') {
-      hasInput = Object.values(drawerUnitInputs.value).some(v => parseFloat(v || '0') > 0)
-    } else {
-      hasInput = Object.values(drawerUnitInputs.value).some(v => v !== '' && v != null)
-    }
-  } else if (isMultiUnit(m)) {
-    hasInput = Object.values(drawerUnitInputs.value).some(v => parseFloat(v || '0') > 0)
-  }
-  if (hasInput) { confirmDrawer(); return }
   resetDrawer()
 }
 
@@ -465,18 +648,28 @@ const drawerEntryTotal = computed(() => {
   return fmtQty(sumInputsToBaseWithGRounding(m, drawerUnitInputs.value))
 })
 
+/** 从 appendRecords 求和的已有总量 */
+const existingTotal = computed(() => {
+  if (!drawerIsEdit.value) return 0
+  return currAppendRecords.value.reduce((s: number, r: any) => s + (parseFloat(r.total) || 0), 0)
+})
+
 const drawerFinalQty = computed(() => {
   const m = drawerItem.value
   if (!m) return '0'
   if (drawerIsEdit.value && drawerTab.value === 'add') {
-    const existing = parseFloat(String(m.baseQty ?? m.inputQty ?? 0)) || 0
     const entry = sumInputsToBaseWithGRounding(m, drawerUnitInputs.value)
-    return fmtQty(existing + entry)
+    return fmtQty(existingTotal.value + entry)
   }
   return drawerEntryTotal.value
 })
 
 const drawerTotal = computed(() => drawerEntryTotal.value)
+
+const recordsScrollTop = ref(0)
+watch(currAppendRecords, () => {
+  recordsScrollTop.value += 9999
+})
 
 async function confirmDrawer() {
   if (saving.value) return
@@ -488,29 +681,47 @@ async function confirmDrawer() {
   if (drawerIsEdit.value) {
     if (drawerTab.value === 'add') {
       const entry = sumInputsToBaseWithGRounding(m, drawerUnitInputs.value)
-      if (entry <= 0) {
-        uni.showToast({ title: drawerQtyZeroMessage(m, drawerUnitInputs.value, true), icon: 'none' })
-        return
-      }
+      // 记录独立，但 material.unitInputs 存累加结果供回填
       savedUnitInputs = mergeUnitInputs(existingUnitInputs.value, drawerUnitInputs.value)
-      const existing = parseFloat(String(m.baseQty ?? m.inputQty ?? 0)) || 0
-      finalQty = existing + entry
+      finalQty = existingTotal.value + entry
     } else {
       savedUnitInputs = { ...drawerUnitInputs.value }
       finalQty = sumInputsToBaseWithGRounding(m, savedUnitInputs)
       if (finalQty < 0) { uni.showToast({ title: '数量不能为负数', icon: 'none' }); return }
-      if (finalQty <= 0) {
-        uni.showToast({ title: drawerQtyZeroMessage(m, drawerUnitInputs.value), icon: 'none' })
-        return
-      }
     }
   } else {
     finalQty = sumInputsToBaseWithGRounding(m, drawerUnitInputs.value)
-    if (finalQty <= 0) {
-      uni.showToast({ title: drawerQtyZeroMessage(m, drawerUnitInputs.value), icon: 'none' })
-      return
-    }
+    if (finalQty < 0) { uni.showToast({ title: '数量不能为负数', icon: 'none' }); return }
     savedUnitInputs = { ...drawerUnitInputs.value }
+  }
+
+  // 数量异常校验
+  const checkQty = drawerIsEdit.value ? finalQty : finalQty
+  if (checkQty > 100000) {
+    const res = await new Promise<boolean>(resolve => {
+      uni.showModal({ title: '温馨提示', content: '录入数量较大，请确认是否正确', confirmText: '确认录入', cancelText: '返回修改', success: (r: any) => resolve(r.confirm) })
+    })
+    if (!res) return
+  }
+
+  // 累加记录：只存本次新录入（用 drawerUnitInputs，不用 merged）
+  const parts: string[] = []
+  for (const [u, v] of Object.entries(drawerUnitInputs.value)) {
+    const n = parseFloat(v || '0'); if (n > 0) parts.push(`${n}${u}`)
+  }
+  const recordLine = parts.length ? parts.join(' + ') : ''
+  const entryQty = sumInputsToBaseWithGRounding(m, drawerUnitInputs.value)
+  const recordEntry = {
+    input: recordLine,
+    total: String(entryQty),
+    unit: b,
+    time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+  }
+  let appendRecords = [...currAppendRecords.value]
+  if (drawerIsEdit.value && drawerTab.value === 'add') {
+    appendRecords.push(recordEntry)
+  } else {
+    appendRecords = [recordEntry]
   }
 
   saving.value = true
@@ -522,16 +733,23 @@ async function confirmDrawer() {
       originalQty: finalQty,
       originalUnit: b,
       unitInputs: JSON.stringify(savedUnitInputs),
+      appendRecords: JSON.stringify(appendRecords),
     })
     m.inputQty = finalQty
     m.inputStatus = 'entered'
+    m.appendRecords = JSON.stringify(appendRecords)
     uni.setStorageSync(`ui_${taskId.value}_${zoneId.value}_${m.materialId}`, { ...savedUnitInputs })
+    searchKey.value = ''
   } catch { /* error toast from api */ }
   finally { saving.value = false; resetDrawer() }
 }
 
 async function quickSave(m: any, val: string) {
   const q=parseFloat(val); if(isNaN(q)||q<0)return
+  if (q > 100000) {
+    const res = await new Promise<boolean>(resolve => { uni.showModal({ title:'温馨提示', content:'录入数量较大，请确认是否正确', confirmText:'确认录入', cancelText:'返回修改', success:(r:any)=>resolve(r.confirm) }) })
+    if (!res) return
+  }
   try{await itemSave(taskId.value,zoneId.value,{materialId:m.materialId,qty:q,inputMode:'unit',originalQty:q,originalUnit:m.unit||''}); m.inputQty=q; m.inputQtyRaw=val; m.inputStatus='entered'}catch{}
 }
 
@@ -598,6 +816,10 @@ function confirmEdit() {
   listKey.value++
 }
 
+function goSummary() {
+  if (saving.value) { uni.showToast({ title: '保存中，请稍后', icon: 'none' }); return }
+  uni.navigateTo({ url: `/pages/task/summary/index?taskId=${taskId.value}` })
+}
 function goBack() { uni.navigateBack() }
 function goScan() {
   uni.navigateTo({ url: `/pages/inventory/scan/index?taskId=${taskId.value}&zoneId=${zoneId.value}&zoneName=${encodeURIComponent(zoneName.value)}` })
@@ -609,7 +831,8 @@ function onAddSearchInput() { if(addSearchTimer)clearTimeout(addSearchTimer); ad
 async function doAddSearch() { addSearchLoading.value=true; try{addSearchResults.value=airportFilter(((await fetchCandidates(taskId.value,zoneId.value,addSearchKey.value))as any[])||[])} finally{addSearchLoading.value=false} }
 async function handleAddSearch(item:any) { if(item.inCurrentZone||addSearchAddings.value.has(item.materialId))return; addSearchAddings.value.add(item.materialId); addSearchAddings.value=new Set(addSearchAddings.value); try{await addMaterial(taskId.value,zoneId.value,item.materialId); uni.showToast({title:'添加成功',icon:'success'}); item.inCurrentZone=true; loadMaterials()} finally{addSearchAddings.value.delete(item.materialId);addSearchAddings.value=new Set(addSearchAddings.value)} }
 
-const extResults = ref<any[]>([]); const extLoading = ref(false); let extTimer:any=null; const extAddings = ref(new Set<string>())
+const voiceSearchVersion = ref(0)
+const extResults = ref<any[]>([]); const extLoading = ref(false); let extTimer:any=null; const extAddings = ref(new Set<string>()); let extSkipWatch = false
 const extDrawerItem = ref<any>(null)
 const extDrawerUnitInputs = ref<Record<string,string>>({})
 const extDrawerTotal = computed(() => {
@@ -628,7 +851,7 @@ const allMatchCount = computed(() => {
   const kw = searchKey.value.trim().toLowerCase()
   return materials.value.filter(m => (m.materialName||'').toLowerCase().includes(kw) || (m.spec||'').toLowerCase().includes(kw)).length
 })
-watch([searchKey, filteredPending, filteredCompleted], () => {
+watch([searchKey, voiceSearchVersion, filteredPending, filteredCompleted], () => {
   if (locateMode.value && searchKey.value.trim() !== (focusMaterialName.value || '').trim()) {
     locateMode.value = false
     focusMaterialId.value = ''
@@ -640,15 +863,87 @@ watch([searchKey, filteredPending, filteredCompleted], () => {
     return
   }
   const kw = searchKey.value.trim()
-  if (!kw) { showPending.value = true; showDone.value = false; extResults.value = []; extLoading.value = false; return }
+  if (extSkipWatch) { extSkipWatch = false; return }
+  if (!kw) { extResults.value = []; extLoading.value = false; parsedVoiceQty.value = null; parsedVoiceUnit.value = ''; showPending.value = true; showDone.value = true; return }
   showPending.value = filteredPending.value.length > 0
   showDone.value = filteredCompleted.value.length > 0
+  // 精准命中唯一物料 → 自动打开抽屉
+  const matchOne = (list: any[], isEdit: boolean) => {
+    if (list.length !== 1 || !kw) return false
+    const m = list[0]
+    const qtyVal = parsedVoiceQty.value
+    const unitVal = parsedVoiceUnit.value
+    showPending.value = true; showDone.value = true
+    // 先开抽屉再清 searchKey，避免 searchKey='' 触发的 watch 重跑在抽屉打开前干扰状态
+    if (isMultiUnit(m)) {
+      if (isEdit) openEditDrawer(m); else openDrawer(m)
+      if (qtyVal !== null) {
+        const avail = ruleUnits(m)
+        if (avail.includes(unitVal)) {
+          drawerUnitInputs.value[unitVal] = String(qtyVal)
+          drawerActiveUnit.value = unitVal
+        }
+      }
+    } else if (qtyVal !== null && !isEdit) {
+      quickSave(m, String(qtyVal))
+    } else if (qtyVal !== null && isEdit) {
+      // 语音搜索命中已盘单单位物料 → 打开编辑抽屉累加模式并预填数量
+      openEditDrawer(m)
+      const u = m.unit || ''
+      drawerUnitInputs.value = { [u]: String(qtyVal) }
+      drawerActiveUnit.value = u
+    }
+    searchKey.value = ''
+    parsedVoiceQty.value = null; parsedVoiceUnit.value = ''
+    voiceHintText.value = ''
+    return true
+  }
+  // 总数唯一才自动弹窗，多个匹配展示列表+黄色提示
+  const totalMatch = filteredPending.value.length + filteredCompleted.value.length
+  if (totalMatch === 1) {
+    if (matchOne(filteredPending.value, false)) return
+    if (matchOne(filteredCompleted.value, true)) return
+  }
+  // 模糊匹配且有语音解析值 → 显示提示
+  if (kw && parsedVoiceQty.value !== null && totalMatch > 1) {
+    voiceHintText.value = `${kw}${parsedVoiceQty.value}${parsedVoiceUnit.value}，请点击下方物料，数量自动回填`
+  } else {
+    voiceHintText.value = ''
+  }
   if (extTimer) clearTimeout(extTimer)
   extLoading.value = true
   extTimer = setTimeout(async () => {
     try {
       const list = (await fetchCandidates(taskId.value, zoneId.value, kw)) as any[]
-      extResults.value = airportFilter(Array.isArray(list) ? list : [])
+      extResults.value = airportFilter(Array.isArray(list) ? list : []).filter((x: any) => !x.inCurrentZone)
+      // 精准命中单个物料 → 直接打开录入抽屉
+      // 精准命中单个物料 → 加材质到区域后打开主抽屉
+      if (extResults.value.length === 1 && zoneId.value > 0) {
+        const item = extResults.value[0]
+        extSkipWatch = true
+        searchKey.value = ''
+        extResults.value = []
+        extLoading.value = false
+        try {
+          await addMaterial(taskId.value, zoneId.value, item.materialId)
+          await loadMaterials()
+          // 等 loadMaterials 更新全部 materials 后，查找刚加入的物料并打开抽屉
+          const m = materials.value.find((x: any) => x.materialId === item.materialId)
+          if (m) {
+            if (isMultiUnit(m)) {
+              // 强制设为待盘 tab 以便看到刚加的物料
+              showPending.value = true
+              showDone.value = true
+              openDrawer(m)
+            } else {
+              showPending.value = true
+              showDone.value = false
+              focusMaterialId.value = m.materialId
+            }
+          }
+        } catch {}
+        return
+      }
     } catch { extResults.value = [] }
     finally { extLoading.value = false }
   }, 500)
@@ -672,6 +967,7 @@ async function handleExtAdd(item:any) {
     const first = units[0]?.unitName || extDrawerItem.value.baseUnit || ''
     if (first) extDrawerUnitInputs.value[first] = ''
     extDrawerActiveUnit.value = first
+    setTimeout(() => tryVoicePreFill(), 100)
   } catch { /* ignore */ }
   extAddings.value.delete(item.materialId)
 }
@@ -706,85 +1002,73 @@ async function confirmExtDrawer() {
   <view class="page">
     <Skeleton v-if="loading" :rows="5" />
     <template v-else>
-      <view class="progress-card">
-        <view class="pc-top">
-          <view class="pc-left">
-            <text class="pc-zone">{{ zoneName }}</text>
-            <text class="pc-hint">{{ pendingCount > 0 ? `还有 ${pendingCount} 项物料未填写，建议今天收尾。` : '当前分区待盘物料已处理完成。' }}</text>
-          </view>
-          <text class="pc-badge">{{ doneCount }} / {{ totalCount }} 已录入</text>
-        </view>
-        <view class="pc-bar" v-if="pendingCount > 0"><view class="pc-fill" :style="{width:progressPercent+'%'}"></view></view>
-        <view class="pc-stats">
-          <view class="pcs"><text class="pcsl">待盘</text><text class="pcsv">{{ pendingCount }} 项</text></view>
-          <view class="pcs"><text class="pcsl">已盘</text><text class="pcsv">{{ doneCount }} 项</text></view>
+      <!-- 搜索栏 -->
+      <view class="search-bar" v-if="!editMode">
+        <text class="sb-icon">🔍</text>
+        <input class="sb-input" type="text" v-model="searchKey" placeholder="搜索当前任务物料" />
+        <text v-if="searchKey" class="sb-clear" @click.stop="clearSearch">✕</text>
+      </view>
+
+      <!-- 提示条 -->
+      <view class="info-banner" v-if="!editMode">
+        <text class="ib-icon">ℹ️</text>
+        <view class="ib-body">
+          <text class="ib-title">盘点提示</text>
+          <text class="ib-text">没有搜索到的物料不需要盘点。</text>
+          <text class="ib-text">门店没有的物料不需要填写。</text>
         </view>
       </view>
 
-      <view class="search-row" v-if="!editMode">
-        <view class="search-box">
-          <input class="si-input" type="text" v-model="searchKey" placeholder="🔍 搜索物料" />
-          <text v-if="searchKey" class="si-clear" @click.stop="searchKey=''">✕ 清除</text>
-        </view>
-        <!-- <view class="scan-btn" @click="goScan">📷 扫码</view> -->
+      <!-- 筛选标签 -->
+      <view class="filter-row" v-if="!editMode">
+        <text class="filter-btn" :class="{active:showPending&&showDone}" @click="showPending=true;showDone=true">全部 {{ totalCount }}</text>
+        <text class="filter-btn" :class="{active:showPending&&!showDone}" @click="showPending=true;showDone=false">待盘 {{ pendingCount }}</text>
+        <text class="filter-btn" :class="{active:!showPending&&showDone}" @click="showPending=false;showDone=true">已盘 {{ doneCount }}</text>
       </view>
-      <view class="search-row" v-else>
+      <view v-if="voiceHintText" class="voice-hint">
+        <text>{{ voiceHintText }}</text>
+      </view>
+
+      <view class="search-row" v-if="editMode">
         <text class="edit-tip">点击序号或箭头排序</text>
       </view>
 
-      <!-- ======== 待盘物料区 ======== -->
+      <!-- ======== 物料列表（统一展示） ======== -->
       <template v-if="!editMode">
-        <view class="section-head">
-          <view class="sh-left" @click="showPending=!showPending">
-            <text class="sh-arrow" :class="{folded:!showPending}">▼</text>
-            <text class="sh-title">待盘物料（{{ pendingCount }}）</text>
-            <view class="sh-edit" @click.stop="enterEdit">✎ 编辑</view>
-          </view>
+        <view class="material-list">
+          <template v-if="showPending">
+            <view v-for="m in filteredPending" :key="m.materialId" class="m-row" @click="handlePendingClick(m)">
+              <view class="mr-icon" :class="{green:isMultiUnit(m), gray:!isMultiUnit(m)}">
+                <text>{{ isMultiUnit(m)?'📦':'📝' }}</text>
+              </view>
+              <view class="mr-info">
+                <text class="mr-name">{{ materialDisplayName(m) }}</text>
+                <text class="mr-desc">{{ m.spec || '--' }}</text>
+              </view>
+              <view v-if="!isMultiUnit(m)" class="mr-input-wrap" @click.stop>
+                <input class="mr-input" type="digit" placeholder="0" :value="m.inputQtyRaw||''" @blur="(e:any)=>quickSave(m,e.detail.value)" />
+                <text class="mr-unit">{{ m.inventoryUnit||m.inventory_unit||m.unit||'' }}</text>
+              </view>
+              <view v-else class="mr-arrow-wrap" @click.stop="openDrawer(m); voicePreFillSnapshot()">
+                <text class="mr-arrow-label">{{ m.inputQty ? m.inputQty+' '+(m.unit||baseUnit(m)) : '未录入' }}</text>
+                <text class="mr-arrow">›</text>
+              </view>
+            </view>
+          </template>
+          <template v-if="showDone">
+            <view v-for="m in filteredCompleted" :key="'c-'+m.materialId" class="m-row done" @click="handleCompletedClick(m)">
+              <view class="mr-icon check">✓</view>
+              <view class="mr-info">
+                <text class="mr-name done-name">{{ materialDisplayName(m) }}</text>
+                <text class="mr-desc done-desc">{{ breakdownText(m) }}</text>
+              </view>
+              <view class="mr-done">
+                <text class="mr-val">{{ m.inputQty||'--' }} {{ m.unit || baseUnit(m) }}</text>
+              </view>
+            </view>
+          </template>
         </view>
-        <view v-if="showPending && filteredPending.length" class="material-list">
-          <view v-for="m in filteredPending" :key="m.materialId" class="m-row" @click="isMultiUnit(m) ? openDrawer(m) : null">
-            <view class="mr-icon" :class="{green:isMultiUnit(m), gray:!isMultiUnit(m)}">
-              <text>{{ isMultiUnit(m)?'📦':'📝' }}</text>
-            </view>
-            <view class="mr-info">
-              <text class="mr-name">{{ materialDisplayName(m) }}</text>
-              <text class="mr-desc">{{ m.spec || '--' }}</text>
-            </view>
-            <view v-if="!isMultiUnit(m)" class="mr-input-wrap" @click.stop>
-              <input class="mr-input" type="digit" placeholder="0" :value="m.inputQtyRaw||''" @blur="(e:any)=>quickSave(m,e.detail.value)" />
-              <text class="mr-unit">{{ m.inventoryUnit||m.inventory_unit||m.unit||'' }}</text>
-            </view>
-            <view v-else class="mr-arrow-wrap" @click.stop="openDrawer(m)">
-              <text class="mr-arrow-label">{{ m.inputQty ? m.inputQty+' '+(m.unit||baseUnit(m)) : '未录入' }}</text>
-              <text class="mr-arrow">›</text>
-            </view>
-          </view>
-        </view>
-        <EmptyState v-else-if="showPending" text="暂无待盘物料" />
-      </template>
-
-      <!-- ======== 已盘物料区 ======== -->
-      <template v-if="!editMode">
-        <view class="section-head done-head" @click="showDone=!showDone">
-          <view class="sh-left">
-            <text class="sh-arrow" :class="{folded:!showDone}">▼</text>
-            <text class="sh-title">已盘物料（{{ doneCount }}）</text>
-          </view>
-        </view>
-        <view v-if="showDone && filteredCompleted.length" class="material-list done-list">
-          <view v-for="m in filteredCompleted" :key="m.materialId" class="m-row done">
-            <view class="mr-icon check">✓</view>
-            <view class="mr-info">
-              <text class="mr-name done-name">{{ materialDisplayName(m) }}</text>
-              <text class="mr-desc done-desc">{{ breakdownText(m) }}</text>
-            </view>
-            <view class="mr-done">
-              <text class="mr-val">{{ m.inputQty||'--' }} {{ m.unit || baseUnit(m) }}</text>
-              <text class="mr-edit" @click.stop="openEditDrawer(m)">修改</text>
-            </view>
-          </view>
-        </view>
-        <EmptyState v-else-if="showDone" text="暂无已盘物料" />
+        <EmptyState v-if="(!showPending||!filteredPending.length) && (!showDone||!filteredCompleted.length)" text="暂无物料" />
       </template>
 
       <!-- 编辑模式列表 -->
@@ -818,8 +1102,7 @@ async function confirmExtDrawer() {
       <!-- 搜索物料库 -->
       <view v-if="!editMode && extLoading && !locateMode" class="ext-hint">搜索物料库中...</view>
       <template v-if="!editMode && !locateMode && !extLoading && searchKey">
-        <view v-if="extResults.length === 0" class="ext-hint">该物料不存在</view>
-        <template v-else>
+        <template v-if="extResults.length > 0">
           <view class="ext-not-found">未在本区域的物料</view>
           <view class="ext-list">
             <view v-for="m in extResults" :key="m.materialId" class="ext-row" :class="{added:m.inCurrentZone}">
@@ -836,7 +1119,7 @@ async function confirmExtDrawer() {
     </template>
 
     <view class="bottom-bar" v-if="!editMode">
-      <view class="bb-finish" @click="handleSave">{{ saving?'保存中...':'结束分区盘点' }}</view>
+      <view class="bb-finish" @click="goSummary">结束盘点</view>
       <view class="bb-voice" :class="{ recording }" @touchstart="startVoice" @touchmove="onVoiceMove" @touchend="stopVoice">
         <view class="bb-mic">
           <view class="bb-mic-body"></view>
@@ -851,7 +1134,7 @@ async function confirmExtDrawer() {
       <view class="bb-confirm" @click="onSaveEdit">{{ saving?'保存中...':'保存' }}</view>
     </view>
 
-    <view v-if="drawerItem" class="mask" @click="closeDrawer">
+    <view v-if="drawerItem" class="mask" @click="closeDrawer" @touchmove.stop.prevent>
       <view class="drawer" @click.stop>
         <view class="dh"></view>
         <view class="drawer-head">
@@ -871,22 +1154,45 @@ async function confirmExtDrawer() {
               v-for="u in ruleUnits(drawerItem)"
               :key="u"
               class="df-item df-card"
-              :class="{ active: drawerActiveUnit === u }"
+              :class="{ active: drawerActiveUnit === u, 'df-card-weight': isWeightUnit(drawerItem, u) }"
               @click="setDrawerActiveUnit(u)"
             >
-              <view class="dfc-top">
-                <text class="dfc-unit">{{ u }}</text>
-                <text v-if="conversionHint(drawerItem, u)" class="dfc-hint">{{ conversionHint(drawerItem, u) }}</text>
+              <view class="dfc-top" :class="{ 'dfc-top-w': isWeightUnit(drawerItem, u) }">
+                <view class="dfc-left">
+                  <view v-if="isWeightUnit(drawerItem, u)" class="dfc-w-row">
+                    <text class="dfc-label-w">称重</text>
+                    <text v-if="conversionHint(drawerItem, u)" class="dfc-hint dfc-hint-w">{{ conversionHint(drawerItem, u) }}</text>
+                  </view>
+                  <view class="dfc-unit-row" :class="{ 'dfc-unit-row-w': isWeightUnit(drawerItem, u) }">
+                    <text class="dfc-unit" :class="{ 'dfc-unit-w': isWeightUnit(drawerItem, u) }">{{ u }}</text>
+                    <text v-if="!isWeightUnit(drawerItem, u) && conversionHint(drawerItem, u)" class="dfc-hint">{{ conversionHint(drawerItem, u) }}</text>
+                    <text v-if="!isWeightUnit(drawerItem, u)" class="dfc-val" :class="{ empty: !drawerUnitInputs[u] }">{{ drawerUnitInputs[u] || '0' }}</text>
+                  </view>
+                  <text v-if="isWeightUnit(drawerItem, u)" class="dfc-val dfc-val-w" :class="{ empty: !drawerUnitInputs[u] }">{{ drawerUnitInputs[u] || '0' }}</text>
+                </view>
               </view>
-              <text class="dfc-val" :class="{ empty: !drawerUnitInputs[u] }">{{ drawerUnitInputs[u] || '0' }}</text>
             </view>
           </view>
           <view v-if="drawerIsEdit" class="drawer-summary">
             <view class="ds-row">
-              <text class="ds-label">{{ drawerTab === 'add' ? '本次录入' : '重盘后' }}</text>
-              <text class="ds-val">{{ drawerTab === 'add' ? drawerEntryTotal : drawerFinalQty }} {{ baseUnit(drawerItem) }}</text>
+              <template v-if="drawerTab === 'add'">
+                <text class="ds-label">{{ drawerEntryTotal > 0 ? '已盘 + 本次录入' : '已盘' }}</text>
+                <text class="ds-val" v-if="drawerEntryTotal > 0">{{ existingTotal }} + {{ drawerEntryTotal }} = {{ drawerFinalQty }} {{ baseUnit(drawerItem) }}</text>
+                <text class="ds-val" v-else>{{ existingTotal }} {{ baseUnit(drawerItem) }}</text>
+              </template>
+              <template v-else>
+                <text class="ds-label">总数</text>
+                <text class="ds-val">{{ drawerEntryTotal }} {{ baseUnit(drawerItem) }}</text>
+              </template>
             </view>
-            <text v-if="drawerTab === 'add'" class="ds-formula">已盘 {{ drawerExistingQty }} + 本次 {{ drawerEntryTotal }} = {{ drawerFinalQty }}</text>
+            <view v-if="drawerTab === 'add' && currAppendRecords.length > 0" class="ds-records">
+              <text class="dsr-label">累加记录：</text>
+              <scroll-view class="dsr-scroll" scroll-y :scroll-top="recordsScrollTop" :scroll-with-animation="true">
+                <view v-for="(rec, i) in currAppendRecords" :key="'r'+i" class="dsr-item">
+                  <text>{{ rec.input }} = {{ rec.total }} {{ rec.unit }}</text>
+                </view>
+              </scroll-view>
+            </view>
           </view>
           <view v-else class="drawer-summary">
             <view class="ds-row">
@@ -905,7 +1211,7 @@ async function confirmExtDrawer() {
       </view>
     </view>
 
-    <view v-if="extDrawerItem" class="mask" @click="closeExtDrawer">
+    <view v-if="extDrawerItem" class="mask" @click="closeExtDrawer" @touchmove.stop.prevent>
       <view class="drawer" @click.stop>
         <view class="dh"></view>
         <view class="drawer-head">
@@ -1018,39 +1324,41 @@ async function confirmExtDrawer() {
 </template>
 
 <style lang="scss" scoped>
-$bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$d:#E05A47;$ps2:#247847;
+$bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$d:#E05A47;$ps2:#247847;$so:#FFF8EE;$w:#E58A2D;
 .page{min-height:100vh;background:$bg;padding:24rpx 32rpx 200rpx}
-.progress-card{background:$s;border-radius:20rpx;padding:28rpx;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04);margin-bottom:24rpx}
-.pc-top{display:flex;justify-content:space-between;gap:16rpx;align-items:flex-start}
-.pc-zone{display:block;font-size:34rpx;font-weight:700;color:$t1}
-.pc-hint{display:block;margin-top:6rpx;font-size:24rpx;color:$t2}
-.pc-badge{padding:10rpx 20rpx;border-radius:999rpx;background:$ps;color:$p;font-size:22rpx;font-weight:600;white-space:nowrap}
-.pc-bar{height:14rpx;border-radius:999rpx;background:#FAFBF9;margin-top:20rpx;overflow:hidden}
-.pc-fill{height:100%;border-radius:999rpx;background:$p}
-.pc-stats{display:grid;grid-template-columns:repeat(2,1fr);margin-top:20rpx;padding:16rpx;background:#FAFBF9;border-radius:12rpx;text-align:center}
-.pcsl{font-size:22rpx;color:$t3}.pcsv{display:block;margin-top:4rpx;font-size:36rpx;font-weight:800;color:$t1}
+
+// 搜索栏
+.search-bar{display:flex;align-items:center;gap:16rpx;height:88rpx;padding:0 28rpx;border:2rpx solid #D6EBDD;border-radius:20rpx;background:#F7FCF8;box-shadow:0 4rpx 14rpx rgba(31,36,33,.06);margin-bottom:24rpx}
+.sb-icon{font-size:36rpx;flex-shrink:0}
+.sb-input{flex:1;height:100%;font-size:26rpx;color:$t1;background:transparent}
+.sb-clear{font-size:22rpx;color:$t2;padding:8rpx 16rpx;border-radius:999rpx;background:#EEF1EF;flex-shrink:0}
+
+// 提示条
+.info-banner{display:flex;gap:20rpx;padding:24rpx;background:$so;border:2rpx solid $b;border-radius:16rpx;margin-bottom:24rpx;box-shadow:0 4rpx 16rpx rgba(31,36,33,.06)}
+.ib-icon{font-size:36rpx;flex-shrink:0;color:$w}
+.ib-title{display:block;font-size:30rpx;font-weight:700;color:$t1}
+.ib-text{display:block;font-size:26rpx;color:$t2;line-height:1.6}
+
+// 筛选标签
+.filter-row{display:flex;gap:20rpx;overflow-x:auto;margin-bottom:20rpx}
+.voice-hint{margin-top:16rpx;margin-bottom:12rpx;padding:16rpx 24rpx;background:#FFF8EE;border-radius:12rpx;border:2rpx solid #E58A2D;font-size:26rpx;color:#9A4F1F}
+.filter-btn{padding:14rpx 28rpx;border-radius:999rpx;border:2rpx solid $b;background:$s;font-size:26rpx;color:$t2;white-space:nowrap;flex-shrink:0}
+.filter-btn.active{background:$p;color:#fff;border-color:$p;font-weight:600}
 
 .search-row{display:flex;gap:12rpx;margin-bottom:16rpx;align-items:center}
-.search-box{flex:1;display:flex;align-items:center;gap:12rpx;height:80rpx;padding:0 20rpx;border:2rpx solid $b;border-radius:12rpx;background:$s}
-.si-input{flex:1;height:80rpx;font-size:26rpx;padding-left:8rpx}.si-clear{font-size:22rpx;color:$t2;padding:6rpx 16rpx;border-radius:6rpx;background:#EEF1EF;flex-shrink:0}
-.scan-btn{flex:1;height:80rpx;padding:0 28rpx;border-radius:12rpx;background:$ps2;color:#fff;display:flex;align-items:center;justify-content:center;gap:8rpx;font-size:26rpx;font-weight:600;white-space:nowrap}
-.scan-btn{height:80rpx;padding:0 28rpx;border-radius:12rpx;background:$ps2;color:#fff;display:flex;align-items:center;gap:8rpx;font-size:26rpx;font-weight:600;white-space:nowrap}
 .edit-tip{flex:1;font-size:26rpx;color:#E58A2D;font-weight:500}
-
-.pills{display:flex;align-items:center;gap:16rpx;margin-bottom:20rpx}
-.pill{padding:14rpx 28rpx;border-radius:999rpx;font-size:26rpx;border:2rpx solid $b;background:$s;color:$t2}.pill.on{background:$p;color:#fff;border-color:$p}
 
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16rpx;padding:0 4rpx}
 .sh-left{display:flex;align-items:center;gap:4rpx}
-.sh-title{font-size:32rpx;font-weight:700;color:$t1}
+.sh-title{font-size:30rpx;font-weight:600;color:$t1}
 .sh-actions{display:flex;align-items:center;gap:12rpx;flex-shrink:0}
-.sh-edit{font-size:26rpx;font-weight:600;color:$p}
+.sh-edit{font-size:24rpx;font-weight:500;color:$p}
 .sh-add{padding:12rpx 24rpx;border-radius:12rpx;background:$p;color:#fff;font-size:26rpx;font-weight:600;white-space:nowrap}
 .sh-arrow{font-size:28rpx;color:$t3;transition:transform .25s;margin-right:8rpx;flex-shrink:0}.sh-arrow.folded{transform:rotate(-90deg)}
-.done-head{margin-top:32rpx;cursor:pointer}
+.done-head{margin-top:32rpx}
 
-.material-list{display:flex;flex-direction:column;border-radius:16rpx;overflow:hidden;border:2rpx solid $b;background:$s;margin-bottom:8rpx}
-.material-list.done-list{background:transparent;border-color:transparent}
+.material-list{display:flex;flex-direction:column;border-radius:20rpx;overflow:hidden;border:2rpx solid $b;background:$s;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04);margin-bottom:8rpx}
+.material-list.done-list{background:transparent;border-color:transparent;box-shadow:none}
 .m-row{display:flex;align-items:center;gap:16rpx;padding:24rpx;background:$s;border-bottom:2rpx solid #EEF1EF;min-height:96rpx}
 .m-row:last-child{border-bottom:0}.m-row.done{background:$s;border-bottom:2rpx solid #EEF1EF;min-height:68rpx;padding:20rpx 24rpx}
 .m-check{flex-shrink:0}.check-box{width:40rpx;height:40rpx;border-radius:8rpx;border:2rpx solid $b;display:flex;align-items:center;justify-content:center;font-size:26rpx;color:#fff}.check-box.on{background:$p;border-color:$p}
@@ -1092,11 +1400,11 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .popup-confirm{flex:1;height:88rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:700}
 .popup-cancel{flex:1;height:88rpx;border-radius:16rpx;background:#FAFBF9;color:#66706A;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}
 
-.bottom-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;gap:20rpx;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);background:$s;border-top:2rpx solid #EEF1EF}
-.bb-back{flex:1;height:88rpx;border-radius:16rpx;border:2rpx solid $b;background:$s;color:$t1;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:600}
-.bb-confirm{flex:1;height:88rpx;border-radius:16rpx;background:$ps2;color:#fff;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700}
-.bb-finish{flex:1;height:88rpx;border-radius:16rpx;border:2rpx solid $p;background:#fff;color:$p;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700}
-.bb-voice{flex:1;height:88rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;gap:8rpx;font-size:26rpx;font-weight:600}.bb-voice.recording{background:#E05A47}
+.bottom-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:grid;grid-template-columns:200rpx 1fr;gap:20rpx;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);background:linear-gradient(to top,$s 60%,transparent)}
+.bb-back{flex:1;height:88rpx;border-radius:24rpx;border:2rpx solid $b;background:$s;color:$t1;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:600}
+.bb-confirm{flex:1;height:88rpx;border-radius:24rpx;background:$ps2;color:#fff;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700}
+.bb-finish{height:88rpx;border-radius:24rpx;border:2rpx solid $p;background:#fff;color:$p;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700}
+.bb-voice{height:88rpx;border-radius:24rpx;background:$ps2;color:#fff;display:flex;align-items:center;justify-content:center;gap:8rpx;font-size:26rpx;font-weight:600}.bb-voice.recording{background:$d}
 .bb-mic{width:28rpx;height:38rpx;display:flex;flex-direction:column;align-items:center;flex-shrink:0;margin-top:4rpx}
 .bb-mic-body{width:18rpx;height:22rpx;border:2rpx solid #fff;border-radius:11rpx;box-sizing:border-box}
 .bb-mic-bracket{width:20rpx;height:4rpx;border:0 solid #fff;border-bottom-width:2rpx;border-left-width:2rpx;border-right-width:2rpx;border-radius:0 0 11rpx 11rpx;margin-top:-2rpx}
@@ -1107,7 +1415,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .drawer{width:100%;max-height:92vh;border-radius:32rpx 32rpx 0 0;background:$s;display:flex;flex-direction:column;overflow:hidden}
 .dh{width:80rpx;height:6rpx;border-radius:999rpx;background:$b;margin:16rpx auto;flex-shrink:0}
 .drawer-head{display:flex;align-items:flex-start;justify-content:space-between;padding:8rpx 32rpx 10rpx;border-bottom:2rpx solid #EEF1EF;flex-shrink:0}.dht{display:block;font-size:34rpx;font-weight:700;color:$t1}.dhs{display:block;margin-top:4rpx;font-size:24rpx;color:$t2}.dhx{font-size:48rpx;font-weight:700;color:$t2;flex-shrink:0;margin-left:16rpx;padding:8rpx}
-.drawer-body{padding:20rpx 32rpx 16rpx;display:flex;flex-direction:column;gap:20rpx;flex-shrink:0}
+.drawer-body{padding:12rpx 32rpx 8rpx;display:flex;flex-direction:column;gap:12rpx;flex-shrink:0}
 .drawer-tabs{display:flex;margin:0 32rpx 8rpx;padding:6rpx;background:#F3F5F4;border-radius:16rpx;gap:6rpx;flex-shrink:0}
 .dtab{flex:1;height:72rpx;border-radius:12rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:600;color:$t2}
 .dtab.active{background:$s;color:$p;box-shadow:0 2rpx 8rpx rgba(31,36,33,.06)}
@@ -1117,16 +1425,34 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .df-item.active .dfi-wrap{border-color:$p;background:$ps}
 .df-card{position:relative;flex-direction:column;align-items:flex-start;min-height:130rpx;padding:20rpx 24rpx;border:2rpx solid $b;border-radius:16rpx;background:#FAFBF9;box-sizing:border-box}
 .df-card.active{border-color:$p;background:$ps}
-.dfc-top{display:flex;align-items:baseline;width:100%;gap:8rpx}
-.dfc-unit{font-size:30rpx;font-weight:700;color:$t1;flex-shrink:0}
-.dfc-hint{font-size:22rpx;color:$t3;margin-left:auto;flex-shrink:0}
+// 称重单位卡片：跨两列，橙色背景
+.df-card-weight{grid-column:1/-1;min-height:auto;padding:12rpx 24rpx;background:#FFF8EE!important;border-color:$b!important;box-shadow:0 4rpx 14rpx rgba(31,36,33,.06)}
+.df-card-weight.active{border-color:$p!important;background:$ps!important;box-shadow:0 0 0 6rpx rgba(47,143,87,.12),0 4rpx 14rpx rgba(31,36,33,.06)}
+.dfc-label-w{display:block;font-size:30rpx;font-weight:700;color:#9A4F1F}
+.dfc-unit-w{cursor:pointer}
+.dfc-hint-w{padding:4rpx 12rpx;border-radius:999rpx;background:#FFF;color:#9A4F1F!important;font-size:22rpx}
+.dfc-top{display:flex;align-items:baseline;width:100%;gap:8rpx;flex-wrap:nowrap}
+.dfc-top-w{flex-direction:row;justify-content:space-between}
+.dfc-w-row{display:flex;align-items:center;justify-content:space-between;width:100%}
+.ml-auto{margin-left:auto}
+.dfc-left{display:flex;flex-direction:column;gap:4rpx;flex:1;min-width:0}
+.dfc-unit-row{display:flex;align-items:baseline}
+.dfc-unit-row-w{justify-content:space-between}
+.dfc-unit{font-size:30rpx;font-weight:700;color:$t1;flex-shrink:0;white-space:nowrap}
+.dfc-hint{font-size:22rpx;color:$t3;margin-left:auto;flex-shrink:0;white-space:nowrap}
 .dfc-val{position:absolute;right:20rpx;bottom:16rpx;min-width:120rpx;text-align:right;font-size:32rpx;font-weight:700;color:$t1}
 .dfc-val.empty{font-weight:400;color:$t3}
+.dfc-val-w{position:static;text-align:right;margin-top:12rpx}
 .drawer-summary{padding:20rpx 24rpx;background:#F1F8F3;border-radius:16rpx}
 .ds-row{display:flex;align-items:center;justify-content:space-between}
 .ds-label{font-size:28rpx;color:$t2}
 .ds-val{font-size:36rpx;font-weight:800;color:$p}
 .ds-formula{display:block;margin-top:12rpx;font-size:24rpx;color:$t3}
+.ds-records{margin-top:16rpx}
+.dsr-scroll{max-height:130rpx;overflow-y:scroll}
+.dsr-label{font-size:20rpx;color:$t3;margin-bottom:8rpx;display:block}
+.dsr-item{padding:12rpx 16rpx;margin-top:8rpx;background:#fff;border-radius:12rpx;font-size:24rpx;color:$t2}
+.dsr-pending{opacity:.5;border:2rpx dashed $t3}
 .dfi-wrap{position:relative;flex:1;width:100%;border:2rpx solid $b;border-radius:12rpx;background:#FAFBF9;box-sizing:border-box}
 .dfi-val{display:block;width:100%;height:68rpx;padding:0 80rpx 0 24rpx;line-height:68rpx;font-size:40rpx;font-weight:700;text-align:right;color:$t1;box-sizing:border-box}
 .dfi-val.empty{font-weight:400;color:$t3}

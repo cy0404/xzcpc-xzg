@@ -5,6 +5,7 @@ import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.common.model.StoreInfo;
 import com.xzcpc.mp.entity.StoreManagerSession;
 import com.xzcpc.mp.mapper.StoreManagerSessionMapper;
+import com.xzcpc.mp.service.MpStaffService;
 import com.xzcpc.mp.service.MpTaskService;
 import com.xzcpc.task.entity.*;
 import com.xzcpc.task.mapper.*;
@@ -15,6 +16,8 @@ import com.xzcpc.template.service.MaterialRuleService;
 import com.xzcpc.template.entity.Template;
 import com.xzcpc.template.mapper.TemplateMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -24,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MpTaskServiceImpl implements MpTaskService {
@@ -32,18 +36,39 @@ public class MpTaskServiceImpl implements MpTaskService {
     private final TaskZoneMapper taskZoneMapper;
     private final TaskZoneMaterialMapper taskZoneMaterialMapper;
     private final TaskMaterialSummaryMapper taskMaterialSummaryMapper;
+    private final JdbcTemplate jdbcTemplate;
     private final TaskService taskService;
     private final TemplateMapper templateMapper;
     private final StoreService storeService;
     private final StoreManagerSessionMapper sessionMapper;
     private final MaterialRuleService materialRuleService;
+    private final MpStaffService staffService;
 
     @Override
     public Map<String, Object> list(String storeId) {
+        return list(storeId, false, null);
+    }
+
+    @Override
+    public Map<String, Object> list(String storeId, boolean all, String openid) {
         requireStore(storeId);
+        List<String> storeIds;
+        if (all && StringUtils.hasText(openid)) {
+            // 查询名下所有门店
+            storeIds = staffService.findStoresByOpenid(openid).stream()
+                    .map(m -> (String) m.get("storeId"))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (storeIds.isEmpty()) {
+                storeIds = List.of(storeId);
+            }
+        } else {
+            storeIds = List.of(storeId);
+        }
+
         List<Task> allTasks = taskMapper.selectList(
                 new LambdaQueryWrapper<Task>()
-                        .eq(Task::getStoreId, storeId)
+                        .in(Task::getStoreId, storeIds)
                         .orderByDesc(Task::getDeadline));
 
         Map<String, Template> templateMap = templateMapper.selectList(null).stream()
@@ -77,8 +102,14 @@ public class MpTaskServiceImpl implements MpTaskService {
             taskMap.put("totalZones", zoneList.size());
             taskMap.put("totalMaterials", totalMaterials);
             taskMap.put("enteredMaterials", enteredMaterials);
+            // P0: submitted → history; expired → history (提示"任务已过期"); others → current
             boolean expired = task.getDeadline() != null && task.getDeadline().isBefore(LocalDateTime.now());
-            if ("submitted".equals(task.getStatus()) || expired) {
+            if ("submitted".equals(task.getStatus())) {
+                history.add(taskMap);
+            } else if (expired) {
+                if (!"overdue".equals(task.getStatus())) {
+                    taskMap.put("status", "overdue");
+                }
                 history.add(taskMap);
             } else {
                 current.add(taskMap);
@@ -163,7 +194,20 @@ public class MpTaskServiceImpl implements MpTaskService {
             throw new BusinessException(4032, "任务已提交，不可重复提交");
         }
 
+        // P0: overdue 状态不允许提交
+        if ("overdue".equals(task.getStatus())) {
+            throw new BusinessException(4033, "任务已逾期，请联系总部延长时间");
+        }
+
+        // P0: 只有 pending_submit 或 in_progress 可提交
+        if (!"pending_submit".equals(task.getStatus()) && !"in_progress".equals(task.getStatus())) {
+            throw new BusinessException(4032, "当前任务状态不可提交");
+        }
+
         if (task.getDeadline() != null && task.getDeadline().isBefore(LocalDateTime.now())) {
+            // P0: 过期自动标记为 overdue
+            task.setStatus("overdue");
+            taskMapper.updateById(task);
             throw new BusinessException(4033, "任务已过截止时间");
         }
 
@@ -181,9 +225,8 @@ public class MpTaskServiceImpl implements MpTaskService {
         task.setSubmittedBy(openid);
         taskMapper.updateById(task);
 
-        // 更新汇总表（含多单位明细，持久化供历史查看）
-        taskMaterialSummaryMapper.delete(
-                new LambdaQueryWrapper<TaskMaterialSummary>().eq(TaskMaterialSummary::getTaskId, taskId));
+        // 更新汇总表（物理删除后重建，含多单位明细，持久化供历史查看）
+        jdbcTemplate.update("DELETE FROM task_material_summary WHERE task_id = ?", taskId);
 
         List<TaskZoneMaterial> allMaterials = taskZoneMaterialMapper.selectList(
                 new LambdaQueryWrapper<TaskZoneMaterial>().eq(TaskZoneMaterial::getTaskId, taskId));
@@ -200,6 +243,8 @@ public class MpTaskServiceImpl implements MpTaskService {
             if (summaryMap.containsKey(materialId)) {
                 TaskMaterialSummary sm = summaryMap.get(materialId);
                 sm.setTotalQty(sm.getTotalQty().add(qty));
+                sm.setOriginalQty(sm.getOriginalQty().add(qty));
+                sm.setAdjustedQty(sm.getAdjustedQty().add(qty));
                 sm.setZoneCount(sm.getZoneCount() + 1);
                 // 合并 unitBreakdown JSON
                 sm.setUnitBreakdown(mergeBreakdown(sm.getUnitBreakdown(), entryUnit, entryQty, m));
@@ -211,6 +256,8 @@ public class MpTaskServiceImpl implements MpTaskService {
                 sm.setSpec(m.getSpec() != null ? m.getSpec() : "");
                 sm.setBaseUnit(snapshotUnit(m));
                 sm.setTotalQty(qty);
+                sm.setOriginalQty(qty);
+                sm.setAdjustedQty(qty);
                 sm.setZoneCount(1);
                 sm.setUnitBreakdown(makeBreakdown(entryUnit, entryQty, m));
                 summaryMap.put(materialId, sm);
@@ -222,6 +269,7 @@ public class MpTaskServiceImpl implements MpTaskService {
         if (!summaryList.isEmpty()) {
             taskMaterialSummaryMapper.insertBatch(summaryList);
         }
+
     }
 
     @Override

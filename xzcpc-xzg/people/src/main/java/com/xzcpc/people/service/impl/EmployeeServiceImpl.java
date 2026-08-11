@@ -2,7 +2,10 @@ package com.xzcpc.people.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xzcpc.common.context.AdminContextHolder;
+import com.xzcpc.common.context.AdminUser;
 import com.xzcpc.common.exception.BusinessException;
+import com.xzcpc.common.service.StoreAccessService;
 import com.xzcpc.people.dto.PeopleDashboardResp;
 import com.xzcpc.people.entity.Employee;
 import com.xzcpc.people.mapper.EmployeeMapper;
@@ -22,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,10 +39,31 @@ public class EmployeeServiceImpl implements EmployeeService {
             java.util.Set.of("老板");
 
     private final EmployeeMapper employeeMapper;
+    private final StoreAccessService storeAccessService;
 
     @Override
-    public Page<Employee> page(String storeId, String role, String status, String name, int pageNum, int pageSize) {
+    public Page<Employee> page(String storeId, String supervisorName, String role, String status, String name, int pageNum, int pageSize) {
         LambdaQueryWrapper<Employee> wrapper = new LambdaQueryWrapper<>();
+
+        // 督导角色：按可访问门店过滤
+        AdminUser admin = AdminContextHolder.get();
+        if (admin != null && storeAccessService.isSupervisorOnly(admin)) {
+            List<String> accessibleStoreIds = storeAccessService.getAccessibleStoreIds(admin.getOpenId());
+            if (accessibleStoreIds.isEmpty()) {
+                return new Page<>(pageNum, pageSize);
+            }
+            wrapper.in(Employee::getStoreId, accessibleStoreIds);
+        }
+
+        // 按指定督导过滤
+        if (StringUtils.hasText(supervisorName)) {
+            List<String> supervisorStoreIds = storeAccessService.getAccessibleStoreIdsBySupervisorName(supervisorName);
+            if (supervisorStoreIds.isEmpty()) {
+                return new Page<>(pageNum, pageSize);
+            }
+            wrapper.in(Employee::getStoreId, supervisorStoreIds);
+        }
+
         if (StringUtils.hasText(storeId)) {
             wrapper.eq(Employee::getStoreId, storeId);
         }
@@ -52,7 +77,16 @@ public class EmployeeServiceImpl implements EmployeeService {
             wrapper.like(Employee::getName, name.trim());
         }
         wrapper.orderByDesc(Employee::getEntryDate).orderByDesc(Employee::getId);
-        return employeeMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        Page<Employee> result = employeeMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        List<Employee> records = result.getRecords();
+        if (!records.isEmpty()) {
+            Set<String> storeIds = records.stream().map(Employee::getStoreId).filter(id -> id != null).collect(Collectors.toSet());
+            if (!storeIds.isEmpty()) {
+                Map<String, String> supervisorMap = storeAccessService.getSupervisorNamesByStoreIds(storeIds);
+                records.forEach(r -> r.setSupervisorName(supervisorMap.getOrDefault(r.getStoreId(), "")));
+            }
+        }
+        return result;
     }
 
     @Override
@@ -61,6 +95,15 @@ public class EmployeeServiceImpl implements EmployeeService {
                 new LambdaQueryWrapper<Employee>().eq(Employee::getEmployeeId, employeeId));
         if (employee == null) {
             throw new BusinessException(404, "员工不存在");
+        }
+
+        // 督导角色校验：只能查看自己管辖门店的员工
+        AdminUser admin = AdminContextHolder.get();
+        if (admin != null && storeAccessService.isSupervisorOnly(admin)) {
+            List<String> accessibleStoreIds = storeAccessService.getAccessibleStoreIds(admin.getOpenId());
+            if (accessibleStoreIds.isEmpty() || !accessibleStoreIds.contains(employee.getStoreId())) {
+                throw new BusinessException(404, "员工不存在");
+            }
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -84,10 +127,42 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     @Override
-    public PeopleDashboardResp dashboard(String range) {
+    public PeopleDashboardResp dashboard(String range, String supervisorName) {
         LocalDate end = LocalDate.now();
         LocalDate start = getRangeStart(range, end);
-        List<Employee> allEmployees = employeeMapper.selectList(null);
+
+        LambdaQueryWrapper<Employee> qw = new LambdaQueryWrapper<>();
+
+        // 督导角色：按可访问门店过滤
+        AdminUser admin = AdminContextHolder.get();
+        if (admin != null && storeAccessService.isSupervisorOnly(admin)) {
+            List<String> accessibleStoreIds = storeAccessService.getAccessibleStoreIds(admin.getOpenId());
+            if (accessibleStoreIds.isEmpty()) {
+                return emptyPeopleDashboard();
+            }
+            qw.in(Employee::getStoreId, accessibleStoreIds);
+        }
+
+        // 按指定督导过滤
+        if (StringUtils.hasText(supervisorName)) {
+            List<String> supervisorStoreIds = storeAccessService.getAccessibleStoreIdsBySupervisorName(supervisorName);
+            if (supervisorStoreIds.isEmpty()) {
+                return emptyPeopleDashboard();
+            }
+            qw.in(Employee::getStoreId, supervisorStoreIds);
+        }
+
+        List<Employee> allEmployees = employeeMapper.selectList(qw);
+
+        // 批量填充督导姓名
+        if (!allEmployees.isEmpty()) {
+            Set<String> storeIdSet = allEmployees.stream().map(Employee::getStoreId).filter(id -> id != null).collect(Collectors.toSet());
+            if (!storeIdSet.isEmpty()) {
+                Map<String, String> supMap = storeAccessService.getSupervisorNamesByStoreIds(storeIdSet);
+                allEmployees.forEach(e -> e.setSupervisorName(supMap.getOrDefault(e.getStoreId(), "")));
+            }
+        }
+
         List<Employee> activeEmployees = allEmployees.stream()
                 .filter(item -> STATUS_ACTIVE.equals(item.getStatus()))
                 .filter(item -> !STAT_EXCLUDE_ROLES.contains(item.getRole()))
@@ -130,6 +205,15 @@ public class EmployeeServiceImpl implements EmployeeService {
         return resp;
     }
 
+    private PeopleDashboardResp emptyPeopleDashboard() {
+        PeopleDashboardResp resp = new PeopleDashboardResp();
+        resp.setSummary(new PeopleDashboardResp.Summary(0L, 0L, 0L, "", 0L, "", 0.0, ""));
+        resp.setStoreDistribution(List.of());
+        resp.setRoleDistribution(List.of());
+        resp.setTrend(List.of());
+        return resp;
+    }
+
     private LocalDate getRangeStart(String range, LocalDate end) {
         YearMonth currentMonth = YearMonth.from(end);
         if ("quarter".equals(range)) {
@@ -146,11 +230,20 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .collect(Collectors.groupingBy(
                         item -> StringUtils.hasText(item.getStoreName()) ? item.getStoreName() : item.getStoreId(),
                         Collectors.counting()));
+        // storeName → supervisorName
+        Map<String, String> supMap = new LinkedHashMap<>();
+        for (Employee e : activeEmployees) {
+            String name = StringUtils.hasText(e.getStoreName()) ? e.getStoreName() : e.getStoreId();
+            if (!supMap.containsKey(name) && e.getSupervisorName() != null) {
+                supMap.put(name, e.getSupervisorName());
+            }
+        }
         long max = storeCountMap.values().stream().max(Comparator.naturalOrder()).orElse(0L);
         return storeCountMap.entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                 .map(entry -> new PeopleDashboardResp.StoreDistribution(
                         entry.getKey(),
+                        supMap.getOrDefault(entry.getKey(), ""),
                         entry.getValue(),
                         max == 0 ? 0 : BigDecimal.valueOf(entry.getValue() * 100)
                                 .divide(BigDecimal.valueOf(max), 0, RoundingMode.HALF_UP)

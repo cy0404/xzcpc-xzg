@@ -11,7 +11,6 @@ import { formatDateTime } from '@/utils/formatter'
 const taskId = ref(0)
 const loading = ref(true)
 const result = ref<any>(null)
-const tabIndex = ref<0 | 1>(0)
 
 onLoad((options: any) => {
   taskId.value = Number(options.taskId)
@@ -32,10 +31,6 @@ async function loadResult() {
 
 function goTaskList() {
   uni.reLaunch({ url: '/pages/task/list/index' })
-}
-
-function isAbnormal(mat: any) {
-  return Number(mat.quantity) === 0 && mat.remark
 }
 
 function formatUnitInputs(mat: any) {
@@ -73,56 +68,8 @@ function formatUnitInputs(mat: any) {
         </view>
       </view>
 
-      <!-- 切换 Tab -->
-      <view class="tab-card">
-        <view
-          class="tab-item"
-          :class="{ active: tabIndex === 0 }"
-          @click="tabIndex = 0"
-        >
-          <text class="tab-icon">&#9783;</text>
-          <text>按分区看</text>
-        </view>
-        <view
-          class="tab-item"
-          :class="{ active: tabIndex === 1 }"
-          @click="tabIndex = 1"
-        >
-          <text class="tab-icon">&#9776;</text>
-          <text>按物料汇总看</text>
-        </view>
-      </view>
-
-      <!-- 分区视图 -->
-      <view v-if="tabIndex === 0" class="zone-view">
-        <view v-for="zone in result.zones" :key="zone.zoneId" class="zone-card">
-          <view class="zone-card-head">
-            <view class="zone-head-icon">&#128229;</view>
-            <text class="zone-head-name">{{ zone.zoneName }}</text>
-          </view>
-          <view
-            v-for="mat in zone.materials"
-            :key="mat.materialId"
-            class="zone-material"
-            :class="{ 'is-abnormal': isAbnormal(mat) }"
-          >
-            <MaterialIcon :name="mat.materialName" :size="80" />
-            <view class="zone-material-info">
-              <text class="zm-name">{{ mat.materialName }}</text>
-                            <text v-if="formatUnitInputs(mat)" class="zm-detail">{{ formatUnitInputs(mat) }}</text>
-            </view>
-            <view class="zone-material-qty">
-              <text class="zm-qty" :class="{ 'danger-text': isAbnormal(mat) }">{{ mat.quantity }}</text>
-              <text class="zm-unit">{{ mat.baseUnit || mat.unit || '' }}</text>
-              <text v-if="!mat.remark" class="zm-remark">备注：无</text>
-              <text v-else class="zm-remark danger-text">备注：{{ mat.remark }}</text>
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <!-- 物料汇总视图 -->
-      <view v-else class="summary-view">
+      <!-- 物料汇总 -->
+      <view class="summary-view">
         <view class="summary-card">
           <text class="summary-card-title">物料汇总（跨分区合并）</text>
           <view v-for="item in result.summary" :key="item.materialId" class="summary-row">
@@ -203,139 +150,7 @@ function formatUnitInputs(mat: any) {
   color: #4A4A4A;
 }
 
-.tab-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 8rpx;
-  margin-bottom: 20rpx;
-  display: flex;
-  gap: 8rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.03);
-}
-
-.tab-item {
-  flex: 1;
-  height: 80rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  border-radius: 14rpx;
-  font-size: 28rpx;
-  color: #8C8C8C;
-
-  &.active {
-    background: #F0FAF3;
-    color: #00734A;
-    font-weight: 600;
-  }
-}
-
-.tab-icon {
-  font-size: 26rpx;
-}
-
-.zone-card {
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 24rpx;
-  margin-bottom: 20rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.03);
-}
-
-.zone-card-head {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 12rpx 20rpx;
-  background: #F0F1F3;
-  border-radius: 14rpx;
-  margin-bottom: 16rpx;
-}
-
-.zone-head-icon {
-  font-size: 28rpx;
-  color: #00734A;
-}
-
-.zone-head-name {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #1A1A1A;
-}
-
-.zone-material {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  padding: 20rpx 16rpx;
-  border-radius: 16rpx;
-
-  &.is-abnormal {
-    background: #FFF6F7;
-  }
-}
-
-.zone-material-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.zm-name {
-  display: block;
-  font-size: 28rpx;
-  font-weight: 500;
-  color: #1A1A1A;
-  margin-bottom: 4rpx;
-}
-
-.zm-spec {
-  font-size: 22rpx;
-  color: #8C8C8C;
-}
-
-.zone-material-qty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.zm-origin {
-  max-width: 240rpx;
-  margin-bottom: 6rpx;
-  color: #8C8C8C;
-  font-size: 20rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.zm-qty {
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #1A1A1A;
-  line-height: 1.1;
-}
-
-.zm-unit {
-  font-size: 22rpx;
-  color: #8C8C8C;
-  margin-left: 4rpx;
-}
-
-.zm-remark {
-  font-size: 20rpx;
-  color: #B0B0B0;
-  margin-top: 6rpx;
-  max-width: 240rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.danger-text {
-  color: #E84B61;
-}
+.danger-text { color: #E84B61; }
 
 .summary-card {
   background: #fff;

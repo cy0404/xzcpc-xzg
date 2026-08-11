@@ -42,17 +42,10 @@ async function handleSelect(store: any) {
       userStore.role = data.role || ''
       userStore.permissions = Array.isArray(data.permissions) ? data.permissions : []
       userStore.storeCount = data.storeCount || 1
-      // 持久化到本地缓存
-      uni.setStorageSync('userInfo', {
-        storeId: userStore.storeId,
-        storeName: userStore.storeName,
-        employeeId: userStore.employeeId,
-        employeeName: userStore.employeeName,
-        role: userStore.role,
-        permissions: userStore.permissions,
-        storeCount: userStore.storeCount,
-        bound: userStore.bound,
-      })
+      // 同步更新员工信息（切换门店后员工可能不同）
+      userStore.employeeId = data.employeeId || userStore.employeeId
+      userStore.employeeName = data.employeeName || userStore.employeeName
+      userStore.persistUser()
     }
     visible.value = false
     emit('switched')

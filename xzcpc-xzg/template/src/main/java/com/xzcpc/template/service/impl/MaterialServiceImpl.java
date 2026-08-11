@@ -112,6 +112,27 @@ public class MaterialServiceImpl implements MaterialService {
     }
 
     @Override
+    public List<MaterialInfo> searchByParentCategory(String keyword, String parentCategory) {
+        LambdaQueryWrapper<Material> wrapper = new LambdaQueryWrapper<Material>()
+                .eq(Material::getParentCategory, parentCategory)
+                .orderByAsc(Material::getId);
+        if (StringUtils.hasText(keyword)) {
+            wrapper.like(Material::getMaterialName, keyword.trim());
+        }
+        List<Material> materials = materialMapper.selectList(wrapper);
+        return materials.stream().map(m -> {
+            MaterialInfo info = toInfo(m);
+            // 查询盘点单位
+            MaterialInventoryRule rule = ruleMapper.selectOne(new LambdaQueryWrapper<MaterialInventoryRule>()
+                    .eq(MaterialInventoryRule::getMaterialId, m.getMaterialId()));
+            if (rule != null && StringUtils.hasText(rule.getBaseUnit())) {
+                info.setPandiandanwei(rule.getBaseUnit());
+            }
+            return info;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
     public MaterialInfo getMaterialInfoById(String materialId) {
         if (!StringUtils.hasText(materialId)) return null;
         Material material = materialMapper.selectOne(new LambdaQueryWrapper<Material>()
@@ -394,6 +415,7 @@ public class MaterialServiceImpl implements MaterialService {
     }
 
     @Override
+    @org.springframework.cache.annotation.Cacheable("materialCategories")
     public List<String> getAllCategories() {
         return materialMapper.selectList(new LambdaQueryWrapper<Material>())
                 .stream()
@@ -405,6 +427,7 @@ public class MaterialServiceImpl implements MaterialService {
     }
 
     @Override
+    @org.springframework.cache.annotation.Cacheable("materialParentCategories")
     public List<String> getAllParentCategories() {
         return materialMapper.selectList(new LambdaQueryWrapper<Material>())
                 .stream()

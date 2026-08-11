@@ -16,4 +16,5 @@ public class ItemSaveReq {
     private String countUnit;
     private String remark;
     private String unitInputs;
+    private String appendRecords;
 }

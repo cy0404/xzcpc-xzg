@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>拍摄</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;font-family:-apple-system,sans-serif;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px}
+.info{color:rgba(255,255,255,.6);font-size:14px;text-align:center;line-height:1.8}
+.btn{display:inline-block;padding:16px 48px;border-radius:999px;font-size:18px;font-weight:600;border:none;cursor:pointer;text-align:center}
+.btn-record{background:#E05A47;color:#fff}
+.btn-album{background:rgba(255,255,255,.15);color:#fff}
+
+.loading{display:none;color:#fff;text-align:center}
+.spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,.3);border-top-color:#2F8F57;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.error{display:none;color:#E05A47;font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<input type="file" id="camera-input" accept="video/*" capture="environment" style="display:none" onchange="onFileSelected(this)" />
+<input type="file" id="album-input" accept="video/*" style="display:none" onchange="onFileSelected(this)" />
+
+<div class="info">
+  <div style="font-size:60px;margin-bottom:16px">🎬</div>
+  <div>请拍摄现场视频作为凭证</div>
+  <div style="font-size:13px;opacity:.5">单个视频不超过200MB</div>
+</div>
+
+<button class="btn btn-record" onclick="openCamera()">📹 拍摄视频</button>
+<button class="btn btn-album" onclick="openAlbum()">🖼 从相册选择</button>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div id="loading-msg">上传中...</div>
+</div>
+
+<div class="error" id="error"></div>
+
+<script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+<script>
+var BASE_URL = window.location.origin + '/storeInventory'
+var MAX_SIZE = 200 * 1024 * 1024
+var urlParams = new URLSearchParams(location.search)
+var storeName = urlParams.get('storeName') || ''
+var token = urlParams.get('token') || ''
+
+function openCamera() { document.getElementById('camera-input').click() }
+function openAlbum() { document.getElementById('album-input').click() }
+
+function onFileSelected(input) {
+  var file = input.files[0]
+  if (!file) return
+  if (file.size > MAX_SIZE) { showError('视频超过200M，请重新选择'); return }
+
+  var el = document.getElementById('loading')
+  var msg = document.getElementById('loading-msg')
+  el.style.display = 'block'
+  msg.textContent = '上传中...'
+
+  uploadFile(file)
+  input.value = ''
+}
+
+async function uploadFile(file) {
+  var msg = document.getElementById('loading-msg')
+  try {
+    var form = new FormData()
+    form.append('file', file)
+    form.append('storeName', storeName)
+
+    var headers = {}
+    if (token) headers['Authorization'] = 'Bearer ' + token
+    var res = await fetch(BASE_URL + '/api/mp/upload/voucher', { method: 'POST', headers: headers, body: form })
+    var data = await res.json()
+    if (data.code !== 200) throw new Error('上传失败')
+
+    var url = data.data.url
+    wx.miniProgram.postMessage({ data: { type: 'video-recorded', url: url, size: file.size, thumb: '' } })
+    msg.textContent = '完成！'
+    setTimeout(function() { wx.miniProgram.navigateBack({ delta: 1 }) }, 500)
+  } catch(e) {
+    showError('上传失败: ' + e.message)
+  }
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none'
+  var e = document.getElementById('error')
+  e.textContent = msg; e.style.display = 'block'
+}
+</script>
+</body>
+</html>

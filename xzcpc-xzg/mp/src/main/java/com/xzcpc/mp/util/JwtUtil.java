@@ -23,17 +23,24 @@ public class JwtUtil {
     }
 
     public String generate(Long sessionId, String openid) {
+        return generate(sessionId, openid, null);
+    }
+
+    /** P0: JWT 中携带角色信息，避免每次请求都查数据库 */
+    public String generate(Long sessionId, String openid, String role) {
         long expireMs = jwtProperties.getExpireHours() * 3600L * 1000L;
         Date now = new Date();
         Date expire = new Date(now.getTime() + expireMs);
 
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(sessionId))
                 .claim("openid", openid)
                 .issuedAt(now)
-                .expiration(expire)
-                .signWith(getKey())
-                .compact();
+                .expiration(expire);
+        if (role != null) {
+            builder.claim("role", role);
+        }
+        return builder.signWith(getKey()).compact();
     }
 
     public Claims parse(String token) {

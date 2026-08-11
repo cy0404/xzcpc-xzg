@@ -20,12 +20,13 @@ public class OwnerRegistrationController {
     @OpLog(module = "人员", operation = "查询门店绑定记录")
     @GetMapping
     public R<Page<OwnerRegistration>> list(@RequestParam(defaultValue = "") String storeId,
+                                           @RequestParam(defaultValue = "") String supervisorName,
                                            @RequestParam(defaultValue = "") String status,
                                            @RequestParam(defaultValue = "") String name,
                                            @RequestParam(defaultValue = "") String phone,
                                            @RequestParam(defaultValue = "1") int pageNum,
                                            @RequestParam(defaultValue = "10") int pageSize) {
-        return R.ok(registrationService.page(storeId, status, name, phone, pageNum, pageSize));
+        return R.ok(registrationService.page(storeId, supervisorName, status, name, phone, pageNum, pageSize));
     }
 
     @OpLog(module = "人员", operation = "查看门店绑定记录")

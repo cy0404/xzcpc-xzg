@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>拍摄</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;font-family:-apple-system,sans-serif;width:100vw;height:100vh;overflow:hidden}
+.page{position:relative;width:100%;height:100%;display:flex;flex-direction:column}
+
+/* 预览区 */
+.camera-area{flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#000}
+video{width:100%;height:100%;object-fit:cover}
+
+/* 顶部栏 */
+.top-bar{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;justify-content:space-between;align-items:center;padding:16px;padding-top:calc(env(safe-area-inset-top) + 16px)}
+.btn-close{width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.4);border:none;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center}
+.btn-flash{width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.4);border:none;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
+.rec-dot{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;border-radius:50%;background:#E05A47;display:none;animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* 底部栏 */
+.bottom-bar{position:absolute;bottom:0;left:0;right:0;z-index:2;display:flex;align-items:center;justify-content:space-around;padding:24px 32px;padding-bottom:calc(env(safe-area-inset-bottom) + 24px)}
+
+.btn-side{width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,.4);border:none;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center}
+
+.btn-record{width:72px;height:72px;border-radius:50%;border:4px solid #fff;background:none;display:flex;align-items:center;justify-content:center;transition:transform .2s}
+.btn-record:active{transform:scale(.95)}
+.btn-inner{width:56px;height:56px;border-radius:50%;background:#E05A47;transition:all .2s}
+.btn-inner.stop{width:24px;height:24px;border-radius:4px}
+
+.btn-mode{font-size:14px;color:#FFD700;font-weight:600;padding:6px 16px;border-radius:999px;background:rgba(0,0,0,.4);border:none}
+
+.timer{position:absolute;top:50%;transform:translateY(-50%);right:32px;color:#fff;font-size:16px;font-weight:700;display:none;z-index:2}
+
+/* 预览确认 */
+.preview-img{display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:3}
+.preview-video{display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:3}
+.preview-bar{display:none;position:absolute;bottom:0;left:0;right:0;z-index:4;justify-content:space-between;align-items:center;padding:24px 32px;padding-bottom:calc(env(safe-area-inset-bottom) + 24px)}
+.preview-btn{background:none;border:none;color:#fff;font-size:16px;font-weight:500;padding:8px 16px}
+.preview-btn.confirm{font-weight:700;font-size:17px}
+.preview-play{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center}
+
+/* 加载+进度 */
+.loading-overlay{display:none;position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.75);flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.loading-spinner{width:48px;height:48px;border:3px solid rgba(255,255,255,.3);border-top-color:#2F8F57;border-radius:50%;animation:spin .8s linear infinite}
+.loading-text{color:#fff;font-size:15px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.progress-bar{display:none;position:absolute;bottom:60px;left:24px;right:24px;height:4px;background:rgba(255,255,255,.2);border-radius:999px;z-index:5}
+.progress-fill{height:100%;background:#2F8F57;border-radius:999px;transition:width .3s}
+.progress-txt{display:none;position:absolute;bottom:72px;left:0;right:0;text-align:center;color:#fff;font-size:13px;z-index:5}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="camera-area">
+    <video id="video" autoplay playsinline muted></video>
+
+    <!-- 顶部：关闭 + 闪光灯 -->
+    <div class="top-bar">
+      <button class="btn-close" onclick="closePage()">✕</button>
+      <div class="rec-dot" id="rec-dot"></div>
+      <button class="btn-flash" onclick="toggleFlash()" id="btn-flash">⚡</button>
+    </div>
+
+    <!-- 计时器 -->
+    <div class="timer" id="timer">00:00</div>
+
+    <!-- 底部：翻转 + 录制 + 关闭 -->
+    <div class="bottom-bar">
+      <button class="btn-side" onclick="flipCamera()">🔄</button>
+      <button class="btn-record" id="btn-record" onclick="toggleRecord()">
+        <div class="btn-inner" id="btn-inner"></div>
+      </button>
+      <button class="btn-mode" id="btn-mode">视频</button>
+    </div>
+
+    <!-- 预览 -->
+    <img id="preview-img" class="preview-img" />
+    <video id="preview-video" class="preview-video" muted playsinline loop></video>
+    <div class="preview-bar" id="preview-bar">
+      <button class="preview-btn" onclick="cancelRecord()">重拍</button>
+      <button class="preview-play" onclick="playPreview()">▶</button>
+      <button class="preview-btn confirm" onclick="confirmUpload()">使用视频</button>
+    </div>
+
+    <!-- 加载 -->
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="loading-spinner"></div>
+      <div class="loading-text" id="loading-text">上传中...</div>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="progress-bar" id="pbar"><div class="progress-fill" id="pfill"></div></div>
+    <div class="progress-txt" id="ptxt"></div>
+  </div>
+</div>
+
+<script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+
+<script>
+// ====== config ======
+var BASE_URL = window.location.origin + '/storeInventory'
+var MAX_SIZE = 200 * 1024 * 1024
+
+var urlParams = new URLSearchParams(location.search)
+var storeName = urlParams.get('storeName') || ''
+
+var stream = null, recorder = null, chunks = [], recording = false
+var recordSec = 0, timerId = null, flashOn = false, facingUser = false
+
+wx.miniProgram.getEnv(function(res) {})
+
+function closePage() {
+  if (stream) { stream.getTracks().forEach(function(t) { t.stop() }); stream = null }
+  wx.miniProgram.navigateBack({ delta: 1 })
+}
+
+// 摄像头
+async function initCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facingUser ? 'user' : 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true
+    })
+    document.getElementById('video').srcObject = stream
+  } catch(e) {
+    document.getElementById('loading-overlay').style.display = 'flex'
+    document.getElementById('loading-text').textContent = '无法打开摄像头'
+  }
+}
+
+function flipCamera() {
+  facingUser = !facingUser
+  if (stream) { stream.getTracks().forEach(function(t) { t.stop() }) }
+  initCamera()
+}
+
+function toggleFlash() {
+  flashOn = !flashOn
+  document.getElementById('btn-flash').textContent = flashOn ? '⚡✓' : '⚡'
+  // 大部分浏览器不支持通过 getUserMedia 控制闪光灯，仅作视觉反馈
+}
+
+function getMimeType() {
+  var types = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+  for (var i = 0; i < types.length; i++) {
+    if (MediaRecorder.isTypeSupported(types[i])) return types[i]
+  }
+  return ''
+}
+
+// 录制
+function toggleRecord() {
+  if (recording) { stopRecord() } else { startRecord() }
+}
+
+function startRecord() {
+  if (!stream) return
+  chunks = []
+  try {
+    var mime = getMimeType()
+    recorder = new MediaRecorder(stream, { mimeType: mime })
+  } catch(e) {
+    recorder = new MediaRecorder(stream)
+  }
+  recorder.ondataavailable = function(e) { if (e.data.size > 0) chunks.push(e.data) }
+  recorder.addEventListener('stop', function() {
+    setTimeout(function() { previewRecord() }, 200)
+  })
+  recorder.start(1000)
+  recording = true; recordSec = 0
+  document.getElementById('btn-inner').classList.add('stop')
+  document.getElementById('rec-dot').style.display = 'block'
+  document.getElementById('timer').style.display = 'block'
+  updateTimer()
+  timerId = setInterval(function() {
+    recordSec++; updateTimer()
+  }, 1000)
+}
+
+function stopRecord() {
+  clearInterval(timerId)
+  try { recorder.requestData() } catch(e) {}
+  recorder.stop()
+  recording = false
+  document.getElementById('btn-inner').classList.remove('stop')
+  document.getElementById('rec-dot').style.display = 'none'
+  document.getElementById('timer').style.display = 'none'
+  if (stream) { stream.getTracks().forEach(function(t) { t.stop() }); stream = null }
+  document.getElementById('video').srcObject = null
+}
+
+function updateTimer() {
+  var m = Math.floor(recordSec / 60), s = recordSec % 60
+  document.getElementById('timer').textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0')
+}
+
+// 预览
+var previewBlob = null, previewUrl = ''
+
+function previewRecord() {
+  previewBlob = new Blob(chunks, { type: getMimeType() || 'video/webm' })
+  previewUrl = URL.createObjectURL(previewBlob)
+  // 展示首帧缩略图
+  getThumb(previewBlob).then(function(thumb) {
+    if (thumb) {
+      var img = document.getElementById('preview-img')
+      img.src = thumb; img.style.display = 'block'
+    }
+    document.getElementById('preview-bar').style.display = 'flex'
+  })
+}
+
+function playPreview() {
+  document.getElementById('preview-img').style.display = 'none'
+  var v = document.getElementById('preview-video')
+  v.src = previewUrl; v.style.display = 'block'; v.play()
+}
+
+function confirmUpload() {
+  document.getElementById('preview-bar').style.display = 'none'
+  document.getElementById('preview-img').style.display = 'none'
+  document.getElementById('preview-video').style.display = 'none'
+  document.getElementById('loading-overlay').style.display = 'flex'
+  document.getElementById('loading-text').textContent = '上传中...'
+  uploadChunks()
+}
+
+function cancelRecord() {
+  chunks = []; previewBlob = null; previewUrl = ''
+  URL.revokeObjectURL(previewUrl)
+  document.getElementById('preview-bar').style.display = 'none'
+  document.getElementById('preview-img').style.display = 'none'
+  document.getElementById('preview-video').style.display = 'none'
+  initCamera()
+}
+
+// 上传
+async function uploadChunks() {
+  if (chunks.length === 0) { closePage(); return }
+  var ext = getMimeType().indexOf('mp4') >= 0 ? '.mp4' : '.webm'
+  var fileName = 'rec_' + Date.now() + ext
+
+  var totalSize = 0
+  for (var i = 0; i < chunks.length; i++) totalSize += chunks[i].size
+
+  if (totalSize > MAX_SIZE) {
+    document.getElementById('loading-text').textContent = '视频超过200M'
+    return
+  }
+
+  var pbar = document.getElementById('pbar'), pfill = document.getElementById('pfill')
+  var ptxt = document.getElementById('ptxt'), ltxt = document.getElementById('loading-text')
+  pbar.style.display = 'block'; ptxt.style.display = 'block'
+
+  var initRes = await fetch(BASE_URL + '/api/mp/upload/chunk/init', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }
+  }).then(function(r) { return r.json() })
+  if (initRes.code !== 200) { ltxt.textContent = '初始化失败'; return }
+  var uploadId = initRes.data.uploadId
+
+  for (var i = 0; i < chunks.length; i++) {
+    var form = new FormData()
+    form.append('file', chunks[i], fileName + '.part' + i)
+    await fetch(BASE_URL + '/api/mp/upload/chunk/' + uploadId + '/' + i, { method: 'POST', body: form })
+    var pct = Math.round((i + 1) / chunks.length * 90)
+    pfill.style.width = pct + '%'; ptxt.textContent = pct + '%'
+  }
+
+  ltxt.textContent = '处理中...'
+  var compRes = await fetch(BASE_URL + '/api/mp/upload/chunk/' + uploadId + '/complete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileName: fileName, totalChunks: chunks.length, storeName: storeName })
+  }).then(function(r) { return r.json() })
+
+  if (compRes.code === 200) {
+    var thumb = await getThumb(previewBlob)
+    wx.miniProgram.postMessage({ data: { type: 'video-recorded', url: compRes.data.url, size: totalSize, thumb: thumb } })
+    ltxt.textContent = '完成！'
+    setTimeout(function() { wx.miniProgram.navigateBack({ delta: 1 }) }, 800)
+  } else {
+    ltxt.textContent = '上传失败'
+  }
+}
+
+function getThumb(blob) {
+  return new Promise(function(resolve) {
+    var url = URL.createObjectURL(blob)
+    var v = document.createElement('video'), c = document.createElement('canvas')
+    v.src = url; v.muted = true
+    v.addEventListener('loadeddata', function() {
+      c.width = v.videoWidth || 320; c.height = v.videoHeight || 240
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height)
+      resolve(c.toDataURL('image/jpeg', 0.5))
+      URL.revokeObjectURL(url)
+    })
+    v.addEventListener('error', function() { resolve('') })
+    v.load()
+  })
+}
+
+initCamera()
+</script>
+</body>
+</html>

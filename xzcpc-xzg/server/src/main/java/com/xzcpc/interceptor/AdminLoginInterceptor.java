@@ -2,7 +2,10 @@ package com.xzcpc.interceptor;
 
 import com.xzcpc.common.context.AdminContextHolder;
 import com.xzcpc.common.context.AdminUser;
+import com.xzcpc.mapper.AdminPermissionMapper;
+import com.xzcpc.entity.AdminPermission;
 import com.xzcpc.util.AdminJwtUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,20 +18,18 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
  * 总部端管理员登录拦截器。
- * 从 Authorization header 取 Bearer token，校验 JWT，写入 AdminContextHolder。
+ * JWT 只验证身份，角色每次从 DB 实时查询，权限变更即时生效。
  */
 @Component
 @RequiredArgsConstructor
 public class AdminLoginInterceptor implements HandlerInterceptor {
 
     private final AdminJwtUtil adminJwtUtil;
+    private final AdminPermissionMapper adminPermissionMapper;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        // OPTIONS 预检放行
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-            return true;
-        }
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
 
         String authHeader = request.getHeader("Authorization");
         if (!StringUtils.hasText(authHeader) || !authHeader.startsWith("Bearer ")) {
@@ -41,7 +42,15 @@ public class AdminLoginInterceptor implements HandlerInterceptor {
             Claims claims = adminJwtUtil.validate(token);
             String openId = claims.getSubject();
             String name = claims.get("name", String.class);
-            String role = claims.get("role", String.class);
+
+            // 角色从 DB 实时查，不依赖 JWT 中缓存的角色
+            String role = "";
+            try {
+                AdminPermission perm = adminPermissionMapper.selectOne(
+                        new LambdaQueryWrapper<AdminPermission>().eq(AdminPermission::getOpenId, openId));
+                if (perm != null) role = perm.getRole() != null ? perm.getRole() : "";
+                if (name == null && perm != null) name = perm.getName();
+            } catch (Exception ignored) {}
 
             AdminUser user = new AdminUser(openId, name, null, null, null, role);
             AdminContextHolder.set(user);

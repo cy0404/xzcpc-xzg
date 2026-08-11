@@ -17,6 +17,9 @@
     "permission": {
       "scope.record": {
         "desc": "用于语音搜索盘点物料"
+      },
+      "scope.camera": {
+        "desc": "用于拍摄报损凭证视频和照片"
       }
     },
     "requiredBackgroundModes": [],

@@ -9,17 +9,36 @@
       </div>
     </div>
 
+    <!-- Tab 切换 -->
+    <a-tabs v-model:activeKey="activeTab" class="expense-tabs">
+      <a-tab-pane key="expense" tab="普通支出" />
+      <a-tab-pane key="selfPurchase" tab="自购成本" />
+    </a-tabs>
+
     <a-card class="filter-card" :bordered="false">
       <a-row :gutter="[16, 16]">
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">门店选择</div>
-          <a-select v-model:value="filters.storeId" placeholder="全部门店" allow-clear style="width: 100%">
-            <a-select-option v-for="store in stores" :key="store.id" :value="store.id">
+          <a-select
+            v-model:value="filters.storeIds"
+            mode="multiple"
+            placeholder="全部门店"
+            allow-clear
+            show-search
+            option-filter-prop="label"
+            style="width: 100%"
+            :max-tag-count="10"
+          >
+            <a-select-option v-for="store in stores" :key="store.id" :value="store.id" :label="store.name">
               {{ store.name }}
             </a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="4">
+          <div class="filter-label">督导</div>
+          <a-select v-model:value="filters.supervisorName" placeholder="全部督导" style="width: 100%" allow-clear :options="supervisorOptions" @change="handleSearch" />
+        </a-col>
+        <a-col v-if="activeTab === 'expense'" :xs="24" :sm="12" :md="5">
           <div class="filter-label">支出类型</div>
           <a-select v-model:value="filters.typeId" placeholder="全部类型" allow-clear style="width: 100%">
             <a-select-option v-for="type in expenseTypes" :key="type.typeId" :value="type.typeId">
@@ -27,40 +46,65 @@
             </a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="8">
-          <div class="filter-label">日期范围</div>
-          <a-range-picker v-model:value="filters.dateRange" style="width: 100%" format="YYYY-MM-DD" />
-        </a-col>
-        <a-col :xs="24" :sm="12" :md="4">
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">经手人</div>
           <a-input v-model:value="filters.handlerName" placeholder="输入姓名搜索" allow-clear @pressEnter="handleSearch" />
         </a-col>
+        <a-col :xs="24" :sm="12" :md="5">
+          <div class="filter-label">日期范围</div>
+          <a-range-picker v-model:value="filters.dateRange" style="width: 100%" format="YYYY-MM-DD" />
+        </a-col>
       </a-row>
-      <div class="filter-actions">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
         <a-button @click="handleReset">重置</a-button>
         <a-button type="primary" @click="handleSearch">查询</a-button>
       </div>
     </a-card>
 
-    <a-card class="table-card" :bordered="false">
+    <a-card class="table-card" :bordered="false" :key="activeTab">
       <a-table
-        :columns="columns"
+        :columns="activeColumns"
         :data-source="records"
         :pagination="tablePagination"
         :loading="loading"
+        :scroll="{ x: 1400 }"
         row-key="id"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
+          <!-- 普通支出：支出项目/类型 -->
           <template v-if="column.key === 'typeName'">
-            <span v-if="record.itemName" class="item-name">{{ record.itemName }}</span>
-            <a-tag :color="getTypeColor(record.typeName)" :style="record.itemName ? 'margin-left:8px' : ''">{{ record.typeName }}</a-tag>
+            <span v-if="record.firstTypeName" class="item-name">{{ record.firstTypeName }}</span>
+            <a-tag :color="getTypeColor(record.typeName)" :style="record.firstTypeName ? 'margin-left:8px' : ''">{{ record.typeName }}</a-tag>
           </template>
-          <template v-if="column.key === 'amount'">
-            <span class="money">{{ formatMoney(record.amount) }}</span>
+          <!-- 自购成本：支出项目/类型 -->
+          <template v-else-if="column.key === 'selfPurchaseType'">
+            <span class="item-name">{{ record.materialName }}</span>
+            <a-tag color="blue" style="margin-left:8px">自购成本</a-tag>
           </template>
-          <template v-if="column.key === 'voucher'">
+          <!-- 自购成本：重量 -->
+          <template v-else-if="column.key === 'weight'">
+            {{ record.purchaseQty }}{{ record.unit }}
+          </template>
+          <!-- 自购成本：单价 -->
+          <template v-else-if="column.key === 'unitPrice'">
+            <span v-if="record.unitPrice" class="money">¥{{ formatAmount(record.unitPrice) }}</span>
+            <span v-else>--</span>
+          </template>
+          <!-- 金额 -->
+          <template v-else-if="column.key === 'amount'">
+            <span class="money">{{ activeTab === 'selfPurchase' ? formatMoney(record.totalAmount) : formatMoney(record.amount) }}</span>
+          </template>
+          <!-- 产生日期 -->
+          <template v-else-if="column.key === 'occurredDate'">
+            {{ activeTab === 'selfPurchase' ? (record.purchaseDate || '--') : record.occurredDate }}
+          </template>
+          <!-- 凭证 -->
+          <template v-else-if="column.key === 'voucher'">
             <a-button type="link" size="small" @click="openVoucher(record)">查看凭证</a-button>
+          </template>
+          <template v-else>
+            {{ record[column.dataIndex] }}
           </template>
         </template>
       </a-table>
@@ -75,18 +119,20 @@
           @error="onVoucherImgError"
         />
         <div v-else class="voucher-placeholder">暂无凭证图片</div>
-        <p class="voucher-info">{{ currentVoucher?.storeName }} / {{ currentVoucher?.typeName }} / {{ formatMoney(currentVoucher?.amount || 0) }}</p>
+        <p class="voucher-info">{{ voucherInfoText }}</p>
       </div>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import type { Dayjs } from 'dayjs'
 import ExpenseModuleTabs from '../../components/ExpenseModuleTabs.vue'
 import { getExpenseRecords, getExpenseTypes } from '../../api/expense'
 import { getStores } from '../../api/store'
+import { getSupervisorOptions } from '../../api/supervisor'
+import api from '../../api/index'
 
 type StoreOption = { id: string; name: string }
 type ExpenseType = { id: number; typeId: string; name: string; description?: string; status: string }
@@ -97,32 +143,81 @@ type ExpenseRecord = {
   storeMiniappNo?: string
   storeName: string
   typeId: string
+  firstTypeName: string
   typeName: string
+  remark?: string
   amount: number
   occurredDate: string
   handlerName: string
   voucherUrl?: string
 }
 
+const activeTab = ref<'expense' | 'selfPurchase'>('expense')
 const loading = ref(false)
 const voucherOpen = ref(false)
-const currentVoucher = ref<ExpenseRecord | null>(null)
-const records = ref<ExpenseRecord[]>([])
+const currentVoucher = ref<any>(null)
+const records = ref<any[]>([])
 const stores = ref<StoreOption[]>([])
 const expenseTypes = ref<ExpenseType[]>([])
 
 const filters = reactive({
-  storeId: undefined as string | undefined,
+  storeIds: [] as string[],
+  supervisorName: '' as string,
   typeId: undefined as string | undefined,
   dateRange: [] as Dayjs[],
   handlerName: '',
 })
+const supervisorOptions = ref<{ label: string; value: string }[]>([])
 
 const pagination = reactive({
   current: 1,
   pageSize: 10,
   total: 0,
 })
+
+const rowKey = computed(() => activeTab.value === 'selfPurchase' ? 'id' : 'id')
+
+const expenseColumns = [
+  { title: '门店名称', dataIndex: 'storeName', key: 'storeName', fixed: 'left' as const, width: 160 },
+  { title: '督导', dataIndex: 'supervisorName', key: 'supervisorName', width: 100 },
+  { title: '支出项目 / 类型', dataIndex: 'typeName', key: 'typeName', width: 220 },
+  { title: '说明', dataIndex: 'remark', key: 'remark', width: 200, ellipsis: true },
+  { title: '金额', dataIndex: 'amount', key: 'amount', width: 140, align: 'right' as const },
+  { title: '产生日期', dataIndex: 'occurredDate', key: 'occurredDate', width: 140 },
+  { title: '经手人', dataIndex: 'handlerName', key: 'handlerName', width: 120 },
+  { title: '凭证缩略图', key: 'voucher', width: 140 },
+]
+
+const selfPurchaseColumns = [
+  { title: '门店名称', dataIndex: 'storeName', key: 'storeName', fixed: 'left' as const, width: 160 },
+  { title: '督导', dataIndex: 'supervisorName', key: 'supervisorName', width: 100 },
+  { title: '支出项目 / 类型', key: 'selfPurchaseType', width: 200 },
+  { title: '重量', key: 'weight', width: 100 },
+  { title: '单价(kg)', key: 'unitPrice', width: 100, align: 'right' as const },
+  { title: '总价', dataIndex: 'totalAmount', key: 'amount', width: 120, align: 'right' as const },
+  { title: '说明', dataIndex: 'remark', key: 'remark', width: 160, ellipsis: true },
+  { title: '产生日期', dataIndex: 'purchaseDate', key: 'occurredDate', width: 140 },
+  { title: '经手人', dataIndex: 'handlerName', key: 'handlerName', width: 120 },
+  { title: '凭证缩略图', key: 'voucher', width: 140 },
+]
+
+const activeColumns = computed(() => activeTab.value === 'selfPurchase' ? selfPurchaseColumns : expenseColumns)
+
+const voucherInfoText = computed(() => {
+  const v = currentVoucher.value
+  if (!v) return ''
+  if (activeTab.value === 'selfPurchase') {
+    return `${v.storeName || ''} / 自购成本 / ${formatMoney(v.totalAmount || 0)}`
+  }
+  return `${v.storeName || ''} / ${v.typeName || ''} / ${formatMoney(v.amount || 0)}`
+})
+
+const tablePagination = computed(() => ({
+  current: pagination.current,
+  pageSize: pagination.pageSize,
+  total: pagination.total,
+  showTotal: (total: number) => `共 ${total} 条记录`,
+}))
 
 const fallbackStores: StoreOption[] = [
   { id: 's001', name: '南山万象店' },
@@ -139,33 +234,22 @@ const fallbackTypes: ExpenseType[] = [
 ]
 
 const fallbackRecords: ExpenseRecord[] = [
-  { id: 1, expenseId: 'EX00000001', storeId: 's001', storeMiniappNo: 'mp_store_001', storeName: '南山万象店', typeId: 'ET00000001', typeName: '物料采购', amount: 8420, occurredDate: '2026-04-28', handlerName: '张明' },
-  { id: 2, expenseId: 'EX00000002', storeId: 's002', storeMiniappNo: 'mp_store_002', storeName: '福田中心城店', typeId: 'ET00000002', typeName: '设备维护', amount: 1260, occurredDate: '2026-04-21', handlerName: '李娜' },
-  { id: 3, expenseId: 'EX00000003', storeId: 's003', storeMiniappNo: 'mp_store_003', storeName: '罗湖万象城店', typeId: 'ET00000003', typeName: '门店杂费', amount: 680, occurredDate: '2026-04-16', handlerName: '陈伟' },
-  { id: 4, expenseId: 'EX00000004', storeId: 's004', storeMiniappNo: 'mp_store_004', storeName: '宝安壹方城店', typeId: 'ET00000001', typeName: '物料采购', amount: 6950, occurredDate: '2026-04-12', handlerName: '周怡' },
+  { id: 1, expenseId: 'EX00000001', storeId: 's001', storeMiniappNo: 'mp_store_001', storeName: '南山万象店', typeId: 'ET00000001', firstTypeName: '日常支出', typeName: '物料采购', remark: '月度常规物料补货', amount: 8420, occurredDate: '2026-04-28', handlerName: '张明' },
+  { id: 2, expenseId: 'EX00000002', storeId: 's002', storeMiniappNo: 'mp_store_002', storeName: '福田中心城店', typeId: 'ET00000002', firstTypeName: '设备支出', typeName: '设备维护', remark: '空调季度保养', amount: 1260, occurredDate: '2026-04-21', handlerName: '李娜' },
+  { id: 3, expenseId: 'EX00000003', storeId: 's003', storeMiniappNo: 'mp_store_003', storeName: '罗湖万象城店', typeId: 'ET00000003', firstTypeName: '日常支出', typeName: '门店杂费', amount: 680, occurredDate: '2026-04-16', handlerName: '陈伟' },
+  { id: 4, expenseId: 'EX00000004', storeId: 's004', storeMiniappNo: 'mp_store_004', storeName: '宝安壹方城店', typeId: 'ET00000001', firstTypeName: '日常支出', typeName: '物料采购', remark: '紧急补货-生鲜类', amount: 6950, occurredDate: '2026-04-12', handlerName: '周怡' },
 ]
-
-const columns = [
-  { title: '门店名称', dataIndex: 'storeName', key: 'storeName' },
-  { title: '支出项目 / 类型', dataIndex: 'typeName', key: 'typeName', width: 200 },
-  { title: '金额', dataIndex: 'amount', key: 'amount', width: 140, align: 'right' as const },
-  { title: '产生日期', dataIndex: 'occurredDate', key: 'occurredDate', width: 140 },
-  { title: '经手人', dataIndex: 'handlerName', key: 'handlerName', width: 120 },
-  { title: '凭证缩略图', key: 'voucher', width: 140 },
-]
-
-const tablePagination = computed(() => ({
-  current: pagination.current,
-  pageSize: pagination.pageSize,
-  total: pagination.total,
-  showTotal: (total: number) => `共 ${total} 条记录`,
-}))
 
 function formatMoney(value: number) {
   return `¥${Number(value || 0).toLocaleString()}`
 }
 
+function formatAmount(value: number) {
+  return Number(value || 0).toLocaleString()
+}
+
 function getTypeColor(typeName: string) {
+  if (!typeName) return 'green'
   if (typeName.includes('维护')) return 'orange'
   if (typeName.includes('杂费')) return 'default'
   return 'green'
@@ -180,7 +264,7 @@ function normalizeStore(raw: any): StoreOption {
 
 function getFilteredFallback() {
   return fallbackRecords.filter((item) => {
-    if (filters.storeId && item.storeId !== filters.storeId) return false
+    if (filters.storeIds.length && !filters.storeIds.includes(item.storeId)) return false
     if (filters.typeId && String(item.typeId) !== filters.typeId) return false
     if (filters.handlerName && !item.handlerName.includes(filters.handlerName.trim())) return false
     return true
@@ -210,11 +294,12 @@ async function fetchOptions() {
   }
 }
 
-async function fetchRecords() {
+async function fetchExpenseRecords() {
   loading.value = true
   try {
     const params = {
-      storeId: filters.storeId,
+      storeId: filters.storeIds.join(','),
+      supervisorName: filters.supervisorName,
       typeId: filters.typeId,
       startDate: filters.dateRange?.[0]?.format('YYYY-MM-DD'),
       endDate: filters.dateRange?.[1]?.format('YYYY-MM-DD'),
@@ -234,13 +319,51 @@ async function fetchRecords() {
   }
 }
 
+async function fetchSelfPurchaseRecords() {
+  loading.value = true
+  try {
+    const params: any = {
+      storeIds: filters.storeIds.join(','),
+      supervisorName: filters.supervisorName,
+      startDate: filters.dateRange?.[0]?.format('YYYY-MM-DD') || '',
+      endDate: filters.dateRange?.[1]?.format('YYYY-MM-DD') || '',
+      handlerName: filters.handlerName.trim(),
+      pageNum: pagination.current,
+      pageSize: pagination.pageSize,
+    }
+    const res = (await api.get('/self-purchase-materials', { params })) as any
+    records.value = res.data?.records || res.data || []
+    pagination.total = res.data?.total || records.value.length
+  } catch {
+    records.value = []
+    pagination.total = 0
+  } finally {
+    loading.value = false
+  }
+}
+
+function fetchRecords() {
+  if (activeTab.value === 'selfPurchase') {
+    fetchSelfPurchaseRecords()
+  } else {
+    fetchExpenseRecords()
+  }
+}
+
+watch(activeTab, () => {
+  records.value = []
+  pagination.total = 0
+  handleReset()
+})
+
 function handleSearch() {
   pagination.current = 1
   fetchRecords()
 }
 
 function handleReset() {
-  filters.storeId = undefined
+  filters.storeIds = []
+  filters.supervisorName = ''
   filters.typeId = undefined
   filters.dateRange = []
   filters.handlerName = ''
@@ -254,7 +377,7 @@ function handleTableChange(pag: any) {
   fetchRecords()
 }
 
-function openVoucher(record: ExpenseRecord) {
+function openVoucher(record: any) {
   currentVoucher.value = record
   voucherOpen.value = true
 }
@@ -269,8 +392,13 @@ function onVoucherImgError(e: Event) {
   }
 }
 
+async function fetchSupervisors() {
+  try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
+}
+
 onMounted(async () => {
   await fetchOptions()
+  await fetchSupervisors()
   await fetchRecords()
 })
 </script>
@@ -280,11 +408,15 @@ onMounted(async () => {
   max-width: 1280px;
 }
 
+.expense-tabs {
+  margin-bottom: 0;
+}
+
 .page-title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
 }
 
 .page-title {
@@ -348,5 +480,10 @@ onMounted(async () => {
   border-radius: 8px;
   background: #f9fafb;
   color: #6b7280;
+}
+
+:deep(.ant-select-selection-overflow) {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
 }
 </style>

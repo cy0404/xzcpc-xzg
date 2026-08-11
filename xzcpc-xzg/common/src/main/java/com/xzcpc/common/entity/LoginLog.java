@@ -20,6 +20,9 @@ public class LoginLog {
     /** 用户ID（session_id） */
     private Long userId;
 
+    /** 微信 openid */
+    private String openid;
+
     /** 用户名/微信昵称 */
     private String username;
 

@@ -16,4 +16,6 @@ public class StoreInfo {
     private String ownerPhone;
     /** 老板绑定的微信openid */
     private String ownerOpenid;
+    /** 督导姓名 */
+    private String supervisorName;
 }

@@ -31,7 +31,20 @@ spring:
 
 app:
   upload:
-    path: /home/StoreInventory/mq-server/upload
+    path: /data/inventory-upload
+
+pg:
+  datasource:
+    url: jdbc:postgresql://119.45.162.160:5433/tea_chain
+    username: postgres
+    password: ${PG_PASSWORD:xzcp123456}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 10000
+      idle-timeout: 300000
+      max-lifetime: 600000
 
 logging:
   level:

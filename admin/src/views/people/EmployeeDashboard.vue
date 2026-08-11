@@ -10,6 +10,15 @@
       <a-segmented v-model:value="range" :options="rangeOptions" @change="fetchDashboard" />
     </div>
 
+    <a-card class="filter-card" :bordered="false" style="margin-bottom:5px">
+      <a-row :gutter="[16, 12]">
+        <a-col :xs="12" :md="4">
+          <div class="filter-label">督导</div>
+          <a-select v-model:value="supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="fetchDashboard" />
+        </a-col>
+      </a-row>
+    </a-card>
+
     <a-row :gutter="[16, 16]" class="metric-row">
       <a-col :xs="24" :sm="12" :lg="6">
         <div class="metric-card">
@@ -46,7 +55,7 @@
         <a-card title="各门店人员分布" :bordered="false">
           <div class="bar-list">
             <div v-for="item in storeDistribution" :key="item.name" class="bar-row">
-              <span class="bar-label">{{ item.name }}</span>
+              <span class="bar-label">{{ item.name }}{{ item.supervisorName ? ' (' + item.supervisorName + ')' : '' }}</span>
               <span class="bar-track">
                 <span class="bar-fill" :style="{ width: `${item.percent}%` }" />
               </span>
@@ -90,8 +99,11 @@
 import { computed, onMounted, ref } from 'vue'
 import PeopleModuleTabs from '../../components/PeopleModuleTabs.vue'
 import { getPeopleDashboard } from '../../api/people'
+import { getSupervisorOptions } from '../../api/supervisor'
 
 const range = ref('month')
+const supervisorName = ref('')
+const supervisorOptions = ref<{ label: string; value: string }[]>([])
 const rangeOptions = [
   { label: '本月', value: 'month' },
   { label: '近3月', value: 'quarter' },
@@ -145,7 +157,9 @@ const trendWithPercent = computed(() => {
 
 async function fetchDashboard() {
   try {
-    const res = (await getPeopleDashboard({ range: range.value })) as any
+    const params: any = { range: range.value }
+    if (supervisorName.value) params.supervisorName = supervisorName.value
+    const res = (await getPeopleDashboard(params)) as any
     const data = res.data
     if (!data) return
     summary.value = data.summary || summary.value
@@ -157,7 +171,11 @@ async function fetchDashboard() {
   }
 }
 
-onMounted(fetchDashboard)
+async function fetchSupervisors() {
+  try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
+}
+
+onMounted(() => { fetchSupervisors(); fetchDashboard() })
 </script>
 
 <style scoped>
@@ -218,6 +236,9 @@ onMounted(fetchDashboard)
 .bar-list {
   display: grid;
   gap: 14px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .bar-row {

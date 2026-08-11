@@ -1,4 +1,20 @@
-const BASE_URL = 'https://www.xzcpc-9pd.top/storeInventory/api/mp'
+// 切换环境：true=生产 false=本地 'test'=测试域名
+const ENV: 'prod' | 'local' | 'test' = 'prod'
+const LOCAL_URL = 'http://192.168.0.4:30261/storeInventory/api/mp'
+const TEST_URL = 'https://www.xzcpc-9pd.top/test/storeInventory/api/mp'
+const PROD_URL = 'https://www.xzcpc-9pd.top/storeInventory/api/mp'
+
+function getBaseUrl() {
+  if (ENV === 'local') return LOCAL_URL
+  if (ENV === 'test') return TEST_URL
+  return PROD_URL
+}
+
+const BASE_URL = getBaseUrl()
+const IS_PROD = ENV === 'prod'
+
+// H5 页面基础路径（测试环境 URL 含 /test 前缀，H5 用同域 HTTPS 也可直接取 /test/storeInventory）
+const H5_BASE = getBaseUrl().replace(/\/api\/mp\/?$/, '')
 
 const CODE_MAP: Record<number, string> = {
   401: '未登录或登录已过期',
@@ -8,7 +24,7 @@ const CODE_MAP: Record<number, string> = {
   4040: '任务不存在',
 }
 
-export { BASE_URL, CODE_MAP }
+export { BASE_URL, H5_BASE, IS_PROD, CODE_MAP }
 
 export const TASK_STATUS_MAP: Record<string, string> = {
   not_started: '未开始',

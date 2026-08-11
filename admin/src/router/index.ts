@@ -7,6 +7,7 @@ const FEISHU_LOGIN_SYNC_KEY = 'feishu_login_synced'
 function defaultRoute(): string {
   if (hasRole('headquarters_admin')) return '/tasks'
   if (hasRole('operation_admin')) return '/tasks'
+  if (hasRole('supervisor_admin')) return '/tasks'
   if (hasRole('finance_admin')) return '/expense'
   if (hasRole('hr_admin')) return '/people'
   return '/no-permission'
@@ -28,37 +29,97 @@ const router = createRouter({
       path: '/templates',
       name: 'Templates',
       component: () => import('../views/template/TemplateList.vue'),
-      meta: { roles: ['headquarters_admin', 'operation_admin'] },
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
       path: '/templates/:id',
       name: 'TemplateDetail',
       component: () => import('../views/template/TemplateDetail.vue'),
-      meta: { roles: ['headquarters_admin', 'operation_admin'] },
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
       path: '/materials',
       name: 'MaterialManagement',
       component: () => import('../views/material/MaterialManagement.vue'),
-      meta: { roles: ['headquarters_admin', 'operation_admin'] },
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
       path: '/tasks',
       name: 'Tasks',
       component: () => import('../views/task/TaskList.vue'),
-      meta: { roles: ['headquarters_admin', 'operation_admin'] },
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
       path: '/tasks/create',
       name: 'TaskCreate',
       component: () => import('../views/task/TaskCreate.vue'),
-      meta: { roles: ['headquarters_admin', 'operation_admin'] },
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
       path: '/tasks/:id/result',
       name: 'TaskResult',
       component: () => import('../views/task/TaskResult.vue'),
-      meta: { roles: ['headquarters_admin', 'operation_admin'] },
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/tasks/differences',
+      name: 'DifferenceList',
+      component: () => import('../views/task/DifferenceList.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/tasks/:taskId/differences',
+      name: 'DifferenceDetail',
+      component: () => import('../views/task/DifferenceDetail.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/loss',
+      name: 'LossList',
+      component: () => import('../views/loss/LossList.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/loss/dashboard',
+      name: 'LossDashboard',
+      component: () => import('../views/loss/LossDashboard.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/loss/standard',
+      name: 'LossStandard',
+      component: () => import('../views/loss/LossStandard.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/transfer',
+      name: 'TransferLedger',
+      component: () => import('../views/transfer/TransferList.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/issue',
+      name: 'IssueLedger',
+      component: () => import('../views/issue/IssueList.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/supervisor',
+      name: 'SupervisorVisit',
+      component: () => import('../views/supervisor/SupervisorVisitList.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/supervisor/create',
+      name: 'SupervisorVisitCreate',
+      component: () => import('../views/supervisor/SupervisorVisitForm.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/supervisor/:id/edit',
+      name: 'SupervisorVisitEdit',
+      component: () => import('../views/supervisor/SupervisorVisitForm.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
       path: '/settings',
@@ -70,43 +131,61 @@ const router = createRouter({
       path: '/expense',
       name: 'Expense',
       component: () => import('../views/expense/ExpenseList.vue'),
-      meta: { roles: ['headquarters_admin', 'finance_admin'] },
+      meta: { roles: ['headquarters_admin', 'finance_admin', 'supervisor_admin'] },
     },
     {
       path: '/expense/dashboard',
       name: 'ExpenseDashboard',
       component: () => import('../views/expense/ExpenseDashboard.vue'),
-      meta: { roles: ['headquarters_admin', 'finance_admin'] },
+      meta: { roles: ['headquarters_admin', 'finance_admin', 'supervisor_admin'] },
     },
     {
       path: '/expense/types',
       name: 'ExpenseTypes',
       component: () => import('../views/expense/ExpenseTypeManagement.vue'),
-      meta: { roles: ['headquarters_admin', 'finance_admin'] },
+      meta: { roles: ['headquarters_admin', 'finance_admin', 'supervisor_admin'] },
     },
     {
       path: '/people',
       name: 'People',
       component: () => import('../views/people/EmployeeList.vue'),
-      meta: { roles: ['headquarters_admin', 'hr_admin'] },
+      meta: { roles: ['headquarters_admin', 'hr_admin', 'supervisor_admin'] },
     },
     {
       path: '/people/dashboard',
       name: 'PeopleDashboard',
       component: () => import('../views/people/EmployeeDashboard.vue'),
-      meta: { roles: ['headquarters_admin', 'hr_admin'] },
+      meta: { roles: ['headquarters_admin', 'hr_admin', 'supervisor_admin'] },
     },
     {
       path: '/people/bindings',
       name: 'OwnerRegistrations',
       component: () => import('../views/people/OwnerRegistrationList.vue'),
-      meta: { roles: ['headquarters_admin', 'hr_admin'] },
+      meta: { roles: ['headquarters_admin', 'hr_admin', 'supervisor_admin'] },
     },
     {
       path: '/people/:id',
       name: 'EmployeeDetail',
       component: () => import('../views/people/EmployeeDetail.vue'),
-      meta: { roles: ['headquarters_admin', 'hr_admin'] },
+      meta: { roles: ['headquarters_admin', 'hr_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/logs/operation',
+      name: 'OperationLog',
+      component: () => import('../views/log/OperationLog.vue'),
+      meta: { roles: ['headquarters_admin'] },
+    },
+    {
+      path: '/logs/login',
+      name: 'LoginLog',
+      component: () => import('../views/log/LoginLog.vue'),
+      meta: { roles: ['headquarters_admin'] },
+    },
+    {
+      path: '/loss-report/:id',
+      name: 'LossReportDetail',
+      component: () => import('../views/loss/LossReportDetail.vue'),
+      meta: { public: true },
     },
     {
       path: '/reports',
@@ -187,7 +266,7 @@ async function refreshCurrentPermission(): Promise<boolean> {
       role,
       roleName: current?.roleName,
       hasAdminAccess: role.split(',').some((item: string) =>
-        ['headquarters_admin', 'finance_admin', 'hr_admin', 'operation_admin'].includes(item.trim()),
+        ['headquarters_admin', 'finance_admin', 'hr_admin', 'operation_admin', 'supervisor_admin'].includes(item.trim()),
       ),
     })
     return true
@@ -255,6 +334,11 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   await refreshCurrentPermission()
+
+  if (to.meta?.public === true) {
+    next()
+    return
+  }
 
   if (!hasAdminAccess() && to.path !== '/no-permission') {
     next('/no-permission')

@@ -22,18 +22,23 @@ public class ExpenseController {
     @OpLog(module = "支出", operation = "查询明细")
     @GetMapping
     public R<Page<ExpenseRecord>> list(@RequestParam(defaultValue = "") String storeId,
+                                       @RequestParam(defaultValue = "") String supervisorName,
                                        @RequestParam(defaultValue = "") String typeId,
                                        @RequestParam(defaultValue = "") String startDate,
                                        @RequestParam(defaultValue = "") String endDate,
                                        @RequestParam(defaultValue = "") String handlerName,
                                        @RequestParam(defaultValue = "1") int pageNum,
                                        @RequestParam(defaultValue = "10") int pageSize) {
-        return R.ok(expenseService.page(storeId, typeId, startDate, endDate, handlerName, pageNum, pageSize));
+        return R.ok(expenseService.page(storeId, supervisorName, typeId, startDate, endDate, handlerName, pageNum, pageSize));
     }
 
     @OpLog(module = "支出", operation = "查看统计")
     @GetMapping("/dashboard")
-    public R<ExpenseDashboardResp> dashboard(@RequestParam(defaultValue = "month") String range) {
-        return R.ok(expenseService.dashboard(range));
+    public R<ExpenseDashboardResp> dashboard(
+            @RequestParam(defaultValue = "") String range,
+            @RequestParam(defaultValue = "") String startDate,
+            @RequestParam(defaultValue = "") String endDate,
+            @RequestParam(defaultValue = "") String supervisorName) {
+        return R.ok(expenseService.dashboard(range, startDate, endDate, supervisorName));
     }
 }

@@ -23,6 +23,7 @@ import java.util.Set;
 public class MpWorkHoursServiceImpl implements MpWorkHoursService {
 
     private static final Set<String> ALLOWED_ROLES = Set.of("老板", "店长");
+    private static final java.time.format.DateTimeFormatter DTF = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmm");
 
     private final StoreWorkHoursMapper workHoursMapper;
     private final MpStaffService staffService;
@@ -57,9 +58,10 @@ public class MpWorkHoursServiceImpl implements MpWorkHoursService {
         record.setHours(hours);
         record.setEmployeeId((String) profile.getOrDefault("employeeId", ""));
         record.setEmployeeName((String) profile.getOrDefault("employeeName", ""));
-        record.setRecordId("TMP");
+        // 先插后改：用自增 id 保证 record_id 唯一，避免并发同序号
+        record.setRecordId("TMP_" + System.nanoTime());
         workHoursMapper.insert(record);
-        record.setRecordId("WH" + String.format("%08d", record.getId()));
+        record.setRecordId("WH" + java.time.LocalDateTime.now().format(DTF) + String.format("%03d", record.getId() % 1000));
         workHoursMapper.updateById(record);
         return record;
     }
@@ -144,4 +146,5 @@ public class MpWorkHoursServiceImpl implements MpWorkHoursService {
         }
         return hours.setScale(2, RoundingMode.HALF_UP);
     }
+
 }

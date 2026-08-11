@@ -44,8 +44,12 @@ public class MpStaffController {
 
     @OpLog(module = "小程序-人员", operation = "查询员工列表")
     @GetMapping
-    public R<Map<String, Object>> list(@RequestParam(defaultValue = "") String status) {
+    public R<?> list(@RequestParam(defaultValue = "") String status,
+                     @RequestParam(defaultValue = "false") boolean all) {
         LoginUser user = UserContextHolder.get();
+        if (all) {
+            return R.ok(staffService.listAllStoresStaff(user.getOpenid(), status));
+        }
         return R.ok(staffService.listStaff(user.getStoreId(), status));
     }
 
@@ -92,6 +96,17 @@ public class MpStaffController {
     public R<List<Map<String, Object>>> listApplications(@RequestParam(defaultValue = "pending") String status) {
         LoginUser user = UserContextHolder.get();
         return R.ok(staffService.listApplications(user.getStoreId(), status));
+    }
+
+    @OpLog(module = "小程序-人员", operation = "待审批概览")
+    @GetMapping("/applications/overview")
+    public R<?> overview(@RequestParam(defaultValue = "false") boolean all) {
+        LoginUser user = UserContextHolder.get();
+        if (all) {
+            return R.ok(staffService.overviewByStores(user.getOpenid()));
+        }
+        long pending = staffService.listApplications(user.getStoreId(), "pending").size();
+        return R.ok(Map.of("pending", pending));
     }
 
     @OpLog(module = "小程序-人员", operation = "查询登记详情")

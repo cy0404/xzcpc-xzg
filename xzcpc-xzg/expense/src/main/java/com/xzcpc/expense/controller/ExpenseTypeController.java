@@ -25,7 +25,27 @@ public class ExpenseTypeController {
         return R.ok(expenseTypeService.list(status));
     }
 
-    // ====== 二级项目管理 ======
+    @PostMapping
+    public R<ExpenseType> create(@RequestBody Map<String, String> body) {
+        return R.ok(expenseTypeService.create(
+                body.get("firstTypeName"), body.get("name"),
+                body.get("description"), body.get("status")));
+    }
+
+    @PutMapping("/{typeId}")
+    public R<ExpenseType> update(@PathVariable String typeId, @RequestBody Map<String, String> body) {
+        return R.ok(expenseTypeService.update(
+                typeId, body.get("firstTypeName"), body.get("name"),
+                body.get("description"), body.get("status")));
+    }
+
+    @DeleteMapping("/{typeId}")
+    public R<Void> delete(@PathVariable String typeId) {
+        expenseTypeService.delete(typeId);
+        return R.ok();
+    }
+
+    // ====== 旧二级项目管理（expense_item 已弃用，保留兼容）======
 
     @GetMapping("/items")
     public R<List<ExpenseItem>> listItems(@RequestParam(defaultValue = "") String typeId) {
@@ -36,6 +56,7 @@ public class ExpenseTypeController {
     }
 
     @PostMapping("/items")
+    @Deprecated
     public R<ExpenseItem> createItem(@RequestBody Map<String, String> body) {
         return R.ok(itemService.createItem(
                 body.get("typeId"), body.get("name"),
@@ -43,6 +64,7 @@ public class ExpenseTypeController {
     }
 
     @PutMapping("/items/{itemId}")
+    @Deprecated
     public R<ExpenseItem> updateItem(@PathVariable String itemId, @RequestBody Map<String, String> body) {
         return R.ok(itemService.updateItem(
                 itemId, body.get("typeId"), body.get("name"),
@@ -50,6 +72,7 @@ public class ExpenseTypeController {
     }
 
     @DeleteMapping("/items/{itemId}")
+    @Deprecated
     public R<Void> deleteItem(@PathVariable String itemId) {
         itemService.deleteItem(itemId);
         return R.ok();

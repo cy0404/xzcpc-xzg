@@ -17,6 +17,8 @@ public class TaskMaterialSummary { // 物料跨分区汇总实体，提交时自
     private String spec;
     private String baseUnit;
     private BigDecimal totalQty;
+    private BigDecimal originalQty;
+    private BigDecimal adjustedQty;
     private Integer zoneCount;
     private String unitBreakdown;
 

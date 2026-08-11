@@ -13,6 +13,9 @@ import java.util.*;
 public class AdminUser {
 
     private static final Set<String> ADMIN_ROLES = Set.of(
+            "headquarters_admin", "finance_admin", "hr_admin", "operation_admin", "supervisor_admin"
+    );
+    private static final Set<String> FULL_ACCESS_ROLES = Set.of(
             "headquarters_admin", "finance_admin", "hr_admin", "operation_admin"
     );
     private static final String HEADQUARTERS_ADMIN = "headquarters_admin";
@@ -52,5 +55,13 @@ public class AdminUser {
     public boolean isHeadquartersAdmin() {
         if (role == null || role.isBlank()) return false;
         return getRoleList().stream().anyMatch(HEADQUARTERS_ADMIN::equals);
+    }
+
+    /** 是否仅具有督导角色（无全量数据访问权限） */
+    public boolean isSupervisorOnly() {
+        if (role == null || role.isBlank()) return false;
+        List<String> roles = getRoleList();
+        return roles.contains("supervisor_admin")
+                && roles.stream().noneMatch(FULL_ACCESS_ROLES::contains);
     }
 }

@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
-import { fetchExpenses, fetchExpenseTypes, type ExpenseRecord, type ExpenseType } from '@/api/expense'
+import { fetchExpenses, fetchExpenseMaterial, fetchExpenseTypes, type ExpenseRecord, type ExpenseType } from '@/api/expense'
 import { useUserStore } from '@/store/user'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
-import StoreSwitcher from '@/components/StoreSwitcher.vue'
 
 const userStore = useUserStore()
-const switcherRef = ref<InstanceType<typeof StoreSwitcher> | null>(null)
 const loading = ref(true)
 const records = ref<ExpenseRecord[]>([])
 const types = ref<ExpenseType[]>([])
@@ -16,7 +14,8 @@ const selectedTypeId = ref('')
 const total = ref(0)
 const totalCount = ref(0)
 
-const totalAmount = ref(0) // 始终是全部类型的总计，不随筛选变化
+const totalAmount = ref(0)
+const materialMap = ref<Record<string, any>>({})
 
 const groupedRecords = computed(() => {
   const groups: { date: string; items: ExpenseRecord[] }[] = []
@@ -38,6 +37,14 @@ async function loadTypes() { types.value = await fetchExpenseTypes() }
 async function loadRecords(reset = false) {
   const data = await fetchExpenses({ typeId: selectedTypeId.value, pageNum: 1, pageSize: 100 })
   total.value = data.total || 0; records.value = data.records || []
+  // 批量加载自购食材物料明细
+  const map: Record<string, any> = {}
+  await Promise.all(records.value
+    .filter(r => r.typeName === '自购食材')
+    .map(async r => {
+      try { map[r.expenseId] = await fetchExpenseMaterial(r.expenseId) } catch { /* ignore */ }
+    }))
+  materialMap.value = map
 }
 async function loadTotal() {
   const data = await fetchExpenses({ pageNum: 1, pageSize: 999 })
@@ -57,7 +64,7 @@ function voucherLabel(item: ExpenseRecord) { return item.voucherUrl ? '已上传
     <!-- 汇总卡片 -->
     <view class="sum-card">
       <view class="sum-top">
-        <view><text class="sum-label">当前门店</text><view class="store-row"><text class="sum-store">{{ userStore.storeName }}</text><text v-if="userStore.storeCount > 1" class="switch-link" @click="switcherRef?.open()">切换</text></view></view>
+        <view><text class="sum-label">当前门店</text><text class="sum-store">{{ userStore.storeName }}</text></view>
         <text class="sum-month">📅 本月</text>
       </view>
       <text class="sum-amount">¥{{ fmtMoney(totalAmount) }}</text>
@@ -79,7 +86,13 @@ function voucherLabel(item: ExpenseRecord) { return item.voucherUrl ? '已上传
         <view v-for="r in g.items" :key="r.expenseId" class="exp-card" @click="goDetail(r)">
           <view class="ec-icon">{{ (r.typeName||'支')[0] }}</view>
           <view class="ec-info">
-            <view class="ec-top"><text class="ec-name">{{ r.itemName || r.typeName }}</text><text class="ec-amount">¥{{ fmtMoney(r.amount) }}</text></view>
+            <view class="ec-top">
+              <text class="ec-name">{{ r.typeName }}</text>
+              <text class="ec-amount">¥{{ fmtMoney(r.amount) }}</text>
+            </view>
+            <text v-if="materialMap[r.expenseId]" class="ec-desc mat-info">
+              {{ materialMap[r.expenseId].materialName }} · {{ materialMap[r.expenseId].purchaseQty }}{{ materialMap[r.expenseId].unit || 'kg' }} · ¥{{ materialMap[r.expenseId].totalAmount ? Number(materialMap[r.expenseId].totalAmount).toFixed(2) : '--' }}
+            </text>
             <text class="ec-desc">{{ r.remark || '--' }}</text>
             <view class="ec-meta">
               <text>{{ r.handlerName }} · {{ r.occurredDate }}</text>
@@ -94,7 +107,6 @@ function voucherLabel(item: ExpenseRecord) { return item.voucherUrl ? '已上传
 
     <view class="fab"><view class="fab-btn" @click="goCreate">＋ 新增支出</view></view>
 
-    <StoreSwitcher ref="switcherRef" @switched="loadRecords(true); loadTotal()" />
   </view>
 </template>
 
@@ -109,6 +121,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .exp-card{display:flex;align-items:center;gap:20rpx;padding:24rpx 28rpx;background:$s;border-radius:20rpx;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04);margin-bottom:12rpx}
 .ec-icon{width:80rpx;height:80rpx;border-radius:50%;background:$ps;color:$p;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:700;flex-shrink:0}
 .ec-info{flex:1;min-width:0}.ec-top{display:flex;justify-content:space-between;gap:12rpx}.ec-name{font-size:28rpx;font-weight:600;color:$t1}.ec-amount{font-size:28rpx;font-weight:800;color:$t1}
+.mat-info{color:$p;font-weight:500}
 .ec-desc{display:block;margin-top:6rpx;font-size:24rpx;color:$t2}.ec-meta{display:flex;align-items:center;gap:12rpx;margin-top:10rpx;font-size:22rpx;color:$t3}
 .ec-voucher{padding:2rpx 12rpx;border-radius:999rpx;font-size:20rpx;color:$t3}.ec-voucher.has{background:$ps;color:$p}.ec-arrow{font-size:36rpx;color:#8C9691}
 .fab{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:24rpx 32rpx calc(env(safe-area-inset-bottom) + 24rpx);background:linear-gradient(to top,#fff,transparent)}

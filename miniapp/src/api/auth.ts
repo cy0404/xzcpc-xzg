@@ -17,7 +17,7 @@ export function fetchMe() {
 }
 
 export function switchStore(storeId: string) {
-  return request({ url: '/auth/switch-store', method: 'POST', data: { storeId } })
+  return request({ url: '/auth/switch-store', method: 'POST', data: { storeId }, showLoading: false })
 }
 
 export function fetchOwnerDashboard() {

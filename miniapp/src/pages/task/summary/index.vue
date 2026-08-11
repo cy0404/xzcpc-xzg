@@ -27,8 +27,9 @@ async function loadSummary() {
   }
 }
 
+const isSubmitted = computed(() => summary.value?.status === 'submitted')
 const allDone = computed(() => {
-  if (!summary.value) return false
+  if (!summary.value || isSubmitted.value) return false
   return (
     summary.value.savedZones === summary.value.totalZones &&
     summary.value.enteredMaterials === summary.value.totalMaterials
@@ -109,20 +110,6 @@ function goBack() {
           </view>
           <view class="stat-grid">
             <view class="stat-cell">
-              <text class="stat-label">分区总数</text>
-              <text class="stat-value">{{ summary.totalZones }}</text>
-            </view>
-            <view class="stat-cell">
-              <text class="stat-label">已完成分区</text>
-              <text class="stat-value green">{{ summary.savedZones }}</text>
-            </view>
-            <view class="stat-cell">
-              <text class="stat-label">未完成分区</text>
-              <text class="stat-value" :class="unfinishedZones > 0 ? 'red' : ''">
-                {{ unfinishedZones }}
-              </text>
-            </view>
-            <view class="stat-cell">
               <text class="stat-label">物料总数</text>
               <text class="stat-value">{{ summary.totalMaterials }}</text>
             </view>
@@ -160,8 +147,7 @@ function goBack() {
               <view class="row-left">
                 <text class="row-name">{{ materialDisplayName(item) }}</text>
                 <view class="row-sub-line">
-                  <text class="zone-tag">{{ item.zoneCount || 0 }}个分区</text>
-                  <text v-if="item.isMultiUnit && item.unitBreakdown" class="ub-text">{{ unitBreakdownText(item) }}</text>
+                  <text v-if="unitBreakdownText(item)" class="ub-text">{{ unitBreakdownText(item) }}</text>
                   <text v-else class="ub-text">{{ formatQty(item.totalQty) }} {{ item.baseUnit || item.unit || '' }}</text>
                 </view>
               </view>
@@ -191,10 +177,10 @@ function goBack() {
       </view>
       <view
         class="bar-btn primary"
-        :class="{ disabled: submitting }"
-        @click="onTapSubmit"
+        :class="{ disabled: submitting || isSubmitted }"
+        @click="isSubmitted ? null : onTapSubmit()"
       >
-        <text>{{ unenteredLoading ? '加载中...' : submitting ? '提交中...' : '提交任务' }}</text>
+        <text>{{ isSubmitted ? '已提交' : unenteredLoading ? '加载中...' : submitting ? '提交中...' : '提交任务' }}</text>
       </view>
     </view>
 

@@ -13,7 +13,6 @@
       </button>
     </div>
     <div class="tabs-right">
-      <a-input-search placeholder="Search..." allow-clear class="tabs-search" />
       <a-avatar size="small" class="tabs-avatar">默认</a-avatar>
     </div>
   </div>
@@ -95,10 +94,6 @@ function go(path: string) {
 
 .module-tab:hover:not(.active) {
   color: #374151;
-}
-
-.tabs-search {
-  width: 240px;
 }
 
 .tabs-avatar {

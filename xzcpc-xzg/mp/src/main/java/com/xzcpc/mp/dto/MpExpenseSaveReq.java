@@ -14,12 +14,6 @@ public class MpExpenseSaveReq {
     @NotBlank(message = "支出类型不能为空")
     private String typeId;
 
-    private String typeName;
-
-    private String itemId;
-
-    private String itemName;
-
     @NotNull(message = "支出金额不能为空")
     @DecimalMin(value = "0.01", message = "支出金额必须大于0")
     private BigDecimal amount;
@@ -33,4 +27,13 @@ public class MpExpenseSaveReq {
     private String voucherUrl;
 
     private String remark;
+
+    // 自购食材物料明细（仅当支出类型为"自购食材"时填写）
+    private String materialId;
+    private String materialName;
+    private String materialUnit;
+    private String parentCategory;
+    private String category;
+    private BigDecimal weight;
+    private BigDecimal unitPrice;
 }

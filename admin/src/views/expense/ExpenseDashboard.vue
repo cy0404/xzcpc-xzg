@@ -7,8 +7,20 @@
         <h1 class="page-title">支出统计看板</h1>
         <p class="page-subtitle">汇总支出趋势、门店对比和类型分布</p>
       </div>
-      <a-segmented v-model:value="range" :options="rangeOptions" @change="fetchDashboard" />
     </div>
+
+    <a-card class="filter-card" :bordered="false" style="margin-bottom:5px">
+      <a-row :gutter="[16, 12]">
+        <a-col :xs="12" :md="4">
+          <div class="filter-label">督导</div>
+          <a-select v-model:value="supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="fetchDashboard" />
+        </a-col>
+        <a-col :xs="12" :md="6">
+          <div class="filter-label">日期范围</div>
+          <a-range-picker v-model:value="dateRange" style="width:100%" @change="fetchDashboard" />
+        </a-col>
+      </a-row>
+    </a-card>
 
     <a-row :gutter="[16, 16]" class="metric-row">
       <a-col :xs="24" :sm="12" :lg="6">
@@ -43,22 +55,35 @@
 
     <a-row :gutter="[16, 16]">
       <a-col :xs="24" :lg="14">
-        <a-card title="按门店对比" :bordered="false">
+        <a-card :bordered="false" style="height:100%">
+          <template #title>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span>按门店对比</span>
+              <a-radio-group v-model:value="storeRankDim" size="small" button-style="solid">
+                <a-radio-button value="amount">金额</a-radio-button>
+                <a-radio-button value="count">次数</a-radio-button>
+              </a-radio-group>
+              <div style="flex:1" />
+              <a-button size="small" type="text" @click="storeRankAsc = !storeRankAsc">
+                {{ storeRankAsc ? '↑ 升序' : '↓ 降序' }}
+              </a-button>
+            </div>
+          </template>
           <div class="bar-list">
-            <div v-for="item in storeRanking" :key="item.name" class="bar-row">
-              <span class="bar-label">{{ item.name }}</span>
+            <div v-for="item in storeRankView" :key="item.name" class="bar-row">
+              <span class="bar-label">{{ item.name }}{{ item.supervisorName ? ' (' + item.supervisorName + ')' : '' }}</span>
               <span class="bar-track">
                 <span class="bar-fill" :style="{ width: `${item.percent}%` }" />
               </span>
-              <strong>{{ formatMoney(item.amount) }}</strong>
+              <strong>{{ storeRankDim === 'amount' ? formatMoney(item.amount) : `${item.count} 次` }}</strong>
             </div>
           </div>
         </a-card>
       </a-col>
       <a-col :xs="24" :lg="10">
-        <a-card title="按支出类型分布" :bordered="false">
+        <a-card title="按支出类型分布" :bordered="false" style="height:100%">
           <div class="donut-wrap">
-            <div class="donut" />
+            <div class="donut" :style="donutStyle" />
             <ul class="legend">
               <li v-for="item in typeDistribution" :key="item.name">
                 <span>{{ item.name }}</span>
@@ -85,72 +110,89 @@
 import { computed, onMounted, ref } from 'vue'
 import ExpenseModuleTabs from '../../components/ExpenseModuleTabs.vue'
 import { getExpenseDashboard } from '../../api/expense'
+import { getSupervisorOptions } from '../../api/supervisor'
 
-const range = ref('month')
-const rangeOptions = [
-  { label: '本月', value: 'month' },
-  { label: '近3月', value: 'quarter' },
-  { label: '近半年', value: 'halfYear' },
-]
+import dayjs from 'dayjs'
+
+const dateRange = ref<any>([dayjs().startOf('month'), dayjs()])
+const supervisorName = ref('')
+const supervisorOptions = ref<{ label: string; value: string }[]>([])
+const storeRankDim = ref('amount')
+const storeRankAsc = ref(false)
 
 const summary = ref({
-  totalAmount: 128640,
-  totalChange: '环比下降 4.8%',
-  avgStoreAmount: 16080,
-  storeCount: 8,
-  topStoreName: '南山万象店',
-  topStoreAmount: 24600,
-  voucherRate: 96,
-  voucherChange: '较上月提升 3%',
+  totalAmount: 0,
+  totalChange: '',
+  avgStoreAmount: 0,
+  storeCount: 0,
+  topStoreName: '--',
+  topStoreAmount: 0,
+  voucherRate: 0,
+  voucherChange: '',
 })
 
-const storeRanking = ref([
-  { name: '南山万象店', amount: 24600, percent: 100 },
-  { name: '宝安壹方城店', amount: 20180, percent: 82 },
-  { name: '福田中心城店', amount: 17420, percent: 71 },
-  { name: '罗湖万象城店', amount: 15760, percent: 64 },
-  { name: '龙岗星河店', amount: 12540, percent: 51 },
-])
+interface StoreRankItem { name: string; amount: number; count: number; pctAmount: number; pctCount: number }
+const storeRankingRaw = ref<StoreRankItem[]>([])
+const storeRankView = computed(() => {
+  const dim = storeRankDim.value
+  const list = storeRankingRaw.value.map(item => ({
+    ...item,
+    percent: dim === 'amount' ? item.pctAmount : item.pctCount,
+  }))
+  const asc = storeRankAsc.value
+  const key = dim === 'amount' ? 'amount' : 'count'
+  return list.sort((a: any, b: any) => asc ? a[key] - b[key] : b[key] - a[key])
+})
 
-const typeDistribution = ref([
-  { name: '物料采购', percent: 44 },
-  { name: '设备维护', percent: 26 },
-  { name: '门店杂费', percent: 16 },
-  { name: '其他', percent: 14 },
-])
+const typeDistribution = ref<Array<{ name: string; percent: number }>>([])
 
+const monthlyTrendRaw = ref<Array<{ month: string; amount: number }>>([])
 const monthlyTrend = computed(() => {
-  const values = [
-    { month: '10月', amount: 98000 },
-    { month: '11月', amount: 106000 },
-    { month: '12月', amount: 118000 },
-    { month: '1月', amount: 110000 },
-    { month: '2月', amount: 136000 },
-    { month: '3月', amount: 132000 },
-    { month: '4月', amount: 156000 },
-  ]
-  const max = Math.max(...values.map((item) => item.amount))
-  return values.map((item) => ({ ...item, percent: Math.round((item.amount / max) * 100) }))
+  if (!monthlyTrendRaw.value.length) return []
+  const max = Math.max(...monthlyTrendRaw.value.map((item) => item.amount), 1)
+  return monthlyTrendRaw.value.map((item) => ({ ...item, percent: Math.round((item.amount / max) * 100) }))
 })
 
-function formatMoney(value: number) {
+const donutColors = ['#2F8F57', '#5AAA7A', '#85C59E', '#A8D5BA', '#C5E5D2', '#7AA98D', '#D7B36A', '#E8C98B', '#CFD6D1', '#B8C5BB']
+const donutStyle = computed(() => {
+  const items = typeDistribution.value
+  if (!items.length) return { background: '#E8ECE9' }
+  let acc = 0
+  const segments = items.map((item: any, i: number) => {
+    const start = acc
+    acc += item.percent
+    return `${donutColors[i % donutColors.length]} ${start}% ${acc}%`
+  })
+  return { background: `conic-gradient(${segments.join(',')})` }
+})
+
+function formatMoney(value: any) {
   return `¥${Number(value || 0).toLocaleString()}`
 }
 
 async function fetchDashboard() {
   try {
-    const res = (await getExpenseDashboard({ range: range.value })) as any
+    const params: any = {}
+    if (dateRange.value && dateRange.value.length === 2) {
+      params.startDate = dayjs(dateRange.value[0]).format('YYYY-MM-DD')
+      params.endDate = dayjs(dateRange.value[1]).format('YYYY-MM-DD')
+    }
+    if (supervisorName.value) params.supervisorName = supervisorName.value
+    const res = (await getExpenseDashboard(params)) as any
     const data = res.data
     if (!data) return
     summary.value = data.summary || summary.value
-    storeRanking.value = data.storeRanking || storeRanking.value
+    if (data.storeRanking) storeRankingRaw.value = data.storeRanking
     typeDistribution.value = data.typeDistribution || typeDistribution.value
-  } catch {
-    // 接口未上线时使用页面内样例数据，便于先完成总部端页面联调。
-  }
+    if (data.monthlyTrend) monthlyTrendRaw.value = data.monthlyTrend
+  } catch { /* */ }
 }
 
-onMounted(fetchDashboard)
+async function fetchSupervisors() {
+  try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
+}
+
+onMounted(() => { fetchSupervisors(); fetchDashboard() })
 </script>
 
 <style scoped>
@@ -211,6 +253,9 @@ onMounted(fetchDashboard)
 .bar-list {
   display: grid;
   gap: 14px;
+  overflow-y: auto;
+  padding-right: 8px;
+  max-height: 340px;
 }
 
 .bar-row {
@@ -239,22 +284,27 @@ onMounted(fetchDashboard)
 }
 
 .donut-wrap {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 20px;
+  display: flex;
   align-items: center;
+  gap: 20px;
 }
 
 .donut {
-  width: 138px;
-  height: 138px;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
   border-radius: 50%;
-  background: conic-gradient(var(--primary) 0 44%, #7aa98d 44% 70%, #d7b36a 70% 86%, #cfd6d1 86% 100%);
+}
+
+.donut {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
 }
 
 .legend {
   display: grid;
-  gap: 10px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -264,6 +314,7 @@ onMounted(fetchDashboard)
   display: flex;
   justify-content: space-between;
   color: #4b5563;
+  font-size: 13px;
 }
 
 .trend-card {

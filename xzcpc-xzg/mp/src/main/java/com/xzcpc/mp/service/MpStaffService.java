@@ -12,6 +12,8 @@ public interface MpStaffService {
 
     Map<String, Object> listStaff(String storeId, String status);
 
+    List<Map<String, Object>> listAllStoresStaff(String openid, String status);
+
     Map<String, Object> staffDetail(String storeId, String employeeId);
 
     Map<String, Object> updateStaff(String storeId, String employeeId, StaffUpdateReq req);
@@ -33,4 +35,13 @@ public interface MpStaffService {
     List<Map<String, Object>> findStoresByOpenid(String openid);
 
     Map<String, Object> resign(String storeId, String employeeId, StaffResignReq req);
+
+    /** 按门店统计待审批申请数（仅返回 pending>0 的门店） */
+    List<Map<String, Object>> overviewByStores(String openid);
+
+    /** 外部平台回调：创建或更新老板员工记录 */
+    void createOrUpdateOwner(String storeId, String storeName, String openid, String name, String mobile);
+
+    /** 更新该 openid 下所有在职老板的姓名和手机号 */
+    void updateOwnerNameAndMobile(String openid, String name, String mobile);
 }

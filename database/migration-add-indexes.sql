@@ -24,3 +24,8 @@ CREATE INDEX idx_task_store_id ON task(store_id);
 -- 5. task_zone_material 表：按 task_id 查所有分区物料
 --    使用场景：任务详情、分区物料列表、批量保存
 CREATE INDEX idx_tzm_task_id ON task_zone_material(task_id);
+
+-- 6. store_info 表：del_flag + updated_at 复合索引
+--    使用场景：getAllStores() 全量查询 + 排序（门店下拉、筛选、报表）
+--    慢SQL：SELECT ... FROM store_info WHERE del_flag=0 ORDER BY updated_at DESC
+CREATE INDEX idx_store_del_updated ON store_info(del_flag, updated_at);

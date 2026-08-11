@@ -6,6 +6,7 @@ import { addZone, deleteZone, sortZones, updateZoneName } from '@/api/zone'
 import { materialDisplayName } from '@/utils/formatter'
 import Skeleton from '@/components/Skeleton.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { useVoiceSearch } from '@/composables/useVoiceSearch'
 
 const taskId = ref('')
 const loading = ref(true)
@@ -25,115 +26,22 @@ const isNavigating = ref(false)
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let searchSeq = 0
 
-// === 语音搜索 ===
-const voiceLoading = ref(false)
-const recording = ref(false)
-const voiceRecognizing = ref(false)
-const voiceCooldown = ref(false)
-let voiceManager: any = null
-let voiceManagerReady = false
-const voiceCancelled = ref(false)
-const touchStartY = ref(0)
-let longPressTimer: any = null
-let cooldownSafetyTimer: any = null
-
-function startCooldownLock() {
-  voiceCooldown.value = true
-  clearTimeout(cooldownSafetyTimer)
-  cooldownSafetyTimer = setTimeout(() => {
-    voiceCooldown.value = false
-    voiceRecognizing.value = false
-  }, 1000)
-}
-
-function clearCooldownLock() {
-  voiceCooldown.value = false
-  voiceRecognizing.value = false
-  clearTimeout(cooldownSafetyTimer)
-}
-
-function getVoiceManager() {
-  if (voiceManager) return voiceManager
-  // #ifdef MP-WEIXIN
-  try {
-    // @ts-ignore
-    voiceManager = requirePlugin('WechatSI').getRecordRecognitionManager()
-    voiceManagerReady = true
-  } catch { voiceManagerReady = false }
-  // #endif
-  return voiceManager
-}
-
-function cleanupVoice() {
-  recording.value = false
-  voiceLoading.value = false
-  // voiceRecognizing / voiceCooldown 不在此处重置，由 onStop/onError 回调统一重置
-}
-
-function startVoice(e: any) {
-  e?.preventDefault?.()
-  if (voiceLoading.value || recording.value || voiceRecognizing.value || voiceCooldown.value) return
-  voiceCancelled.value = false
-  const t = e.touches?.[0]
-  if (t) touchStartY.value = t.clientY
-  clearTimeout(longPressTimer)
-  longPressTimer = setTimeout(() => {
-    longPressTimer = null
-    voiceLoading.value = true
-    const mgr = getVoiceManager()
-    if (!mgr || !voiceManagerReady) {
-      voiceLoading.value = false
-      uni.showToast({ title: '语音插件未加载', icon: 'none' })
-      return
-    }
-    mgr.onStart = () => { recording.value = true; voiceLoading.value = false }
-    mgr.onStop = (res: any) => {
-      clearCooldownLock()
-      if (res.result && !voiceCancelled.value) {
-        searchKey.value = res.result
-        doSearch(res.result, 'confirm')
-      }
-    }
-    mgr.onError = (res: any) => {
-      clearCooldownLock()
-      recording.value = false
-      voiceLoading.value = false
-      uni.showToast({ title: res.msg || '识别失败', icon: 'none' })
-    }
-    try { mgr.start({ duration: 30000, lang: 'zh_CN' }) } catch { cleanupVoice() }
-  }, 80)
-}
-
-function onVoiceMove(e: any) {
-  if (!recording.value) return
-  const touch = e.touches[0]
-  voiceCancelled.value = (touchStartY.value - touch.clientY) > 65
-}
-
-function cancelVoice() {
-  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; voiceLoading.value = false; return }
-  if (!recording.value) return
-  recording.value = false
-  startCooldownLock()
-  if (voiceManager) { try { voiceManager.stop() } catch { cleanupVoice() } }
-}
-
-function stopVoice(e: any) {
-  e?.preventDefault?.()
-  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; voiceLoading.value = false; return }
-  if (!recording.value || !voiceManager) return
-  if (voiceCancelled.value) {
-    recording.value = false
-    startCooldownLock()
-    try { voiceManager.stop() } catch { cleanupVoice() }
-    uni.showToast({ title: '已取消', icon: 'none' })
-  } else {
-    // 立即关闭浮层，显示"识别中"状态，提升松手响应体感
-    recording.value = false
-    voiceRecognizing.value = true
-    try { voiceManager.stop() } catch { cleanupVoice() }
-  }
-}
+const {
+  recording,
+  voiceLoading,
+  voiceRecognizing,
+  voiceCooldown,
+  voiceCancelled,
+  startVoice,
+  onVoiceMove,
+  stopVoice,
+  cancelVoice,
+  initVoice,
+  refreshVoiceAuthState,
+} = useVoiceSearch((text) => {
+  searchKey.value = text
+  doSearch(text, 'confirm')
+})
 
 function goToMaterial(item: any) {
   if (isNavigating.value) return
@@ -246,7 +154,8 @@ const hasChanges = computed(() => {
   return a !== b || deletedIds.value.length > 0
 })
 
-onLoad((q: any) => { taskId.value = q?.taskId || ''; getVoiceManager() })
+onLoad((q: any) => { taskId.value = q?.taskId || ''; initVoice() })
+onShow(() => { refreshVoiceAuthState() })
 onShow(() => {
   isNavigating.value = false
   if (taskId.value) loadDetail()

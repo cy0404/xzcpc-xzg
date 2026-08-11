@@ -40,7 +40,7 @@
           <div class="summary-card">
             <div class="summary-label">角色总量</div>
             <div class="summary-value">{{ overview.roleCount }}</div>
-            <div class="summary-desc">总部管理员、财务、人事、运营</div>
+            <div class="summary-desc">总部管理员、财务、人事、运营、督导</div>
           </div>
         </a-col>
         <a-col :xs="24" :sm="12" :lg="6">
@@ -121,7 +121,7 @@
                 {{ getRoleLabel(r) }}
               </a-tag>
             </template>
-            <template v-if="column.key === 'action'">
+            <template v-else-if="column.key === 'action'">
               <a-button
                 type="link"
                 class="authorize-btn"
@@ -130,6 +130,9 @@
               >
                 授权
               </a-button>
+            </template>
+            <template v-else>
+              {{ record[column.dataIndex] }}
             </template>
           </template>
         </a-table>
@@ -206,6 +209,7 @@ const roleCards = [
   { value: 'finance_admin', label: '财务负责人', desc: '可查看支出明细、支出统计和相关数据报表', scope: '支出范围' },
   { value: 'hr_admin', label: '人事负责人', desc: '可查看员工列表、员工详情和人员统计', scope: '人员范围' },
   { value: 'operation_admin', label: '运营负责人', desc: '可查看任务、盘点管理和门店经营数据', scope: '运营范围' },
+  { value: 'supervisor_admin', label: '督导', desc: '可查看所管辖门店的盘点、支出、人员等门店运营数据', scope: '管辖门店' },
 ]
 
 const columns = [

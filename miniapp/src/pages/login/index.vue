@@ -15,17 +15,6 @@ function openPrivacy() {
   uni.navigateTo({ url: '/pages/agreement/privacy' })
 }
 
-async function getWxNickname() {
-  try {
-    const profile: any = await uni.getUserProfile({
-      desc: '用于展示盘点任务提交人',
-    })
-    return profile?.userInfo?.nickName || ''
-  } catch {
-    return ''
-  }
-}
-
 async function handleLogin() {
   if (loading.value) return
   loading.value = true
@@ -56,8 +45,7 @@ async function handleLogin() {
     }
 
     // 4. 有绑定门店或状态未知 → 正常登录
-    const wxNickname = await getWxNickname()
-    const isBound = await userStore.wxLogin(wxNickname)
+    const isBound = await userStore.wxLogin('')
     if (isBound) {
       uni.switchTab({ url: '/pages/home/index/index' })
     } else {

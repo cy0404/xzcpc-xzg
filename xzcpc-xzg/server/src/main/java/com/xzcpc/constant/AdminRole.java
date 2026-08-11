@@ -12,6 +12,7 @@ public final class AdminRole {
     public static final String FINANCE_ADMIN = "finance_admin";
     public static final String HR_ADMIN = "hr_admin";
     public static final String OPERATION_ADMIN = "operation_admin";
+    public static final String SUPERVISOR_ADMIN = "supervisor_admin";
     public static final String NORMAL_USER = "normal_user";
 
     private static final Set<String> ROLES = Set.of(
@@ -19,11 +20,21 @@ public final class AdminRole {
             FINANCE_ADMIN,
             HR_ADMIN,
             OPERATION_ADMIN,
+            SUPERVISOR_ADMIN,
             NORMAL_USER
     );
 
     /** 具有后台访问权限的角色（排除普通用户） */
     private static final Set<String> ADMIN_ROLES = Set.of(
+            HEADQUARTERS_ADMIN,
+            FINANCE_ADMIN,
+            HR_ADMIN,
+            OPERATION_ADMIN,
+            SUPERVISOR_ADMIN
+    );
+
+    /** 全量数据访问角色（不受门店过滤限制） */
+    private static final Set<String> FULL_ACCESS_ROLES = Set.of(
             HEADQUARTERS_ADMIN,
             FINANCE_ADMIN,
             HR_ADMIN,
@@ -35,6 +46,7 @@ public final class AdminRole {
             FINANCE_ADMIN, "财务负责人",
             HR_ADMIN, "人事负责人",
             OPERATION_ADMIN, "运营负责人",
+            SUPERVISOR_ADMIN, "督导",
             NORMAL_USER, "普通用户"
     );
 
@@ -84,6 +96,14 @@ public final class AdminRole {
     public static boolean isHeadquartersAdmin(String roles) {
         if (roles == null || roles.isBlank()) return false;
         return parseRoles(roles).stream().anyMatch(HEADQUARTERS_ADMIN::equals);
+    }
+
+    /** 是否仅具有督导角色（无全量数据访问权限的其他管理员角色） */
+    public static boolean isSupervisorOnly(String roles) {
+        if (roles == null || roles.isBlank()) return false;
+        List<String> roleList = parseRoles(roles);
+        return roleList.contains(SUPERVISOR_ADMIN)
+                && roleList.stream().noneMatch(FULL_ACCESS_ROLES::contains);
     }
 
     /** 获取角色展示名（多角色逗号分隔） */

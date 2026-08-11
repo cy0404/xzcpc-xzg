@@ -58,21 +58,36 @@ public class MpLoginInterceptor implements HandlerInterceptor {
                 throw new BusinessException(401, "Token已失效");
             }
 
+            // 查员工姓名
+            String employeeName = null;
+            if (StringUtils.hasText(session.getStoreId())) {
+                Employee emp = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
+                        .select(Employee::getName)
+                        .eq(Employee::getStoreId, session.getStoreId())
+                        .eq(Employee::getOpenid, session.getOpenid())
+                        .eq(Employee::getStatus, "在职")
+                        .last("LIMIT 1"));
+                if (emp != null) {
+                    employeeName = emp.getName();
+                }
+            }
+
+            // P0: 从 JWT 中提取角色（登录时已判定并写入）
+            String role = (String) claims.get("role");
+
             LoginUser user = new LoginUser(
                     session.getId().longValue(),
                     session.getOpenid(),
                     session.getStoreId(),
-                    session.getStoreName()
+                    session.getStoreName(),
+                    employeeName,
+                    role
             );
             UserContextHolder.set(user);
 
             // 已离职员工拒绝访问（/auth/** 除外，/me 需要正常返回 bound=false）
             if (!uri.contains("/auth/") && StringUtils.hasText(session.getStoreId())) {
-                Long count = employeeMapper.selectCount(new LambdaQueryWrapper<Employee>()
-                        .eq(Employee::getStoreId, session.getStoreId())
-                        .eq(Employee::getOpenid, session.getOpenid())
-                        .eq(Employee::getStatus, "在职"));
-                if (count == 0) {
+                if (employeeName == null) {
                     throw new BusinessException(401, "账号已失效，请联系管理员");
                 }
             }

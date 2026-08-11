@@ -6,7 +6,7 @@ import com.xzcpc.people.entity.OwnerRegistration;
 
 public interface OwnerRegistrationService {
 
-    Page<OwnerRegistration> page(String storeId, String status, String name, String phone,
+    Page<OwnerRegistration> page(String storeId, String supervisorName, String status, String name, String phone,
                                    int pageNum, int pageSize);
 
     OwnerRegistration detail(Long id);

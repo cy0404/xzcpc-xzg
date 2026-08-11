@@ -12,13 +12,13 @@ public interface MpExpenseService {
     List<ExpenseType> listTypes();
 
     Page<ExpenseRecord> page(String storeId, String typeId, String startDate, String endDate,
-                             int pageNum, int pageSize);
+                             int pageNum, int pageSize, String handlerName);
 
-    ExpenseRecord detail(String storeId, String expenseId);
+    ExpenseRecord detail(String storeId, String expenseId, String handlerName);
 
     ExpenseRecord create(String storeId, String storeName, MpExpenseSaveReq req);
 
-    ExpenseRecord update(String storeId, String expenseId, MpExpenseSaveReq req);
+    ExpenseRecord update(String storeId, String expenseId, MpExpenseSaveReq req, String handlerName);
 
-    void delete(String storeId, String expenseId);
+    void delete(String storeId, String expenseId, String handlerName);
 }

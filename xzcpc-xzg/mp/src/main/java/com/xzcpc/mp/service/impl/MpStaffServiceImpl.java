@@ -1,6 +1,7 @@
 package com.xzcpc.mp.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.common.model.StoreInfo;
 import com.xzcpc.mp.dto.StaffApprovalReq;
@@ -13,8 +14,9 @@ import com.xzcpc.mp.service.MpStaffService;
 import com.xzcpc.people.entity.Employee;
 import com.xzcpc.people.mapper.EmployeeMapper;
 import com.xzcpc.task.service.StoreService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -28,7 +30,6 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MpStaffServiceImpl implements MpStaffService {
 
     private static final String STATUS_ACTIVE = "在职";
@@ -56,22 +57,52 @@ public class MpStaffServiceImpl implements MpStaffService {
     private final EmployeeMapper employeeMapper;
     private final EmployeeRegistrationApplicationMapper applicationMapper;
     private final StoreService storeService;
+    private final JdbcTemplate jdbcTemplate;
+
+    public MpStaffServiceImpl(EmployeeMapper employeeMapper,
+            EmployeeRegistrationApplicationMapper applicationMapper,
+            StoreService storeService,
+            JdbcTemplate jdbcTemplate) {
+        this.employeeMapper = employeeMapper;
+        this.applicationMapper = applicationMapper;
+        this.storeService = storeService;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    @Override
+    public List<Map<String, Object>> listAllStoresStaff(String openid, String status) {
+        List<Map<String, Object>> stores = findStoresByOpenid(openid);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> s : stores) {
+            String sid = (String) s.get("storeId");
+            String sname = (String) s.get("storeName");
+            List<Employee> employees = employeeMapper.selectList(new LambdaQueryWrapper<Employee>()
+                    .eq(Employee::getStoreId, sid)
+                    .eq(StringUtils.hasText(status), Employee::getStatus, status)
+                    .orderByAsc(Employee::getRole)
+                    .orderByDesc(Employee::getEntryDate)
+                    .orderByDesc(Employee::getId));
+            for (Employee e : employees) {
+                Map<String, Object> m = toStaffMap(e);
+                m.put("storeName", sname);
+                m.put("storeId", sid);
+                result.add(m);
+            }
+        }
+        return result;
+    }
 
     @Override
     public Map<String, Object> listStaff(String storeId, String status) {
         requireStore(storeId);
-        // 筛选列表（排除老板）
         List<Employee> employees = employeeMapper.selectList(new LambdaQueryWrapper<Employee>()
                 .eq(Employee::getStoreId, storeId)
-                .ne(Employee::getRole, "老板")
                 .eq(StringUtils.hasText(status), Employee::getStatus, status)
                 .orderByAsc(Employee::getRole)
                 .orderByDesc(Employee::getEntryDate)
                 .orderByDesc(Employee::getId));
-        // 概况始终统计全部门店员工（不受 status 筛选影响，排除老板）
         List<Employee> allEmployees = employeeMapper.selectList(new LambdaQueryWrapper<Employee>()
-                .eq(Employee::getStoreId, storeId)
-                .ne(Employee::getRole, "老板"));
+                .eq(Employee::getStoreId, storeId));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("overview", buildOverview(allEmployees));
         result.put("records", employees.stream().map(this::toStaffMap).toList());
@@ -137,6 +168,18 @@ public class MpStaffServiceImpl implements MpStaffService {
             application.setRejectReason(null);
             applicationMapper.updateById(application);
             return toApplicationMap(application);
+        }
+
+        // 新申请：检查是否已是该门店在职员工（店长/老板可能已通过其他方式绑定）
+        Employee existingEmployee = employeeMapper.selectOne(
+                new LambdaQueryWrapper<Employee>()
+                        .eq(Employee::getOpenid, openid)
+                        .eq(Employee::getStoreId, req.getStoreId())
+                        .eq(Employee::getStatus, STATUS_ACTIVE)
+                        .last("LIMIT 1"));
+        if (existingEmployee != null
+                && (existingEmployee.getLeaveDate() == null || existingEmployee.getLeaveDate().isAfter(LocalDate.now()))) {
+            throw new BusinessException("您已是该门店在职员工，无需重复登记");
         }
 
         // 新申请
@@ -213,10 +256,28 @@ public class MpStaffServiceImpl implements MpStaffService {
         employee.setRole(StringUtils.hasText(req.getRole()) ? req.getRole() : application.getExpectedRole());
         employee.setEmploymentType(StringUtils.hasText(req.getEmploymentType()) ? req.getEmploymentType() : application.getEmploymentType());
         employee.setEntryDate(application.getEntryDate());
+        employee.setLeaveDate(null);  // 重新入职清空离职时间
         employee.setEmergencyContactName(application.getEmergencyContactName());
         employee.setEmergencyContactPhone(application.getEmergencyContactPhone());
         employee.setRemark(application.getRemark());
-        employeeMapper.insert(employee);
+        try {
+            employeeMapper.insert(employee);
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // 已存在同门店同openid的记录，直接更新
+            Employee old = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
+                .eq(Employee::getStoreId, application.getStoreId())
+                .eq(Employee::getOpenid, application.getOpenid()));
+            if (old != null) {
+                employee.setId(old.getId());
+                employee.setDelFlag(0);
+                employeeMapper.updateById(employee);
+                // updateById 不更新 null 字段，强制置空 leave_date
+                employeeMapper.update(null,
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Employee>()
+                        .set(Employee::getLeaveDate, null)
+                        .eq(Employee::getId, old.getId()));
+            }
+        }
         employee.setEmployeeId("EMP" + String.format("%08d", employee.getId()));
         employeeMapper.updateById(employee);
 
@@ -307,11 +368,8 @@ public class MpStaffServiceImpl implements MpStaffService {
     }
 
     private Map<String, Object> buildOverview(List<Employee> employees) {
-        // 排除老板，只统计店长/店员/兼职
-        List<Employee> staffOnly = employees.stream()
-                .filter(e -> !"老板".equals(e.getRole())).toList();
-        long active = staffOnly.stream().filter(e -> STATUS_ACTIVE.equals(e.getStatus())).count();
-        List<Employee> activeStaff = staffOnly.stream()
+        long active = employees.stream().filter(e -> STATUS_ACTIVE.equals(e.getStatus())).count();
+        List<Employee> activeStaff = employees.stream()
                 .filter(e -> STATUS_ACTIVE.equals(e.getStatus())).toList();
         long manager = activeStaff.stream().filter(e -> "店长".equals(e.getRole())).count();
         long staff = activeStaff.stream().filter(e -> "店员".equals(e.getRole())).count();
@@ -321,7 +379,7 @@ public class MpStaffServiceImpl implements MpStaffService {
         map.put("managerCount", manager);
         map.put("staffCount", staff);
         map.put("partTimeCount", partTime);
-        map.put("totalCount", staffOnly.size());
+        map.put("totalCount", employees.size());
         return map;
     }
 
@@ -395,6 +453,48 @@ public class MpStaffServiceImpl implements MpStaffService {
         return result;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void createOrUpdateOwner(String storeId, String storeName, String openid, String name, String mobile) {
+        // 查是否已存在该门店+openid的在职员工
+        Employee existing = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
+                .eq(Employee::getStoreId, storeId)
+                .eq(Employee::getOpenid, openid)
+                .last("LIMIT 1"));
+        if (existing != null) {
+            existing.setName(StringUtils.hasText(name) ? name : existing.getName());
+            existing.setMobile(StringUtils.hasText(mobile) ? mobile : existing.getMobile());
+            if (StringUtils.hasText(storeName)) existing.setStoreName(storeName);
+            existing.setStatus(STATUS_ACTIVE);
+            employeeMapper.updateById(existing);
+            return;
+        }
+        Employee employee = new Employee();
+        employee.setEmployeeId("TMP");
+        employee.setStoreId(storeId);
+        employee.setStoreName(storeName);
+        employee.setOpenid(openid);
+        employee.setName(name != null ? name : "");
+        employee.setMobile(mobile != null ? mobile : "");
+        employee.setRole("老板");
+        employee.setStatus(STATUS_ACTIVE);
+        employeeMapper.insert(employee);
+        employee.setEmployeeId("EMP" + String.format("%08d", employee.getId()));
+        employeeMapper.updateById(employee);
+    }
+
+    @Override
+    public void updateOwnerNameAndMobile(String openid, String name, String mobile) {
+        if (!StringUtils.hasText(openid)) return;
+        employeeMapper.update(null,
+                new LambdaUpdateWrapper<Employee>()
+                        .eq(Employee::getOpenid, openid)
+                        .eq(Employee::getRole, "老板")
+                        .eq(Employee::getStatus, STATUS_ACTIVE)
+                        .set(StringUtils.hasText(name), Employee::getName, name)
+                        .set(StringUtils.hasText(mobile), Employee::getMobile, mobile));
+    }
+
     private List<String> permissionsForRole(String role) {
         List<String> permissions = new ArrayList<>();
         permissions.add("task:view");
@@ -407,5 +507,27 @@ public class MpStaffServiceImpl implements MpStaffService {
             permissions.add("expense:create");
         }
         return permissions;
+    }
+
+    @Override
+    public List<Map<String, Object>> overviewByStores(String openid) {
+        List<Map<String, Object>> stores = findStoresByOpenid(openid);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> s : stores) {
+            String sid = (String) s.get("storeId");
+            String sname = (String) s.get("storeName");
+            Long pending = applicationMapper.selectCount(
+                    new LambdaQueryWrapper<EmployeeRegistrationApplication>()
+                            .eq(EmployeeRegistrationApplication::getStoreId, sid)
+                            .eq(EmployeeRegistrationApplication::getStatus, APP_PENDING));
+            if (pending != null && pending > 0) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("storeId", sid);
+                item.put("storeName", sname);
+                item.put("pending", pending);
+                result.add(item);
+            }
+        }
+        return result;
     }
 }

@@ -1,0 +1,28 @@
+package com.xzcpc.mp.entity;
+
+import com.baomidou.mybatisplus.annotation.*;
+import lombok.Data;
+import java.time.LocalDateTime;
+
+/**
+ * P0 B2: 企微通知日志
+ */
+@Data
+@TableName("notification_log")
+public class NotificationLog {
+    @TableId(type = IdType.AUTO)
+    private Long id;
+    private String eventType;      // issue_processing|issue_resolved|logistics_abnormal|transfer_pending|transfer_receiving|order_confirmation
+    private String storeId;
+    private String targetOpenid;
+    private String title;
+    private String content;
+    private String sourceId;       // 来源业务ID
+    private Integer status;        // 0待发送 1成功 2失败
+    private String failReason;
+    private Integer retryCount;
+    private LocalDateTime sentAt;
+
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createdAt;
+}

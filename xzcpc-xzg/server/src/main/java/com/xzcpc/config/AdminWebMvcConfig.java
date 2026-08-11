@@ -25,7 +25,8 @@ public class AdminWebMvcConfig implements WebMvcConfigurer {
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         String absPath = new java.io.File(uploadPath).getAbsolutePath() + "/";
         String location = "file:" + absPath;
-        registry.addResourceHandler("/upload/**").addResourceLocations(location);
+        String oldPath = "file:" + new java.io.File("./upload").getAbsolutePath() + "/";
+        registry.addResourceHandler("/upload/**").addResourceLocations(location, oldPath);
         registry.addResourceHandler("/api/upload/**").addResourceLocations(location);
     }
 
@@ -43,7 +44,8 @@ public class AdminWebMvcConfig implements WebMvcConfigurer {
                         "/api/mp/**",
                         "/api/reports/**",
                         "/api/logs/operation",
-                        "/api/logs/login"
+                        "/api/logs/login",
+                        "/api/public/**"
                 );
     }
 }

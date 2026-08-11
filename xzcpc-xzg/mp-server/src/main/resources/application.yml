@@ -2,14 +2,16 @@ server:
   port: 30261
   servlet:
     context-path: /storeInventory
+  tomcat:
+    max-http-form-post-size: 320MB
 
 spring:
   profiles:
     active: prod   # dev=本地Mock | prod=生产环境
   servlet:
     multipart:
-      max-file-size: 20MB
-      max-request-size: 20MB
+      max-file-size: 310MB
+      max-request-size: 310MB
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
@@ -17,8 +19,10 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 app:
+  sync:
+    enabled: false  # 暂时关闭物料/门店外部API同步
   upload:
-    path: ./upload
+    path: /data/inventory-upload
   public-url: https://www.xzcpc-9pd.top/storeInventory
 
 store:
@@ -44,3 +48,26 @@ wx:
 mp:
   jwt:
     expire-hours: 168
+
+# 飞书异常告警 → 飞书群自定义机器人 Webhook
+feishu:
+  alert:
+    enabled: ${FEISHU_ALERT_ENABLED:true}
+    webhook-url: ${FEISHU_ALERT_WEBHOOK_URL:}
+    app-name: 象掌柜-小程序端
+
+# B1 问题处理：象目经理外部系统对接
+# enabled=false 时 sync-external / records / reply 代理仍正常可用（仅推送/回调禁用）
+xiangmu:
+  enabled: false
+  base-url: https://www.xzcpc-9pd.top
+  api-key: 3707d9d759ccacb2dab2da4050a25985
+  records-api-key: wx3081dfa30167bb6e
+  app-key:
+  secret:
+  callback-token:
+
+# 小象数据 OpenAPI（财报明细数据源）
+openapi:
+  finance:
+    base-url: ${OPENAPI_FINANCE_URL:http://119.45.162.160:8000}

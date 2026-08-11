@@ -20,12 +20,15 @@ const editId = ref('')
 const yearMonth = ref(currentYearMonth())
 const hours = ref('')
 
-const canManage = computed(() => userStore.role === '老板' || userStore.role === '店长')
+const canManage = computed(() =>
+  ['owner', 'store_manager', '老板', '店长'].includes(userStore.role)
+)
 const isEdit = computed(() => !!editId.value)
 const pickerValue = computed(() => `${yearMonth.value}-01`)
 
 function currentYearMonth() {
   const d = new Date()
+  d.setMonth(d.getMonth() - 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 

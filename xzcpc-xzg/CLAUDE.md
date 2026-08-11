@@ -66,6 +66,36 @@ inventory-tool/xzcpc-xzg/
 
 **模块依赖链**：server → task → template → material → common
 
+## 盘点差异处理（新增模块，2026-08）
+
+### 架构概览
+- **后端**：`DifferenceCalcService` / `DifferenceCalcServiceImpl` — 核心计算引擎
+- **前端**：`DifferenceList.vue`（任务级列表） + `DifferenceDetail.vue`（差异明细+修改）
+- **数据库**：`inventory_difference`（差异项） + `difference_modify_log`（修改日志） + `difference_process_log`（操作日志）
+- **PG 数据源**：`PgDataSourceConfig` 配置双数据源，`pgJdbcTemplate` 查企迈 PG 库
+- **定时任务**：`DiffCalcJob` 每月1号10:00自动串行计算
+
+### 核心计算
+```
+理论剩余 = 上月剩余 + 采购(PG) + 订货(PG) + 调货净值 + 还货净值 - 报损 + 自购 - 消耗(PG)
+差异 = 本月盘点数(adjusted_qty) - 理论剩余
+差异率 = |差异| / |理论剩余|
+```
+- 时间窗口：上次 `submitted_at` → 本次 `submitted_at`（非按月）
+- PG 用 `stat_date` 按天，NULL unit 自动补全
+- 所有数据源统一换算到盘点基础单位
+
+### 关键 API
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/inventory/diff-tasks` | 差异任务列表（门店/督导筛选） |
+| GET | `/api/admin/inventory/diff-tasks/{taskId}` | 任务差异明细 |
+| POST | `/api/admin/inventory/diff-tasks/{taskId}/calculate` | 触发单个任务计算 |
+| POST | `/api/admin/inventory/diff-tasks/batch-calculate` | 批量计算所有未算任务 |
+| PUT | `/api/admin/inventory/differences/{id}/adjust` | 修改 adjusted_qty 并重算 |
+| GET | `/api/admin/inventory/diff-config` | 获取差异阈值 |
+| PUT | `/api/admin/inventory/diff-config` | 更新阈值 |
+
 ## 常用开发命令
 
 ```bash
@@ -193,3 +223,16 @@ mysql -uroot -pxzcpc2026 < database/schema.sql
 - 被拖拽项：半透明（opacity 0.4 分区 / 0.7 物料）
 - 悬停目标：绿色边框（分区）或顶部绿色线（物料）
 - 拖拽手柄：`HolderOutlined` 图标，鼠标悬停变绿色
+
+---
+
+## 分层记忆系统
+
+项目使用分层记忆架构，详见 `memory/README.md`：
+
+- **长期记忆**：`memory/MEMORY.md`（总览）+ `memory/decisions.md`（决策）+ `memory/patterns.md`（模式）+ `memory/feedback.md`（反馈）+ `memory/contacts.md`（联系人）
+- **短期记忆**：`memory/YYYY-MM-DD.md`（每日会话日志，30 天衰减）
+- **边界值**：重要性 ≥4 分写长期记忆，2-3 分写日志，<2 分丢弃
+- **触发词**：用户说"记住"/"别忘了"/"永久保存"/"这是重点"时强制写入
+
+**每次会话前**：检查 `memory/MEMORY.md` 索引和所有专项文件是否有更新。

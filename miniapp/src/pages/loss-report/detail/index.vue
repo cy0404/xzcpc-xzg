@@ -209,7 +209,7 @@ function playAttMedia(url: string) {
         </view>
         <view class="photo-grid" v-if="mediaList.length">
           <view v-for="(item, idx) in mediaList" :key="idx" class="media-item-detail" @click="playMedia(item)">
-            <template v-if="item.isVideo"><video :src="item.url" class="media-video-thumb" /></template>
+            <template v-if="item.isVideo"><video :src="item.url" style="width:100%;height:200rpx" object-fit="cover" /></template>
             <image v-else :src="item.url" mode="aspectFill" class="photo-item" />
           </view>
         </view>

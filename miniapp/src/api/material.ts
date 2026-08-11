@@ -38,3 +38,11 @@ export function scanMaterial(taskId: number, zoneId: number, qmCode: string) {
     silent: true,
   })
 }
+
+export function fetchMaterialsByCategory(parentCategory: string, keyword = '') {
+  return request<any[]>({
+    url: '/materials/by-category',
+    data: { parentCategory, keyword },
+    showLoading: false,
+  })
+}

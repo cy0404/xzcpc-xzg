@@ -29,6 +29,7 @@ function onPhoneInput(e: any) {
 }
 
 async function handleQuery() {
+  if (submitting.value) return
   if (!form.value.name.trim()) {
     uni.showToast({ title: '请输入姓名', icon: 'none' }); return
   }
@@ -70,6 +71,7 @@ function toggleStore(storeId: string) {
 }
 
 async function handleConfirmBind() {
+  if (binding.value) return
   if (selectedIds.value.size === 0) {
     uni.showToast({ title: '请至少选择一个门店', icon: 'none' }); return
   }

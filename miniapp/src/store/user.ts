@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { request } from '@/utils/request'
+import { request, resetLogoutFlag } from '@/utils/request'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref<string>('')
@@ -11,6 +11,10 @@ export const useUserStore = defineStore('user', () => {
   const role = ref<string>('')
   const permissions = ref<string[]>([])
   const storeCount = ref<number>(1)
+  /** 外部问题表单系统门店标识（chat_id），用于拼接上报页 URL */
+  const chatId = ref<string>('')
+  /** 首页/工具页选中的门店范围，会话级共享（不持久化到 storage，杀进程重置为 'all'） */
+  const selectedScope = ref<string>('all')
   /** bound 表示已绑定门店，true 才能进入业务页面 */
   const bound = ref(false)
 
@@ -31,6 +35,7 @@ export const useUserStore = defineStore('user', () => {
       permissions: permissions.value,
       storeCount: storeCount.value,
       bound: bound.value,
+      chatId: chatId.value,
     })
   }
 
@@ -50,10 +55,12 @@ export const useUserStore = defineStore('user', () => {
     role.value = data.role || ''
     permissions.value = Array.isArray(data.permissions) ? data.permissions : []
     storeCount.value = data.storeCount || 1
+    chatId.value = data.chatId || ''
     persistUser()
   }
 
   function checkLogin() {
+    resetLogoutFlag()
     const saved = uni.getStorageSync('token')
     if (saved) {
       token.value = saved
@@ -68,6 +75,7 @@ export const useUserStore = defineStore('user', () => {
         permissions.value = Array.isArray(cachedUser.permissions) ? cachedUser.permissions : []
         storeCount.value = cachedUser.storeCount || 1
         bound.value = !!cachedUser.bound
+        chatId.value = cachedUser.chatId || ''
       }
       // 异步校验 token 并刷新最新数据
       fetchMe()
@@ -81,10 +89,15 @@ export const useUserStore = defineStore('user', () => {
       if (!data.bound) {
         uni.reLaunch({ url: '/pages/login/index' })
       }
-    } catch {
-      token.value = ''
-      uni.removeStorageSync('token')
-      uni.removeStorageSync('userInfo')
+    } catch (e: any) {
+      // 只有后端明确返回 401（token 失效）才清除登录态
+      if (e?.code === 401) {
+        token.value = ''
+        uni.removeStorageSync('token')
+        uni.removeStorageSync('userInfo')
+        uni.reLaunch({ url: '/pages/login/index' })
+      }
+      // 网络波动等临时错误 → 保留本地缓存，信任已有登录态
     }
   }
 
@@ -138,6 +151,8 @@ export const useUserStore = defineStore('user', () => {
     permissions.value = []
     storeCount.value = 1
     bound.value = false
+    chatId.value = ''
+    selectedScope.value = 'all'
     uni.removeStorageSync('token')
     uni.removeStorageSync('userInfo')
   }
@@ -152,6 +167,8 @@ export const useUserStore = defineStore('user', () => {
     permissions,
     storeCount,
     bound,
+    chatId,
+    selectedScope,
     isLoggedIn,
     checkLogin,
     wxLogin,

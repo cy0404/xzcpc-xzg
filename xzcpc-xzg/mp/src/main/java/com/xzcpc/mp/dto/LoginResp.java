@@ -21,6 +21,9 @@ public class LoginResp {
 
     private int storeCount;
 
+    /** 外部问题表单系统门店标识（chat_id），用于小程序拼接上报页 URL */
+    private String chatId;
+
     public LoginResp(String token, boolean bound, String storeId, String storeName) {
         this.token = token;
         this.bound = bound;
@@ -32,5 +35,6 @@ public class LoginResp {
         this.staffBound = false;
         this.permissions = List.of();
         this.storeCount = 1;
+        this.chatId = null;
     }
 }

@@ -19,6 +19,9 @@ public class ExpenseType {
     private String description;
     private String status;
 
+    /** 排序号，越小越靠前，NULL 排最后 */
+    private Integer sortNo;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

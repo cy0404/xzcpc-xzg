@@ -6,8 +6,8 @@ import com.xzcpc.expense.entity.ExpenseRecord;
 
 public interface ExpenseService {
 
-    Page<ExpenseRecord> page(String storeId, String typeId, String startDate, String endDate,
+    Page<ExpenseRecord> page(String storeId, String supervisorName, String typeId, String startDate, String endDate,
                              String handlerName, int pageNum, int pageSize);
 
-    ExpenseDashboardResp dashboard(String range);
+    ExpenseDashboardResp dashboard(String range, String startDate, String endDate, String supervisorName);
 }

@@ -2,10 +2,15 @@ package com.xzcpc.task.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xzcpc.common.context.AdminContextHolder;
+import com.xzcpc.common.context.AdminUser;
 import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.common.model.StoreInfo;
+import com.xzcpc.common.service.StoreAccessService;
 import com.xzcpc.common.util.BizCodeUtil;
+import com.xzcpc.task.dto.MaterialUpdateReq;
 import com.xzcpc.task.dto.TaskCreateRequest;
+import com.xzcpc.task.dto.TaskUpdateRequest;
 import com.xzcpc.task.entity.Task;
 import com.xzcpc.task.entity.TaskZone;
 import com.xzcpc.task.entity.TaskZoneMaterial;
@@ -24,6 +29,10 @@ import com.xzcpc.template.entity.TemplateZoneMaterial;
 import com.xzcpc.template.mapper.TemplateMapper;
 import com.xzcpc.template.mapper.TemplateZoneMapper;
 import com.xzcpc.template.mapper.TemplateZoneMaterialMapper;
+import com.xzcpc.task.mapper.StoreMapper;
+import com.xzcpc.task.mapper.TaskMaterialSummaryMapper;
+import com.xzcpc.task.entity.TaskMaterialSummary;
+import com.xzcpc.task.entity.Store;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,14 +61,49 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
     private final TemplateZoneMaterialMapper templateZoneMaterialMapper;
     private final MaterialMapper materialMapper;
     private final MaterialInventoryRuleMapper materialInventoryRuleMapper;
+    private final TaskMaterialSummaryMapper taskMaterialSummaryMapper;
     private final ObjectMapper objectMapper;
+    private final StoreAccessService storeAccessService;
+    private final StoreMapper storeMapper;
 
     @Override
-    public Page<Task> page(String storeId, String status, String keyword, String templateName,
+    public String getLatestMonth() {
+        Task task = taskMapper.selectOne(
+                new LambdaQueryWrapper<Task>().orderByDesc(Task::getTaskMonth).last("LIMIT 1"));
+        return task != null ? task.getTaskMonth() : "";
+    }
+
+    @Override
+    public Page<Task> page(String storeId, String supervisorName, String status, String keyword, String templateName,
                            String taskMonth, int pageNum, int pageSize) {
         LambdaQueryWrapper<Task> wrapper = new LambdaQueryWrapper<>();
+
+        // 督导角色：按可访问门店过滤
+        AdminUser admin = AdminContextHolder.get();
+        if (admin != null && storeAccessService.isSupervisorOnly(admin)) {
+            List<String> accessibleStoreIds = storeAccessService.getAccessibleStoreIds(admin.getOpenId());
+            if (accessibleStoreIds.isEmpty()) {
+                return new Page<>(pageNum, pageSize);
+            }
+            wrapper.in(Task::getStoreId, accessibleStoreIds);
+        }
+
+        // 按指定督导过滤（管理员选择督导后只看该督导管辖的门店）
+        if (StringUtils.hasText(supervisorName)) {
+            List<String> supervisorStoreIds = storeAccessService.getAccessibleStoreIdsBySupervisorName(supervisorName);
+            if (supervisorStoreIds.isEmpty()) {
+                return new Page<>(pageNum, pageSize);
+            }
+            wrapper.in(Task::getStoreId, supervisorStoreIds);
+        }
+
         if (StringUtils.hasText(storeId)) {
-            wrapper.eq(Task::getStoreId, storeId);
+            String[] ids = storeId.split(",");
+            if (ids.length == 1) {
+                wrapper.eq(Task::getStoreId, ids[0].trim());
+            } else {
+                wrapper.in(Task::getStoreId, java.util.Arrays.asList(ids));
+            }
         }
         if (StringUtils.hasText(status)) {
             wrapper.eq(Task::getStatus, status);
@@ -85,35 +131,51 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         List<Task> records = result.getRecords();
         if (records.isEmpty()) return result;
 
-        Map<Integer, String> templateNameMap = templateMapper.selectList(null).stream()
-                .collect(Collectors.toMap(Template::getId, Template::getTemplateName));
-        Set<Integer> templateIds = records.stream()
-                .map(Task::getTemplateId).filter(id -> id != null).collect(Collectors.toSet());
-        Set<Integer> taskIds = records.stream()
-                .map(Task::getId).collect(Collectors.toSet());
-        Map<Integer, Long> zoneCountMap = taskIds.isEmpty() ? Map.of()
-                : taskZoneMapper.selectList(
-                        new LambdaQueryWrapper<TaskZone>().in(TaskZone::getTaskId, taskIds))
-                        .stream().collect(Collectors.groupingBy(TaskZone::getTaskId, Collectors.counting()));
-        Map<Integer, Long> materialCountMap = taskIds.isEmpty() ? Map.of()
-                : taskZoneMaterialMapper.selectList(
-                        new LambdaQueryWrapper<TaskZoneMaterial>().in(TaskZoneMaterial::getTaskId, taskIds))
-                        .stream().collect(Collectors.groupingBy(TaskZoneMaterial::getTaskId, Collectors.counting()));
+        Set<Integer> taskIds = records.stream().map(Task::getId).collect(Collectors.toSet());
+        Set<Integer> tplIds = records.stream().map(Task::getTemplateId).filter(id -> id != null).collect(Collectors.toSet());
 
-        // 存量数据兼容：如果 storeName 为空，从外部 API 补填
-        Map<String, StoreInfo> storeMap = null;
+        // 只查当前页涉及的模板名（不拉全表）
+        Map<Integer, String> templateNameMap = tplIds.isEmpty() ? Map.of()
+                : templateMapper.selectList(
+                        new LambdaQueryWrapper<Template>().in(Template::getId, tplIds))
+                        .stream().collect(Collectors.toMap(Template::getId, Template::getTemplateName));
+
+        // GROUP BY 聚合，只查两列（task_id + count），不拉全表
+        Map<Integer, Long> zoneCountMap = taskIds.isEmpty() ? Map.of()
+                : taskZoneMapper.selectMaps(
+                        new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TaskZone>()
+                                .select("task_id, COUNT(*) AS cnt")
+                                .in("task_id", taskIds)
+                                .groupBy("task_id"))
+                        .stream().collect(Collectors.toMap(
+                                m -> (Integer) m.get("task_id"),
+                                m -> ((Number) m.get("cnt")).longValue()));
+        Map<Integer, Long> materialCountMap = taskIds.isEmpty() ? Map.of()
+                : taskZoneMaterialMapper.selectMaps(
+                        new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TaskZoneMaterial>()
+                                .select("task_id, COUNT(*) AS cnt")
+                                .in("task_id", taskIds)
+                                .groupBy("task_id"))
+                        .stream().collect(Collectors.toMap(
+                                m -> (Integer) m.get("task_id"),
+                                m -> ((Number) m.get("cnt")).longValue()));
+
+        // 批量查当前页涉及的所有 store（一次查询替代 N+1）
+        Set<String> pageStoreIds = records.stream().map(Task::getStoreId).filter(id -> id != null).collect(Collectors.toSet());
+        Map<String, Store> storeEntityMap = pageStoreIds.isEmpty() ? Map.of()
+                : storeMapper.selectList(new LambdaQueryWrapper<Store>().in(Store::getStoreId, pageStoreIds))
+                        .stream().collect(Collectors.toMap(Store::getStoreId, s -> s, (a, b) -> a));
+        Map<String, String> supervisorMap = pageStoreIds.isEmpty() ? Map.of()
+                : storeAccessService.getSupervisorNamesByStoreIds(pageStoreIds);
+
         for (Task task : records) {
-            if ((task.getStoreName() == null || task.getXiaochengxuid() == null) && task.getStoreId() != null) {
-                if (storeMap == null) {
-                    storeMap = storeService.getStoreMap();
-                }
-                StoreInfo store = storeMap.get(task.getStoreId());
-                if (store != null) {
-                    if (task.getStoreName() == null) task.setStoreName(store.getMendianmingcheng());
-                    if (task.getXiaochengxuid() == null) task.setXiaochengxuid(store.getXiaochengxuid());
-                    if (task.getWarehouseCode() == null) task.setWarehouseCode(store.getCangkuid());
-                }
+            Store storeEntity = storeEntityMap.get(task.getStoreId());
+            if (storeEntity != null) {
+                if (task.getStoreName() == null) task.setStoreName(storeEntity.getStoreName());
+                if (task.getXiaochengxuid() == null) task.setXiaochengxuid(storeEntity.getXiaochengxuid());
+                if (task.getWarehouseCode() == null) task.setWarehouseCode(storeEntity.getCangkuid());
             }
+            task.setSupervisorName(supervisorMap.getOrDefault(task.getStoreId(), ""));
             if (task.getTemplateId() != null) {
                 task.setTemplateName(templateNameMap.get(task.getTemplateId()));
             }
@@ -277,6 +339,7 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
             List<Map<String, Object>> materialList = new java.util.ArrayList<>();
             for (TaskZoneMaterial m : zoneMaterials) {
                 Map<String, Object> mMap = new java.util.LinkedHashMap<>();
+                mMap.put("id", m.getId());
                 mMap.put("materialId", m.getMaterialId());
                 mMap.put("materialName", m.getMaterialName());
                 mMap.put("spec", m.getSpec());
@@ -396,5 +459,152 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         taskMapper.deleteById(id);
     }
 
-    // ====== 工具方法 ======
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void update(Integer id, TaskUpdateRequest req) {
+        Task task = taskMapper.selectById(id);
+        if (task == null) {
+            throw new BusinessException("任务不存在");
+        }
+        // P0: submitted/pending_submit 不可修改基本信息；overdue 仅允许延长时间
+        if ("submitted".equals(task.getStatus()) || "pending_submit".equals(task.getStatus())) {
+            throw new BusinessException("已提交/待提交的任务不可修改基本信息");
+        }
+        if (req.getTaskName() != null) task.setTaskName(req.getTaskName());
+        if (req.getTaskMonth() != null) task.setTaskMonth(req.getTaskMonth());
+        if (req.getDeadline() != null) {
+            task.setDeadline(req.getDeadline());
+            // P0: 延长截止时间 → 逾期任务恢复为进行中
+            if ("overdue".equals(task.getStatus())) {
+                task.setStatus("in_progress");
+            }
+        }
+        taskMapper.updateById(task);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateMaterials(Integer taskId, List<MaterialUpdateReq> materials) {
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BusinessException("任务不存在");
+        }
+        if (!"submitted".equals(task.getStatus())) {
+            throw new BusinessException("仅已提交的任务可修改物料数量");
+        }
+        for (MaterialUpdateReq m : materials) {
+            TaskZoneMaterial tzm = taskZoneMaterialMapper.selectById(m.getId());
+            if (tzm == null || !tzm.getTaskId().equals(taskId)) {
+                continue;
+            }
+            if (m.getInputQty() != null) tzm.setInputQty(m.getInputQty());
+            if (m.getBaseQty() != null) tzm.setBaseQty(m.getBaseQty());
+            if (m.getUnitInputs() != null) tzm.setUnitInputs(m.getUnitInputs());
+            tzm.setInputStatus(m.getInputQty() != null && m.getInputQty().compareTo(BigDecimal.ZERO) > 0
+                    ? "entered" : "zero_entered");
+            taskZoneMaterialMapper.updateById(tzm);
+        }
+        rebuildSummary(taskId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteMaterial(Integer taskId, Integer materialId) {
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BusinessException("任务不存在");
+        }
+        if (!"submitted".equals(task.getStatus())) {
+            throw new BusinessException("仅已提交的任务可删除物料");
+        }
+        TaskZoneMaterial tzm = taskZoneMaterialMapper.selectById(materialId);
+        if (tzm == null || !tzm.getTaskId().equals(taskId)) {
+            throw new BusinessException("物料不存在");
+        }
+        taskZoneMaterialMapper.deleteById(materialId);
+        rebuildSummary(taskId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void setMaterialTotal(Integer taskId, String materialId, BigDecimal totalQty) {
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) throw new BusinessException("任务不存在");
+        if (!"submitted".equals(task.getStatus())) throw new BusinessException("仅已提交的任务可编辑");
+
+        List<TaskZoneMaterial> records = taskZoneMaterialMapper.selectList(
+                new LambdaQueryWrapper<TaskZoneMaterial>()
+                        .eq(TaskZoneMaterial::getTaskId, taskId)
+                        .eq(TaskZoneMaterial::getMaterialId, materialId));
+        if (records.isEmpty()) throw new BusinessException("物料不在该任务中");
+
+        boolean first = true;
+        for (TaskZoneMaterial tzm : records) {
+            if (first) {
+                tzm.setInputQty(totalQty);
+                tzm.setBaseQty(totalQty);
+                tzm.setUnitInputs("");
+                tzm.setInputStatus(totalQty.compareTo(BigDecimal.ZERO) > 0 ? "entered" : "zero_entered");
+                first = false;
+            } else {
+                tzm.setInputQty(BigDecimal.ZERO);
+                tzm.setBaseQty(BigDecimal.ZERO);
+                tzm.setUnitInputs("");
+                tzm.setInputStatus("zero_entered");
+            }
+            taskZoneMaterialMapper.updateById(tzm);
+        }
+        rebuildSummary(taskId);
+    }
+
+    private void rebuildSummary(Integer taskId) {
+        // 保留已有物料的 original_qty，以防覆盖任务提交时的快照
+        List<TaskMaterialSummary> existingSummaries = taskMaterialSummaryMapper.selectList(
+                new LambdaQueryWrapper<TaskMaterialSummary>().eq(TaskMaterialSummary::getTaskId, taskId));
+        Map<String, BigDecimal> origQtyMap = new LinkedHashMap<>();
+        for (TaskMaterialSummary es : existingSummaries) {
+            if (es.getOriginalQty() != null) {
+                origQtyMap.put(es.getMaterialId(), es.getOriginalQty());
+            }
+        }
+
+        // 硬删除旧的汇总记录
+        taskMaterialSummaryMapper.physicalDeleteByTaskId(taskId);
+
+        List<TaskZoneMaterial> allMaterials = taskZoneMaterialMapper.selectList(
+                new LambdaQueryWrapper<TaskZoneMaterial>().eq(TaskZoneMaterial::getTaskId, taskId));
+        Map<String, TaskMaterialSummary> summaryMap = new LinkedHashMap<>();
+        for (TaskZoneMaterial m : allMaterials) {
+            BigDecimal qty = snapshotQty(m);
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
+            String materialId = m.getMaterialId();
+            summaryMap.compute(materialId, (k, v) -> {
+                if (v == null) {
+                    v = new TaskMaterialSummary();
+                    v.setTaskId(taskId);
+                    v.setMaterialId(materialId);
+                    v.setMaterialName(m.getMaterialName());
+                    v.setSpec(m.getSpec());
+                    v.setBaseUnit(snapshotUnit(m));
+                    v.setTotalQty(qty);
+                    // originalQty: 已有则保留原值，新物料则用当前 qty
+                    BigDecimal orig = origQtyMap.getOrDefault(materialId, qty);
+                    v.setOriginalQty(orig);
+                    v.setAdjustedQty(qty);
+                    v.setZoneCount(1);
+                    v.setUnitBreakdown(m.getUnitInputs());
+                } else {
+                    v.setTotalQty(v.getTotalQty().add(qty));
+                    v.setAdjustedQty(v.getAdjustedQty().add(qty));
+                    v.setOriginalQty(v.getOriginalQty().add(qty));
+                    v.setZoneCount(v.getZoneCount() + 1);
+                    v.setUnitBreakdown(mergeUnitInputs(v.getUnitBreakdown(), m.getUnitInputs()));
+                }
+                return v;
+            });
+        }
+        if (!summaryMap.isEmpty()) {
+            taskMaterialSummaryMapper.insertBatch(new ArrayList<>(summaryMap.values()));
+        }
+    }
 }

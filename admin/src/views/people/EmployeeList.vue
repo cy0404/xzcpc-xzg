@@ -11,7 +11,7 @@
 
     <a-card class="filter-card" :bordered="false">
       <a-row :gutter="[16, 16]">
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">门店选择</div>
           <a-select v-model:value="filters.storeId" placeholder="全部门店" allow-clear show-search :filter-option="filterStore" style="width: 100%">
             <a-select-option v-for="store in stores" :key="store.id" :value="store.id" :label="store.name">
@@ -19,25 +19,29 @@
             </a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="5">
+          <div class="filter-label">督导</div>
+          <a-select v-model:value="filters.supervisorName" placeholder="全部督导" style="width: 100%" allow-clear :options="supervisorOptions" @change="handleSearch" />
+        </a-col>
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">岗位角色</div>
           <a-select v-model:value="filters.role" placeholder="全部岗位" allow-clear style="width: 100%">
             <a-select-option v-for="role in roleOptions" :key="role" :value="role">{{ role }}</a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">在职/离职状态</div>
           <a-select v-model:value="filters.status" placeholder="全部状态" allow-clear style="width: 100%">
             <a-select-option value="在职">在职</a-select-option>
             <a-select-option value="离职">离职</a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="4">
           <div class="filter-label">员工姓名</div>
           <a-input v-model:value="filters.name" placeholder="输入姓名搜索" allow-clear @pressEnter="handleSearch" />
         </a-col>
       </a-row>
-      <div class="filter-actions">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
         <a-button @click="handleReset">重置</a-button>
         <a-button type="primary" @click="handleSearch">查询</a-button>
       </div>
@@ -56,11 +60,14 @@
           <template v-if="column.key === 'name'">
             <a @click="goDetail(record)">{{ record.name }}</a>
           </template>
-          <template v-if="column.key === 'status'">
+          <template v-else-if="column.key === 'status'">
             <a-tag :color="record.status === '在职' ? 'green' : 'default'">{{ record.status }}</a-tag>
           </template>
-          <template v-if="column.key === 'action'">
+          <template v-else-if="column.key === 'action'">
             <a-button type="link" size="small" @click="goDetail(record)">查看</a-button>
+          </template>
+          <template v-else>
+            {{ record[column.dataIndex] }}
           </template>
         </template>
       </a-table>
@@ -74,6 +81,7 @@ import { useRouter } from 'vue-router'
 import PeopleModuleTabs from '../../components/PeopleModuleTabs.vue'
 import { getEmployees } from '../../api/people'
 import { getStores } from '../../api/store'
+import { getSupervisorOptions } from '../../api/supervisor'
 
 type StoreOption = { id: string; name: string }
 type Employee = {
@@ -83,6 +91,7 @@ type Employee = {
   storeId: string
   storeMiniappNo?: string
   storeName: string
+  supervisorName?: string
   role: string
   entryDate: string
   status: string
@@ -96,10 +105,12 @@ const roleOptions = ['店长', '咖啡师', '值班主管', '兼职店员']
 
 const filters = reactive({
   storeId: undefined as string | undefined,
+  supervisorName: '' as string,
   role: undefined as string | undefined,
   status: undefined as string | undefined,
   name: '',
 })
+const supervisorOptions = ref<{ label: string; value: string }[]>([])
 
 const pagination = reactive({
   current: 1,
@@ -124,6 +135,7 @@ const fallbackEmployees: Employee[] = [
 const columns = [
   { title: '姓名', dataIndex: 'name', key: 'name' },
   { title: '所属门店', dataIndex: 'storeName', key: 'storeName' },
+  { title: '督导', dataIndex: 'supervisorName', key: 'supervisorName', width: 100 },
   { title: '岗位', dataIndex: 'role', key: 'role', width: 140 },
   { title: '入职日期', dataIndex: 'entryDate', key: 'entryDate', width: 140 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
@@ -152,6 +164,7 @@ function normalizeEmployee(raw: any): Employee {
     storeId: raw.storeId,
     storeMiniappNo: raw.storeMiniappNo || raw.store_miniapp_no,
     storeName: raw.storeName,
+    supervisorName: raw.supervisorName || '',
     role: raw.role || raw.position,
     entryDate: raw.entryDate || raw.hireDate,
     status: raw.status || '在职',
@@ -186,6 +199,7 @@ async function fetchEmployees() {
   try {
     const res = (await getEmployees({
       storeId: filters.storeId,
+      supervisorName: filters.supervisorName,
       role: filters.role,
       status: filters.status,
       name: filters.name.trim(),
@@ -211,6 +225,7 @@ function handleSearch() {
 
 function handleReset() {
   filters.storeId = undefined
+  filters.supervisorName = ''
   filters.role = undefined
   filters.status = undefined
   filters.name = ''
@@ -228,8 +243,13 @@ function goDetail(record: Employee) {
   router.push(`/people/${record.employeeId}`)
 }
 
+async function fetchSupervisors() {
+  try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
+}
+
 onMounted(async () => {
   await fetchStores()
+  await fetchSupervisors()
   await fetchEmployees()
 })
 </script>

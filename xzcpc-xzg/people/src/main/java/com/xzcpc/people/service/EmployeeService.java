@@ -8,9 +8,9 @@ import java.util.Map;
 
 public interface EmployeeService {
 
-    Page<Employee> page(String storeId, String role, String status, String name, int pageNum, int pageSize);
+    Page<Employee> page(String storeId, String supervisorName, String role, String status, String name, int pageNum, int pageSize);
 
     Map<String, Object> detail(String employeeId);
 
-    PeopleDashboardResp dashboard(String range);
+    PeopleDashboardResp dashboard(String range, String supervisorName);
 }

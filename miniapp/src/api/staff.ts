@@ -1,8 +1,10 @@
 import { request } from '@/utils/request'
 import { BASE_URL } from '@/utils/constants'
 
-export function fetchStaffList(status = '') {
-  return request({ url: '/staff', data: { status } })
+export function fetchStaffList(status = '', all?: boolean) {
+  const data: any = { status }
+  if (all) data.all = true
+  return request({ url: '/staff', data })
 }
 
 export function fetchMyStaffProfile() {
@@ -23,6 +25,11 @@ export function submitStaffRegistration(data: any) {
 
 export function fetchStaffApplications(status = 'pending') {
   return request({ url: '/staff/applications', data: { status } })
+}
+
+/** 待审批概览。all=true 返回 [{storeId, storeName, pending}]，否则返回 {pending} */
+export function fetchStaffOverview(all?: boolean) {
+  return request({ url: '/staff/applications/overview', data: all ? { all: true } : undefined })
 }
 
 export function fetchStaffApplicationDetail(applicationId: string) {
@@ -62,7 +69,7 @@ function publicRequest(options: { url: string; method?: string; data?: any }) {
         if (res.statusCode === 200 && res.data?.code === 200) resolve(res.data.data)
         else resolve(null)
       },
-      fail: () => resolve(null),
+      fail: (err) => reject(err),
     })
   })
 }

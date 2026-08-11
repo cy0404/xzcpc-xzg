@@ -692,6 +692,7 @@ public class LossReportServiceImpl implements LossReportService {
     public List<Map<String, Object>> getLogs(Long reportId) {
         return logMapper.selectList(new LambdaQueryWrapper<LossReportLog>()
                 .eq(LossReportLog::getReportId, reportId)
+                .ne(LossReportLog::getAction, "download")
                 .orderByAsc(LossReportLog::getCreatedAt))
                 .stream().map(l -> {
                     Map<String, Object> m = new LinkedHashMap<>();
@@ -769,7 +770,7 @@ public class LossReportServiceImpl implements LossReportService {
         String placeholders = ids.stream().map(id -> "?").collect(Collectors.joining(","));
         List<Map<String, Object>> logs = jdbcTemplate.queryForList(
                 "SELECT t.report_id, t.action, t.remark FROM loss_report_log t " +
-                "INNER JOIN (SELECT report_id, MAX(created_at) AS max_created FROM loss_report_log WHERE report_id IN (" + placeholders + ") AND action NOT IN ('submit','delete') GROUP BY report_id) latest " +
+                "INNER JOIN (SELECT report_id, MAX(created_at) AS max_created FROM loss_report_log WHERE report_id IN (" + placeholders + ") AND action NOT IN ('submit','delete','download') GROUP BY report_id) latest " +
                 "ON t.report_id = latest.report_id AND t.created_at = latest.max_created",
                 ids.toArray());
         Map<Long, Map<String, Object>> logMap = new HashMap<>();

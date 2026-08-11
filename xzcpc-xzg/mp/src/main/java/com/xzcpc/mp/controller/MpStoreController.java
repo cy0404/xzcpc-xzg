@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/mp/stores")
+@RequestMapping("/api/mp/stores-all")
 @RequiredArgsConstructor
 public class MpStoreController {
 

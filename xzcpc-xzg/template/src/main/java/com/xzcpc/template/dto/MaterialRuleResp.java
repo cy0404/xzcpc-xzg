@@ -34,6 +34,7 @@ public class MaterialRuleResp {
 
     @Data
     public static class UnitConversionItem {
+        private Integer sortNo;
         private BigDecimal fromQuantity;
         private String fromUnit;
         private BigDecimal toQuantity;
@@ -42,6 +43,7 @@ public class MaterialRuleResp {
 
     @Data
     public static class WeightConversionItem {
+        private Integer sortNo;
         private BigDecimal weightQuantity;
         private String weightUnit;
         private BigDecimal countQuantity;

@@ -1,16 +1,14 @@
 package com.xzcpc.common.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.xzcpc.common.entity.OperationLog;
 import com.xzcpc.common.mapper.OperationLogMapper;
 import com.xzcpc.common.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -27,13 +25,27 @@ public class OperationLogServiceImpl implements OperationLogService {
         operationLogMapper.insert(log);
     }
 
+    /**
+     * 手写分页，绕过 MyBatis-Plus 分页插件的 COUNT(*)。
+     * 多查一行来判断是否有下一页，前端用估算 total。
+     */
     @Override
-    public IPage<OperationLog> page(IPage<OperationLog> page, String username, String module, String operation) {
-        LambdaQueryWrapper<OperationLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(StringUtils.hasText(username), OperationLog::getUsername, username);
-        wrapper.eq(StringUtils.hasText(module), OperationLog::getModule, module);
-        wrapper.eq(StringUtils.hasText(operation), OperationLog::getOperation, operation);
-        wrapper.orderByDesc(OperationLog::getCreatedAt);
-        return operationLogMapper.selectPage(page, wrapper);
+    public Map<String, Object> page(int page, int size, String username, String module, String operation, String source) {
+        long offset = (long) (page - 1) * size;
+        // 多查 1 条，判断有没有下一页
+        List<OperationLog> list = operationLogMapper.selectPageRaw(
+                source, username, module, operation, offset, size + 1);
+
+        boolean hasMore = list.size() > size;
+        if (hasMore) list = list.subList(0, size);
+
+        long total = hasMore ? (long) page * size + 1 : (long) (page - 1) * size + list.size();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("records", list);
+        result.put("total", total);
+        result.put("current", page);
+        result.put("size", size);
+        return result;
     }
 }

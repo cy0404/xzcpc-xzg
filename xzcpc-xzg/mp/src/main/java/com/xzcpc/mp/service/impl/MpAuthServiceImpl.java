@@ -50,7 +50,7 @@ public class MpAuthServiceImpl implements MpAuthService {
             sessionKey = result.getSessionKey();
         } catch (Exception e) {
             log.error("wx.login 换 openid 失败", e);
-            saveLoginLog("wx_login", null, null, 0, "微信登录失败: " + e.getMessage());
+            saveLoginLog("wx_login", null, null, null, 0, "微信登录失败: " + e.getMessage());
             throw new BusinessException("微信登录失败，请重试");
         }
 
@@ -83,12 +83,15 @@ public class MpAuthServiceImpl implements MpAuthService {
 
         // 一次性写入所有变更
         boolean bound = StringUtils.hasText(session.getStoreId());
-        String token = jwtUtil.generate(session.getId().longValue(), openid);
+        // P0: 判定角色（owner > store_manager > staff）
+        String role = determineRole(openid, session.getStoreId());
+        String token = jwtUtil.generate(session.getId().longValue(), openid, role);
         session.setToken(token);
+        session.setRole(role);
         session.setLastLoginAt(LocalDateTime.now());
         sessionMapper.updateById(session);
 
-        saveLoginLog("login", session.getId().longValue(), session.getWxNickname(), 1, null);
+        saveLoginLog("login", session.getId().longValue(), session.getOpenid(), session.getWxNickname(), 1, null);
 
         LoginResp resp = new LoginResp(
                 token,
@@ -121,12 +124,14 @@ public class MpAuthServiceImpl implements MpAuthService {
 
         session.setStoreId(store.getId());
         session.setStoreName(store.getMendianmingcheng());
-        String token = jwtUtil.generate(sessionId, session.getOpenid());
+        String role = determineRole(session.getOpenid(), session.getStoreId());
+        String token = jwtUtil.generate(sessionId, session.getOpenid(), role);
         session.setToken(token);
+        session.setRole(role);
         session.setLastLoginAt(LocalDateTime.now());
         sessionMapper.updateById(session);
 
-        saveLoginLog("bind_store", sessionId, session.getWxNickname(), 1, null);
+        saveLoginLog("bind_store", sessionId, session.getOpenid(), session.getWxNickname(), 1, null);
 
         return withStaffProfile(new LoginResp(
                 token,
@@ -158,12 +163,14 @@ public class MpAuthServiceImpl implements MpAuthService {
 
         session.setStoreId(store.getId());
         session.setStoreName(store.getMendianmingcheng());
-        String token = jwtUtil.generate(sessionId, session.getOpenid());
+        String role = determineRole(session.getOpenid(), session.getStoreId());
+        String token = jwtUtil.generate(sessionId, session.getOpenid(), role);
         session.setToken(token);
+        session.setRole(role);
         session.setLastLoginAt(LocalDateTime.now());
         sessionMapper.updateById(session);
 
-        saveLoginLog("switch_store", sessionId, session.getWxNickname(), 1, null);
+        saveLoginLog("switch_store", sessionId, session.getOpenid(), session.getWxNickname(), 1, null);
 
         LoginResp resp = new LoginResp(
                 token,
@@ -179,7 +186,7 @@ public class MpAuthServiceImpl implements MpAuthService {
     public void logout(Long sessionId) {
         StoreManagerSession session = sessionMapper.selectById(sessionId);
         String nickname = session != null ? session.getWxNickname() : null;
-        saveLoginLog("logout", sessionId, nickname, 1, null);
+        saveLoginLog("logout", sessionId, session != null ? session.getOpenid() : null, nickname, 1, null);
 
         sessionMapper.update(null,
             new LambdaUpdateWrapper<StoreManagerSession>()
@@ -200,11 +207,32 @@ public class MpAuthServiceImpl implements MpAuthService {
 
     // ---------- private ----------
 
-    private void saveLoginLog(String loginType, Long userId, String username, int status, String failReason) {
+    /**
+     * P0: 判定用户角色。优先级：owner（老板注册表）> store_manager（员工表店长）> staff（普通员工）
+     * @param openid 微信 openid
+     * @param storeId 当前门店 ID（可为 null）
+     * @return store_manager | owner | staff
+     */
+    private String determineRole(String openid, String storeId) {
+        if (!StringUtils.hasText(openid) || !StringUtils.hasText(storeId)) {
+            return "staff";
+        }
+        Map<String, Object> profile = staffService.currentStaffProfile(openid, storeId);
+        String employeeRole = profile != null ? (String) profile.getOrDefault("role", "") : "";
+        if (!StringUtils.hasText(employeeRole)) {
+            return "staff";
+        }
+        if (employeeRole.contains("老板")) return "owner";
+        if (employeeRole.contains("店长") || employeeRole.contains("经理")) return "store_manager";
+        return "staff";
+    }
+
+    private void saveLoginLog(String loginType, Long userId, String openid, String username, int status, String failReason) {
         try {
             LoginLog loginLog = new LoginLog();
             loginLog.setLoginType(loginType);
             loginLog.setUserId(userId);
+            loginLog.setOpenid(openid != null ? openid : "");
             loginLog.setUsername(username != null ? username : "");
             loginLog.setStatus(status);
             loginLog.setFailReason(failReason != null ? failReason : "");
@@ -249,6 +277,9 @@ public class MpAuthServiceImpl implements MpAuthService {
                 session.getStoreId(),
                 session.getStoreName()
         );
+        // 查询名下门店数量
+        List<Map<String, Object>> stores = staffService.findStoresByOpenid(session.getOpenid());
+        resp.setStoreCount(stores.isEmpty() ? 1 : stores.size());
         resp = withStaffProfile(resp, session);
         // 已离职员工：staffBound=false，视为未绑定，前端会跳到登录页
         if (!resp.isStaffBound()) {
@@ -256,8 +287,6 @@ public class MpAuthServiceImpl implements MpAuthService {
             resp.setRole("");
             resp.setPermissions(List.of());
         }
-        List<Map<String, Object>> stores = staffService.findStoresByOpenid(session.getOpenid());
-        resp.setStoreCount(stores.isEmpty() ? 1 : stores.size());
         return resp;
     }
 
@@ -268,12 +297,14 @@ public class MpAuthServiceImpl implements MpAuthService {
         Map<String, Object> profile = staffService.currentStaffProfile(session.getOpenid(), session.getStoreId());
         resp.setEmployeeId((String) profile.getOrDefault("employeeId", ""));
         resp.setEmployeeName((String) profile.getOrDefault("employeeName", ""));
-        resp.setRole((String) profile.getOrDefault("role", ""));
+        resp.setRole(determineRole(session.getOpenid(), session.getStoreId()));
         resp.setStaffBound(Boolean.TRUE.equals(profile.get("staffBound")));
         Object permissions = profile.get("permissions");
         if (permissions instanceof List<?> list) {
             resp.setPermissions(list.stream().map(String::valueOf).toList());
         }
+        // 外部问题表单系统门店标识，供小程序拼接上报页 URL
+        resp.setChatId(storeService.getChatId(session.getStoreId()));
         return resp;
     }
 }

@@ -5,13 +5,16 @@ import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.common.model.MaterialInfo;
 import com.xzcpc.template.dto.MaterialRuleResp;
 import com.xzcpc.template.dto.MaterialRuleSaveReq;
+import com.xzcpc.template.entity.Material;
 import com.xzcpc.template.entity.MaterialConversionRule;
 import com.xzcpc.template.entity.MaterialInventoryRule;
 import com.xzcpc.template.mapper.MaterialConversionRuleMapper;
 import com.xzcpc.template.mapper.MaterialInventoryRuleMapper;
+import com.xzcpc.template.mapper.MaterialMapper;
 import com.xzcpc.template.service.MaterialRuleService;
 import com.xzcpc.template.service.MaterialService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -28,6 +31,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MaterialRuleServiceImpl implements MaterialRuleService {
 
     private static final String STATUS_MAINTAINED = "maintained";
@@ -238,6 +242,7 @@ public class MaterialRuleServiceImpl implements MaterialRuleService {
                 .filter(c -> TYPE_UNIT.equals(c.getConversionType()))
                 .map(c -> {
                     MaterialRuleResp.UnitConversionItem item = new MaterialRuleResp.UnitConversionItem();
+                    item.setSortNo(c.getSortNo());
                     item.setFromQuantity(c.getFromQuantity());
                     item.setFromUnit(c.getFromUnit());
                     item.setToQuantity(c.getToQuantity());
@@ -252,6 +257,7 @@ public class MaterialRuleServiceImpl implements MaterialRuleService {
                 .filter(c -> TYPE_WEIGHT.equals(c.getConversionType()))
                 .map(c -> {
                     MaterialRuleResp.WeightConversionItem item = new MaterialRuleResp.WeightConversionItem();
+                    item.setSortNo(c.getSortNo());
                     item.setWeightQuantity(c.getFromQuantity());
                     item.setWeightUnit(c.getFromUnit());
                     item.setCountQuantity(c.getToQuantity());
@@ -264,9 +270,14 @@ public class MaterialRuleServiceImpl implements MaterialRuleService {
         if (!StringUtils.hasText(conversionType)) {
             return true;
         }
+        boolean hasUnit = !item.getConversions().isEmpty();
+        boolean hasWeight = !item.getWeightConversions().isEmpty();
         return switch (conversionType) {
-            case "maintained" -> !item.getConversions().isEmpty() || !item.getWeightConversions().isEmpty();
-            case "pending" -> item.getConversions().isEmpty() && item.getWeightConversions().isEmpty();
+            case "maintained" -> hasUnit || hasWeight;
+            case "unit"        -> hasUnit;
+            case "weight"      -> hasWeight;
+            case "both"        -> hasUnit && hasWeight;
+            case "pending"     -> !hasUnit && !hasWeight;
             default -> true;
         };
     }
@@ -355,11 +366,12 @@ public class MaterialRuleServiceImpl implements MaterialRuleService {
                 }
             });
         }
-        // 从重量换算中提取数量单位
+        // 从重量换算中提取重量单位和数量单位
         if (req.getWeightConversions() != null) {
             req.getWeightConversions().forEach(item -> {
-                if (item != null && StringUtils.hasText(item.getCountUnit())) {
-                    unitNames.add(item.getCountUnit().trim());
+                if (item != null) {
+                    if (StringUtils.hasText(item.getWeightUnit())) unitNames.add(item.getWeightUnit().trim());
+                    if (StringUtils.hasText(item.getCountUnit())) unitNames.add(item.getCountUnit().trim());
                 }
             });
         }

@@ -23,6 +23,7 @@ public class Material {
     private String category;
     private String materialName;
     private String spec;
+    private Integer lossVisible;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

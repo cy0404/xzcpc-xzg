@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>到货验收报损确认</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;color:#1F2421;font-size:14px}
+main{width:40%;margin:0 auto;min-height:100dvh} @media(max-width:768px){main{width:100%;max-width:430px}}
+.header{position:sticky;top:0;z-index:10;background:#F7F8F6;border-bottom:1px solid #EEF1EF;padding:12px 16px}
+.header h1{font-size:20px;font-weight:600}
+.card{background:#fff;border-radius:12px;padding:16px;margin:12px 16px;border:1px solid #E8ECE9;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;text-align:center;background:#FAFBF9;border-radius:8px;padding:12px;margin-top:12px}
+.stat-val{font-size:22px;font-weight:700;color:#E58A2D}.stat-label{font-size:10px;color:#98A19C}
+.tag{display:inline-block;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:600}
+.tag-store{background:#FFF8EE;color:#E58A2D}.tag-ok{background:#E7F4EB;color:#2F8F57}.tag-no{background:#FFF4F2;color:#E05A47}.tag-wait{background:#FFF8EE;color:#E58A2D}.tag-gray{background:#E8ECE9;color:#66706A}
+.rpt{border:1px solid #E8ECE9;border-radius:12px;padding:16px;margin:12px 16px;background:#fff}
+.rpt .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.rpt h3{font-size:16px;font-weight:600;margin-top:8px}
+.rpt .meta{font-size:13px;color:#66706A;margin-top:6px;line-height:1.5}
+.photos{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px}
+.photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;border:1px solid #E8ECE9;background:linear-gradient(135deg,#EEF1EF,#FFF8EE);cursor:pointer}
+.photo-video{position:relative;cursor:pointer;aspect-ratio:1;border-radius:4px;overflow:hidden;background:#000}
+.photo-video video{width:100%;height:100%;object-fit:cover;display:block}
+.photo-video .play-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff;background:rgba(0,0,0,.3);pointer-events:none}
+/* video modal */
+.video-modal{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.92);align-items:center;justify-content:center}
+.video-modal.on{display:flex}
+.video-modal video{max-width:95vw;max-height:95vh;border-radius:8px}
+.video-modal-close{position:absolute;top:16px;right:16px;color:#fff;font-size:28px;cursor:pointer;z-index:1}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.btn{padding:10px;border-radius:8px;font-size:14px;font-weight:500;text-align:center;cursor:pointer;border:none}
+.btn-ok{background:#2F8F57;color:#fff}.btn-no{background:#fff;color:#E05A47;border:1px solid #E8ECE9}.btn-done{background:#E7F4EB;color:#2F8F57;cursor:default}
+.feedback{padding:10px 12px;margin-top:10px;border-radius:8px;background:#E7F4EB;border:1px solid #CBEED8;font-size:13px;color:#1F2421;font-weight:500;line-height:1.5}
+.feedback-red{background:#FFF4F2;border:1px solid #FDDDD8;color:#E05A47}
+.banner{display:none;align-items:flex-start;gap:12px;padding:16px;margin:12px 16px;background:#E7F4EB;border-radius:12px;border:1px solid #CBEED8}
+.banner.on{display:flex}
+/* tabs */
+.tabs{display:flex;margin:12px 16px 0;border-bottom:2px solid #E8ECE9}
+.tab-btn{flex:1;padding:10px 0;text-align:center;font-size:14px;font-weight:600;color:#98A19C;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+.tab-btn.active{color:#2F8F57;border-bottom-color:#2F8F57}
+.tab-sub{display:flex;gap:16px;padding:4px 16px;border-bottom:1px solid #EEF1EF}
+.tab-sub-btn{font-size:12px;padding:6px 0;color:#98A19C;cursor:pointer;border-bottom:2px solid transparent;font-weight:500}
+.tab-sub-btn.active{color:#2F8F57;border-bottom-color:#2F8F57}
+.tab-body{display:none}.tab-body.active{display:block}
+.loading{text-align:center;padding:60px 0;color:#98A19C}
+/* search */
+.search-box{padding:12px 16px}
+.search-box input{width:100%;padding:10px 14px;border:1px solid #E8ECE9;border-radius:10px;font-size:14px;outline:none;background:#FAFBF9}
+.search-box input:focus{border-color:#2F8F57}
+.rpt.hidden{display:none}
+.rpt-check{width:18px;height:18px;cursor:pointer;accent-color:#2F8F57;flex-shrink:0}
+.rpt-check-row{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-bottom:8px;border-bottom:1px solid #F0F2F0;margin-bottom:8px}
+.rpt-check-row label{font-size:12px;color:#66706A;cursor:pointer}
+.dl-bar{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:4px 16px}
+.dl-bar label{font-size:13px;color:#374151;cursor:pointer}
+.dl-btn{padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#2F8F57;color:#fff}
+.dl-btn:disabled{background:#98A19C;cursor:default}
+/* store group */
+.store-group{background:#fff;border:1px solid #E8ECE9;border-radius:12px;margin:12px 16px;overflow:hidden}
+.sg-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;background:#FAFBF9}
+.sg-header .sg-name{font-size:15px;font-weight:600;color:#1F2421}
+.sg-header .sg-arrow{font-size:12px;color:#98A19C;transition:transform .2s;transform:rotate(180deg)}
+.sg-header.collapsed .sg-arrow{transform:rotate(0deg)}
+.sg-body{padding:0 16px 12px}
+.sg-body.collapsed{display:none}
+.sg-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #F0F2F0}
+.sg-item:last-child{border-bottom:0}
+.sg-item .sg-check{width:18px;height:18px;cursor:pointer;accent-color:#2F8F57;flex-shrink:0}
+.sg-item .sg-check:disabled{cursor:default;opacity:.4}
+.sg-item .sg-info{flex:1;font-size:13px;color:#1F2421}
+.sg-item .sg-meta{font-size:11px;color:#98A19C}
+.sg-item .sg-tag{font-size:11px;padding:2px 8px;border-radius:99px;flex-shrink:0}
+.sg-batch-bar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:8px 16px;margin:0 16px 12px}
+.sg-batch-bar .sg-batch-btn{padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#2F8F57;color:#fff}
+.sg-batch-bar .sg-batch-btn:disabled{background:#98A19C;cursor:default}
+.sg-item-btn{padding:4px 14px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:#2F8F57;color:#fff;flex-shrink:0}
+.sg-item-btn:disabled{background:#98A19C;cursor:default}
+
+/* lightbox */
+.lb{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.9);align-items:center;justify-content:center}
+.lb.on{display:flex}.lb img{max-width:95vw;max-height:95vh;border-radius:8px}
+.lb-close{position:absolute;top:16px;right:16px;color:#fff;font-size:28px;cursor:pointer}
+
+/* modal */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.4);align-items:center;justify-content:center}
+.modal-overlay.on{display:flex}
+.modal{background:#fff;border-radius:16px;padding:24px;width:280px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.12);position:relative}
+.modal p{font-size:16px;font-weight:600;margin-bottom:20px;color:#1F2421}
+.modal .close-x{position:absolute;top:12px;right:14px;font-size:20px;color:#98A19C;cursor:pointer;line-height:1}
+.modal-btns{display:flex;gap:8px;flex-wrap:nowrap}
+.modal-btns button{flex:1;padding:8px 6px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;white-space:nowrap}
+.modal-cancel{background:#FAFBF9;color:#66706A;border:1px solid #E8ECE9!important}
+.modal-confirm{background:#2F8F57;color:#fff}
+.modal-resend{background:#2F8F57;color:#fff}
+.modal-register{background:#E58A2D;color:#fff}
+.att-upload{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.att-btn{padding:4px 10px;border:1px solid #E8ECE9;border-radius:6px;font-size:12px;cursor:pointer;background:#fff;color:#66706A}
+.att-preview{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.att-preview img,.att-preview video{width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid #E8ECE9}
+.att-preview .att-del{position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;background:#E05A47;color:#fff;font-size:10px;line-height:16px;text-align:center;cursor:pointer}
+.att-thumb{position:relative;display:inline-block}
+.tl-attachments{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.tl-attachments img,.tl-attachments video{width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #E8ECE9;cursor:pointer}
+</style>
+</head>
+<body>
+<main><div id="app"><div class="loading">加载中...</div></div></main>
+
+<!-- lightbox -->
+<div class="lb" id="lb" onclick="document.getElementById('lb').classList.remove('on')">
+  <span class="lb-close">&times;</span>
+  <img id="lb-img" src="">
+</div>
+
+<!-- 普通确认弹窗 -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <span class="close-x" onclick="closeModal()">&times;</span>
+    <p id="modal-msg">确定确认补发？</p>
+    <textarea id="modal-reason" style="width:100%;height:60px;border:1px solid #E8ECE9;border-radius:8px;padding:8px;font-size:13px;margin-bottom:12px;resize:none" placeholder="备注说明（选填）"></textarea>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeModal()">取消</button>
+      <button class="modal-confirm" id="modal-confirm-btn">确认</button>
+    </div>
+    <div class="att-upload">
+      <button class="att-btn" onclick="document.getElementById('attFileInput').click()">+ 添加附件</button>
+      <span style="font-size:11px;color:#98A19C">图片/视频将展示在流程记录中</span>
+    </div>
+    <input type="file" id="attFileInput" accept="image/*,video/*" multiple style="display:none" onchange="onAttFilesChange(this)">
+    <div class="att-preview" id="attPreview"></div>
+  </div>
+</div>
+
+<!-- 其他类二选一弹窗 -->
+<div class="modal-overlay" id="modalOther">
+  <div class="modal">
+    <span class="close-x" onclick="closeOtherModal()">&times;</span>
+    <p>确认报损登记</p>
+    <p style="font-size:13px;color:#66706A;font-weight:400;margin-top:-12px;margin-bottom:16px">请选择补发方式</p>
+    <div class="modal-btns">
+      <button class="modal-resend" id="modal-resend-btn">及时补发</button>
+      <button class="modal-register" id="modal-register-btn">待下次订货补发</button>
+    </div>
+  </div>
+</div>
+
+<!-- 视频播放弹窗 -->
+<div class="video-modal" id="videoModal" onclick="closeVideo()">
+  <span class="video-modal-close">&times;</span>
+  <video id="videoPlayer" controls autoplay onclick="event.stopPropagation()"></video>
+</div>
+
+<script>
+var p = new URLSearchParams(location.search);
+var date = p.get('date') || '';
+var category = p.get('category') || '';
+var reason = p.get('reason') || '';
+var materialId = p.get('materialId') || '';
+var tab = p.get('tab') || '';
+var urgentId = p.get('urgentId') || '';
+var urgentOnly = p.get('urgent') || '';
+var reports = [];
+var modalCb = null;
+var otherModalCb = null;
+var searchKeyword = '';
+var attFiles = []; // 当前弹窗的附件 {url, isVideo}
+var attUploading = false;
+
+function isVideo(url) { return /\.(mp4|mov|avi|mkv|webm)($|\?)/i.test(url); }
+function showLightbox(src) {
+  if (isVideo(src)) {
+    playVideo(src);
+  } else {
+    document.getElementById('lb-img').src = src;
+    document.getElementById('lb').classList.add('on');
+  }
+}
+function playVideo(url) {
+  var v = document.getElementById('videoPlayer');
+  v.src = url;
+  document.getElementById('videoModal').classList.add('on');
+  v.play();
+}
+function closeVideo() {
+  var v = document.getElementById('videoPlayer');
+  v.pause(); v.src = '';
+  document.getElementById('videoModal').classList.remove('on');
+}
+
+function openModal(msg, cb) {
+  document.getElementById('modal-msg').textContent = msg;
+  modalCb = cb;
+  attFiles = [];
+  renderAttPreview();
+  document.getElementById('modal').classList.add('on');
+}
+function closeModal() { document.getElementById('modal').classList.remove('on'); modalCb = null; attFiles = []; }
+document.getElementById('modal-confirm-btn').addEventListener('click', function() {
+  document.getElementById('modal').classList.remove('on');
+  if (modalCb) { var cb = modalCb; modalCb = null; cb(); }
+});
+
+async function onAttFilesChange(input) {
+  if (attUploading) return;
+  var files = input.files;
+  if (!files.length) return;
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    if (f.size > 50 * 1024 * 1024) { alert('文件不能超过50M'); continue; }
+    attUploading = true;
+    var formData = new FormData();
+    formData.append('file', f);
+    try {
+      var r = await fetch('/api/public/loss-report/upload-attachment', {method:'POST', body:formData});
+      var d = await r.json();
+      if (d.code === 200) {
+        attFiles.push({url: d.url, isVideo: isVideo(d.url) || f.type.startsWith('video/')});
+        renderAttPreview();
+      } else {
+        alert('上传失败: ' + (d.msg || '未知错误'));
+      }
+    } catch(e) { alert('上传失败: 网络错误'); }
+    attUploading = false;
+  }
+  input.value = '';
+}
+function renderAttPreview() {
+  var el = document.getElementById('attPreview');
+  var h = '';
+  for (var i = 0; i < attFiles.length; i++) {
+    var a = attFiles[i];
+    h += '<span class="att-thumb">';
+    if (a.isVideo) h += '<div style="width:48px;height:48px;border-radius:4px;background:linear-gradient(135deg,#3A3F3C,#1F2421);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">▶</div>';
+    else h += '<img src="' + a.url + '">';
+    h += '<span class="att-del" onclick="attRemove(' + i + ')">&times;</span></span>';
+  }
+  el.innerHTML = h;
+}
+function attRemove(idx) { attFiles.splice(idx, 1); renderAttPreview(); }
+
+// 其他类二选一弹窗
+function openOtherModal(cbResend, cbRegister) {
+  document.getElementById('modalOther').classList.add('on');
+  otherModalCb = { resend: cbResend, register: cbRegister };
+}
+function closeOtherModal() { document.getElementById('modalOther').classList.remove('on'); otherModalCb = null; }
+document.getElementById('modal-resend-btn').addEventListener('click', function() {
+  document.getElementById('modalOther').classList.remove('on');
+  if (otherModalCb) { var cb = otherModalCb.resend; otherModalCb = null; cb(); }
+});
+document.getElementById('modal-register-btn').addEventListener('click', function() {
+  document.getElementById('modalOther').classList.remove('on');
+  if (otherModalCb) { var cb = otherModalCb.register; otherModalCb = null; cb(); }
+});
+
+async function load() {
+  try {
+    var catParam = urgentId ? '' : ('&category=' + encodeURIComponent(category));
+    var tabParam = tab ? ('&tab=' + tab) : '';
+    var reasonParam = reason ? ('&reason=' + encodeURIComponent(reason)) : '';
+    var matParam = materialId ? ('&materialId=' + encodeURIComponent(materialId)) : '';
+    var r = await fetch('/api/public/loss-report/daily-summary?date=' + date + catParam + tabParam + reasonParam + matParam + '&_t=' + Date.now());
+    var d = await r.json();
+    reports = d.list;
+    render(d);
+  } catch(e) {
+    document.getElementById('app').innerHTML = '<div class="loading">加载失败</div>';
+  }
+}
+
+var MEDIA_BASE = 'https://www.xzcpc-9pd.top';
+function fixMediaUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return MEDIA_BASE + (url.startsWith('/') ? '' : '/') + url;
+}
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function tag(label, cls) { return '<span class="tag tag-' + cls + '">' + esc(label) + '</span>'; }
+
+function matchSearch(r) {
+  if (!searchKeyword) return true;
+  var kw = searchKeyword.toLowerCase();
+  if (r.materialName && r.materialName.toLowerCase().indexOf(kw) !== -1) return true;
+  if (r.storeName && r.storeName.toLowerCase().indexOf(kw) !== -1) return true;
+  if (r.qimaiOrderNo && r.qimaiOrderNo.toLowerCase().indexOf(kw) !== -1) return true;
+  return false;
+}
+
+function buildStoreGroups(dList, resultFilter) {
+  // 按门店分组
+  var storeMap = {};
+  for (var i = 0; i < dList.length; i++) {
+    var r = dList[i];
+    if (r.result !== resultFilter) continue;
+    var sname = r.storeName || '未知门店';
+    if (!storeMap[sname]) storeMap[sname] = [];
+    storeMap[sname].push({id: r.id, materialName: r.materialName, qtyStr: r.qtyStr, reason: r.reason, occurredDate: r.occurredDate, resendStatus: r.resendStatus, feedback: r.feedback, storeName: r.storeName, qimaiOrderNo: r.qimaiOrderNo, urgent: r.urgent, qmCode: r.qmCode, matCategory: r.matCategory});
+  }
+  var storeNames = Object.keys(storeMap);
+  if (!storeNames.length) return '<div class="loading" style="padding:40px 0">暂无' + resultFilter + '</div>';
+
+  var out = '';
+  for (var s = 0; s < storeNames.length; s++) {
+    var name = storeNames[s];
+    var items = storeMap[name];
+    var sid = 'sg_' + resultFilter + '_' + s;
+    out += '<div class="store-group" data-sg-store="' + esc(name) + '"><div class="sg-header" onclick="toggleSG(\'' + sid + '\')"><span class="sg-name">' + esc(name) + ' <span style="font-size:12px;color:#98A19C">(' + items.length + '条)</span></span><span class="sg-arrow">&#9660;</span></div>';
+    out += '<div class="sg-body" id="' + sid + '">';
+    for (var j = 0; j < items.length; j++) {
+      var r = items[j];
+      var isDone = (resultFilter === '已补发');
+      var stLabel = isDone ? (r.resendStatus === 'received' ? '已收货' : r.resendStatus === 'not_received' ? '未收到货' : '待收货') : '';
+      var stCls = stLabel === '未收到货' ? 'tag-no' : stLabel === '待收货' ? 'tag-wait' : 'tag-ok';
+      out += '<div class="sg-item" data-sg-mat="' + esc(r.materialName) + '" data-sg-store="' + esc(r.storeName) + '" data-sg-qm="' + esc(r.qimaiOrderNo||'') + '">';
+      if (!isDone) out += '<input type="checkbox" class="sg-check" onchange="sgItemCheck(\'' + sid + '\')" value="' + r.id + '">';
+      out += '<div class="sg-info"><div>';
+      if (r.qmCode) out += '<span style="color:#2F8F57;margin-right:4px">' + esc(r.qmCode) + '</span>';
+      out += esc(r.materialName) + '</div>';
+      out += '<div class="sg-meta">' + esc(r.reason || '') + ' · ' + (r.occurredDate || '') + '</div></div>';
+      if (stLabel) out += '<span class="sg-tag tag ' + stCls + '">' + stLabel + '</span>';
+      out += '<span style="font-size:13px;font-weight:600;color:#1F2421;margin-left:auto;margin-right:8px;white-space:nowrap">' + esc(r.qtyStr) + '</span>';
+      if (r.feedback) out += '<span class="sg-meta" style="margin-left:4px;color:#E05A47">' + esc(r.feedback) + '</span>';
+      if (resultFilter === '待补发') out += '<button class="sg-item-btn" onclick="sgSingleResend(' + r.id + ', this)">确认补发</button>';
+      out += '</div>';
+    }
+    // 单门店批量操作栏（在物料循环外面）
+    if (resultFilter === '待补发') {
+      out += '<div class="sg-batch-bar"><label><input type="checkbox" class="sg-check-all" onchange="sgToggleGroup(\'' + sid + '\', this, this.checked)"> 全选</label>';
+      out += '<button class="sg-batch-btn" id="sgBatch_' + sid + '" disabled onclick="sgBatchResend(\'' + sid + '\')">批量确认补发</button></div>';
+    }
+    out += '</div></div>';
+  }
+  return out;
+}
+function toggleSG(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  el.parentElement.querySelector('.sg-header').classList.toggle('collapsed');
+}
+function sgItemCheck(sid) {
+  var body = document.getElementById(sid);
+  if (!body) return;
+  var checks = body.querySelectorAll('.sg-check:checked');
+  var all = body.querySelectorAll('.sg-check');
+  var btn = document.getElementById('sgBatch_' + sid);
+  if (btn) btn.disabled = checks.length === 0;
+  var allCheck = body.querySelector('.sg-check-all');
+  if (allCheck) allCheck.checked = checks.length === all.length;
+}
+function sgToggleGroup(sid, checkbox, on) {
+  var body = document.getElementById(sid);
+  if (!body) return;
+  var checks = body.querySelectorAll('.sg-check');
+  for (var i = 0; i < checks.length; i++) checks[i].checked = on;
+  var btn = document.getElementById('sgBatch_' + sid);
+  if (btn) btn.disabled = !on;
+}
+async function sgSingleResend(id, btn) {
+  btn.disabled = true; btn.textContent = '处理中...';
+  try {
+    await fetch('/api/public/loss-report/issue-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: String(id)})
+    });
+    btn.textContent = '已补发';
+    var item = btn.parentElement;
+    var cb = item.querySelector('.sg-check');
+    if (cb) cb.style.display = 'none';
+    var sid = item.closest('.sg-body').id;
+    sgItemCheck(sid);
+  } catch(e) { btn.disabled = false; btn.textContent = '重试'; }
+}
+async function sgBatchResend(sid) {
+  var body = document.getElementById(sid);
+  if (!body) return;
+  var checks = body.querySelectorAll('.sg-check:checked');
+  var ids = [];
+  for (var i = 0; i < checks.length; i++) ids.push(parseInt(checks[i].value));
+  if (!ids.length) return;
+  var btn = document.getElementById('sgBatch_' + sid);
+  if (btn) { btn.disabled = true; btn.textContent = '处理中...'; }
+  try {
+    await fetch('/api/public/loss-report/batch-issue-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({items: ids.map(function(id) { return {id: String(id)}; })})
+    });
+    for (var i = 0; i < checks.length; i++) { checks[i].style.display = 'none'; }
+    if (btn) { btn.disabled = true; btn.textContent = '已补发'; }
+    var allCheck = body.querySelector('.sg-check-all');
+    if (allCheck) { allCheck.checked = false; allCheck.style.display = 'none'; }
+    alert('已确认补发 ' + ids.length + ' 条');
+  } catch(e) { alert('操作失败'); if (btn) { btn.disabled = false; btn.textContent = '批量确认补发'; } }
+}
+
+function renderCard(r) {
+  var done = !!r.result;
+  var isAudit = (tab === 'audit'), isResend = (tab === 'resend');
+  var cls = matchSearch(r) ? 'rpt' : 'rpt hidden';
+  var h = '<div class="' + cls + '" id="card' + r.id + '"><div class="rpt-check-row"><label>选择下载</label><input type="checkbox" class="rpt-check" onchange="onCheckChange()" value="' + r.id + '"></div><div class="top">' + tag(r.storeName, 'store') + ' ';
+  if (isAudit) {
+    if (r.result === '已登记') h += tag('已通过', 'ok');
+    else if (r.result === '拒绝') h += tag('已拒绝', 'no');
+    else h += tag('待审核', 'wait');
+  } else if (isResend) {
+    if (r.result === '已补发') h += tag('已补发', 'ok');
+    else h += tag('待补发', 'wait');
+  } else {
+    if (r.result === '已登记') h += tag('已确认', 'ok');
+    else if (r.result === '补发') h += tag('已确认', 'ok');
+    else if (r.result === '拒绝') h += tag('已拒绝', 'gray');
+    else h += tag('待确认', 'wait');
+  }
+  h += '</div><h3>' + esc(r.materialName) + ' ' + esc(r.qtyStr) + '</h3>';
+  if (r.qimaiOrderNo) h += '<p class="meta">企迈单号：' + esc(r.qimaiOrderNo) + '</p>';
+  h += '<p class="meta">原因：' + esc(r.reason) + '</p>';
+  if (r.handlerName || r.handlerPhone) {
+    if (r.handlerName) h += '<p class="meta">提交人：' + esc(r.handlerName) + '</p>';
+    if (r.handlerPhone) h += '<p class="meta">手机号：' + esc(r.handlerPhone) + '</p>';
+  }
+  if (r.remark) h += '<p class="meta">备注：' + esc(r.remark) + '</p>';
+  if (r.occurredDate) h += '<p class="meta">报损时间：' + esc(r.occurredDate) + '</p>';
+  if (r.rejectReason) {
+    h += '<p class="meta">上次拒绝原因：' + esc(r.rejectReason) + '</p>';
+    if (!r.result) h += ' <span class="tag tag-wait" style="font-size:10px">重新提交</span>';
+  }
+  if (r.images && r.images.length) {
+    h += '<div class="photos">';
+    for (var j = 0; j < r.images.length; j++) {
+      var mediaUrl = fixMediaUrl(r.images[j]);
+      if (isVideo(r.images[j])) {
+        h += '<div class="photo-video" onclick="playVideo(\'' + mediaUrl + '\')"><video src="' + mediaUrl + '" preload="none" muted playsinline></video><div class="play-icon">&#9654;</div></div>';
+      } else {
+        h += '<img src="' + mediaUrl + '" onclick="showLightbox(\'' + mediaUrl + '\')">';
+      }
+    }
+    h += '</div>';
+  }
+  if (!done) {
+    if (isAudit) {
+      h += '<div class="btns" id="btns' + r.id + '"><button class="btn btn-no" onclick="onReject(' + r.id + ')">拒绝</button><button class="btn btn-ok" onclick="onRegister(' + r.id + ')">确认报损登记</button></div>';
+    } else if (!isResend) {
+      h += '<div class="btns" id="btns' + r.id + '"><button class="btn btn-no" onclick="onReject(' + r.id + ')">拒绝</button><button class="btn btn-ok" onclick="onRegister(' + r.id + ')">确认报损登记</button></div>';
+    }
+  }
+  // 其他类/加急-待发货：registered 状态显示"确认发货"按钮
+  if ((isOther || isUrgent) && r.result === '已登记' && !isAudit && !isResend) {
+    h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn btn-ok" onclick="onShip(' + r.id + ')">确认发货</button></div>';
+  }
+  if (r.feedback) {
+    var isRed = r.feedback.indexOf('未收到货') !== -1;
+    h += '<div class="feedback' + (isRed ? ' feedback-red' : '') + '">' + esc(r.feedback) + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+var isOther = false;
+var isUrgent = false;
+
+function render(d) {
+  // 加急卡片：只展示加急报损（排除水果蔬菜类），3tab
+  isUrgent = (urgentOnly == '1');
+  if (isUrgent) {
+    d.list = d.list.filter(function(r) { return r.urgent == 1 && !r.isFruitVeg; });
+    d.pending = d.list.filter(function(r) { return !r.result; }).length;
+    d.done = d.list.filter(function(r) { return !!r.result; }).length;
+    d.stores = new Set(d.list.map(function(r){return r.storeName})).size;
+    isOther = true; // 强制3tab
+  }
+  // 加急单条：只展示指定报损
+  if (urgentId) {
+    d.list = d.list.filter(function(r) { return r.id == urgentId; });
+    d.pending = d.list.filter(function(r) { return !r.result; }).length;
+    d.done = d.list.filter(function(r) { return !!r.result; }).length;
+    d.stores = 1;
+  }
+  var isFruitVeg = (category === '水果蔬菜');
+  isOther = (category === '其他类') || isUrgent;
+  var isAudit = (tab === 'audit');
+  var isResend = (tab === 'resend');
+  var h = '';
+  h += '<div class="header"><h1>今日报损登记确认</h1></div>';
+  h += '<div class="banner" id="banner"><span style="font-size:24px">&#9989;</span><div><p style="font-weight:600">已提交确认结果</p><p style="font-size:13px;color:#66706A;margin-top:4px">结果将同步给门店和总部报损台账。</p></div></div>';
+  h += '<div class="card"><p style="font-weight:600">' + esc(category) + '</p><h2 style="font-size:18px;font-weight:600;margin-top:4px">' + date + ' 确认清单</h2>';
+  h += '<p style="font-size:13px;color:#66706A;margin-top:4px">' + (isFruitVeg ? '请逐条确认报损登记。确认后次月统一发券。' : isAudit ? '请逐条审核到货验收报损。' : isResend ? '请逐条确认补发结果。' : '请逐条确认报损登记，选择补发方式。') + '</p>';
+  var registeredCount = d.list.filter(function(x){return x.result==='已登记'}).length;
+  var shippedCount = d.list.filter(function(x){return x.result==='补发'}).length;
+  var auditedCount = d.list.filter(function(x){return x.result==='已登记'||x.result==='拒绝'}).length;
+  var resendPendingCount = d.list.filter(function(x){return x.result==='待补发'}).length;
+  var resendDoneCount = d.list.filter(function(x){return x.result==='已补发'}).length;
+
+  if (isAudit) {
+    var passedCount = d.list.filter(function(x){return x.result==='已登记'}).length;
+    var rejectedCount = d.list.filter(function(x){return x.result==='拒绝'}).length;
+    var dlCount = d.list.filter(function(x){return !x.result && x.downloaded}).length;
+    var undlCount = d.list.filter(function(x){return !x.result && !x.downloaded}).length;
+    if (isAvocado) {
+      h += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr">';
+      h += '<div><div class="stat-val" id="statPending">' + (undlCount+dlCount) + '</div><div class="stat-label">未审核</div></div>';
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statPassed">' + passedCount + '</div><div class="stat-label">已通过</div></div>';
+      h += '<div><div class="stat-val" style="color:#E05A47" id="statRejected">' + rejectedCount + '</div><div class="stat-label">已拒绝</div></div>';
+      h += '<div><div class="stat-val">' + d.stores + '</div><div class="stat-label">门店</div></div>';
+    } else {
+      h += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">';
+      h += '<div><div class="stat-val" id="statPending">' + d.pending + '</div><div class="stat-label">待审核</div></div>';
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statPassed">' + passedCount + '</div><div class="stat-label">已通过</div></div>';
+      h += '<div><div class="stat-val" style="color:#E05A47" id="statRejected">' + rejectedCount + '</div><div class="stat-label">已拒绝</div></div>';
+      h += '<div><div class="stat-val">' + d.stores + '</div><div class="stat-label">门店</div></div>';
+    }
+    h += '</div></div>';
+  } else if (isResend) {
+    h += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr">';
+    h += '<div><div class="stat-val" style="color:#E58A2D" id="statResendPending">' + resendPendingCount + '</div><div class="stat-label">待补发</div></div>';
+    h += '<div><div class="stat-val" style="color:#2F8F57" id="statResendDone">' + resendDoneCount + '</div><div class="stat-label">已补发</div></div>';
+    h += '<div><div class="stat-val">' + d.stores + '</div><div class="stat-label">门店</div></div>';
+  } else {
+    var statCols = isFruitVeg ? '1fr 1fr 1fr' : (isOther ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr');
+    h += '<div class="stat-grid" style="grid-template-columns:' + statCols + '">';
+    h += '<div><div class="stat-val" id="statPending">' + d.pending + '</div><div class="stat-label">待审核</div></div>';
+    if (isFruitVeg || isOther) {
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statRegistered">' + registeredCount + '</div><div class="stat-label">已登记</div></div>';
+    }
+    if (!isFruitVeg) {
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statShipped">' + shippedCount + '</div><div class="stat-label">已发货</div></div>';
+    }
+    h += '<div><div class="stat-val">' + d.stores + '</div><div class="stat-label">门店</div></div>';
+  }
+  h += '</div></div>';
+
+  // 搜索框
+  h += '<div class="search-box"><input type="text" id="searchInput" placeholder="搜索物料、门店名、企迈单号..." oninput="onSearch(this.value)"></div>';
+  if (!isResend) {
+    h += '<div class="dl-bar"><label><input type="checkbox" id="checkAll" onchange="toggleAll(this.checked)"> 全选</label><button class="dl-btn" id="dlBtn" disabled onclick="doDownload()">下载视频(ZIP)</button><span id="dlCount" style="font-size:12px;color:#66706A"></span></div>';
+  }
+
+  var activeTab = localStorage.getItem('activeTab') || 'pending';
+  localStorage.removeItem('activeTab');
+
+  var tab1Label, tab2Label, tab3Label;
+  var isAvocado = !!materialId;
+  if (isAudit) {
+    if (isAvocado) {
+      tab1Label = '未审核'; tab2Label = '已审核';
+      if (activeTab !== 'pending' && activeTab !== 'audited') activeTab = 'pending';
+    } else {
+      tab1Label = '待审核'; tab2Label = '已审核';
+      if (activeTab !== 'pending' && activeTab !== 'audited') activeTab = 'pending';
+    }
+  } else if (isResend) {
+    tab1Label = '待补发'; tab2Label = '已补发';
+    if (activeTab !== 'resend_pending' && activeTab !== 'resend_done') activeTab = 'resend_pending';
+  } else {
+    tab1Label = '待审核';
+    var hasRegistered = (isFruitVeg || isOther);
+    var hasShipped = !isFruitVeg;
+    if (activeTab === 'shipped' && !hasShipped) activeTab = 'pending';
+    if (activeTab === 'registered' && !hasRegistered) activeTab = 'pending';
+  }
+
+  // 牛油果泥统计（补发页，在tab上面）
+  if (isResend && d.avocadoStats && d.avocadoStats.length) {
+    var totalCnt = 0, totalQty = 0, unit = '';
+    h += '<div class="card" style="margin:12px 16px"><p style="font-weight:600;font-size:15px;margin-bottom:8px">🥑 牛油果泥待补发统计</p>';
+    h += '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr style="color:#66706A"><th style="text-align:left;padding:4px 0">门店</th><th style="text-align:right;padding:4px 0">次数</th><th style="text-align:right;padding:4px 0">数量</th></tr>';
+    for (var aa = 0; aa < d.avocadoStats.length; aa++) {
+      var a = d.avocadoStats[aa];
+      h += '<tr class="avo-stat-row" data-sg-store="' + esc(a.store_name) + '"><td style="padding:4px 0;border-top:1px solid #EEF1EF">' + esc(a.store_name) + '</td><td style="text-align:right;padding:4px 0;border-top:1px solid #EEF1EF">' + a.cnt + ' 次</td><td style="text-align:right;padding:4px 0;border-top:1px solid #EEF1EF">' + (a.total_qty||'') + (a.input_unit||'') + '</td></tr>';
+      totalCnt += (a.cnt || 0);
+      totalQty += parseFloat(a.total_qty || 0);
+      unit = a.input_unit || '';
+    }
+    h += '<tr class="avo-total-row" style="font-weight:700;border-top:2px solid #E8ECE9"><td style="padding:4px 0">合计（' + d.avocadoStats.length + ' 家门店）</td><td style="text-align:right;padding:4px 0">' + totalCnt + ' 次</td><td style="text-align:right;padding:4px 0">' + totalQty + unit + '</td></tr>';
+    h += '</table></div>';
+  }
+  // Tab 栏
+  h += '<div class="tabs">';
+  if (isAudit) {
+    if (isAvocado) {
+      h += '<div class="tab-btn' + (activeTab==='pending'?' active':'') + '" id="tabPendingBtn" onclick="switchTab(\'pending\')">未审核</div>';
+      h += '<div class="tab-btn' + (activeTab==='audited'?' active':'') + '" id="tabAuditedBtn" onclick="switchTab(\'audited\')">已审核</div>';
+    } else {
+      h += '<div class="tab-btn' + (activeTab==='pending'?' active':'') + '" id="tabPendingBtn" onclick="switchTab(\'pending\')">待审核</div>';
+      h += '<div class="tab-btn' + (activeTab==='audited'?' active':'') + '" id="tabAuditedBtn" onclick="switchTab(\'audited\')">已审核</div>';
+    }
+  } else if (isResend) {
+    h += '<div class="tab-btn' + (activeTab==='resend_pending'?' active':'') + '" id="tabResendPendingBtn" onclick="switchTab(\'resend_pending\')">待补发</div>';
+    h += '<div class="tab-btn' + (activeTab==='resend_done'?' active':'') + '" id="tabResendDoneBtn" onclick="switchTab(\'resend_done\')">已补发</div>';
+  } else {
+    h += '<div class="tab-btn' + (activeTab==='pending'?' active':'') + '" id="tabPendingBtn" onclick="switchTab(\'pending\')">待审核</div>';
+    if (isFruitVeg || isOther) {
+      h += '<div class="tab-btn' + (activeTab==='registered'?' active':'') + '" id="tabRegisteredBtn" onclick="switchTab(\'registered\')">' + (isFruitVeg ? '已登记' : '待发货') + '</div>';
+    }
+    if (!isFruitVeg) {
+      h += '<div class="tab-btn' + (activeTab==='shipped'?' active':'') + '" id="tabShippedBtn" onclick="switchTab(\'shipped\')">已发货</div>';
+    }
+  }
+  h += '</div>';
+
+  // Tab 内容
+  if (isAudit && isAvocado) {
+    // 未审核分为 未下载/已下载 两个子tab
+    var undl = [], dl = [];
+    for (var i = 0; i < d.list.length; i++) {
+      var r = d.list[i];
+      if (!r.result) {
+        if (r.downloaded) dl.push(r); else undl.push(r);
+      }
+    }
+    var avoSub = localStorage.getItem('avoSubTab') || 'undl';
+    localStorage.removeItem('avoSubTab');
+    h += '<div class="tab-body' + (activeTab==='pending'?' active':'') + '" id="tabPending">';
+    h += '<div class="tab-sub"><div class="tab-sub-btn' + (avoSub==='undl'?' active':'') + '" onclick="localStorage.setItem(\'avoSubTab\',\'undl\');location.reload()">未下载 (' + undl.length + ')</div><div class="tab-sub-btn' + (avoSub==='dl'?' active':'') + '" onclick="localStorage.setItem(\'avoSubTab\',\'dl\');location.reload()">已下载 (' + dl.length + ')</div></div>';
+    h += '<div style="text-align:right;padding:4px 16px"><a href="javascript:exportAvocado(' + (avoSub==='dl'?1:0) + ')" style="font-size:12px;color:#2F8F57;text-decoration:none"></a></div>';
+    var subList = avoSub === 'dl' ? dl : undl;
+    if (subList.length) { for (var k = 0; k < subList.length; k++) h += renderCard(subList[k]); }
+    else h += '<div class="loading" style="padding:40px 0">暂无</div>';
+    h += '</div>';
+    // 已审核 = 有 result
+    h += '<div class="tab-body' + (activeTab==='audited'?' active':'') + '" id="tabAudited">';
+    var ac = 0;
+    for (var i = 0; i < d.list.length; i++) {
+      if (d.list[i].result) { h += renderCard(d.list[i]); ac++; }
+    }
+    if (!ac) h += '<div class="loading" style="padding:40px 0">暂无已审核</div>';
+    h += '</div>';
+  } else if (isAudit) {
+    // 待审核 = 无 result
+    h += '<div class="tab-body' + (activeTab==='pending'?' active':'') + '" id="tabPending">';
+    var pc = 0;
+    for (var i = 0; i < d.list.length; i++) {
+      if (!d.list[i].result) { h += renderCard(d.list[i]); pc++; }
+    }
+    if (!pc) h += '<div class="loading" style="padding:40px 0">暂无待审核</div>';
+    h += '</div>';
+    // 已审核 = 有 result
+    h += '<div class="tab-body' + (activeTab==='audited'?' active':'') + '" id="tabAudited">';
+    var ac = 0;
+    for (var i = 0; i < d.list.length; i++) {
+      if (d.list[i].result) { h += renderCard(d.list[i]); ac++; }
+    }
+    if (!ac) h += '<div class="loading" style="padding:40px 0">暂无已审核</div>';
+    h += '</div>';
+  } else if (isResend) {
+    // 待补发 tab — 按门店分组
+    h += '<div class="tab-body' + (activeTab==='resend_pending'?' active':'') + '" id="tabResendPending">';
+    h += buildStoreGroups(d.list, '待补发');
+    h += '</div>';
+    // 已补发 tab — 按门店分组
+    h += '<div class="tab-body' + (activeTab==='resend_done'?' active':'') + '" id="tabResendDone">';
+    h += buildStoreGroups(d.list, '已补发');
+    h += '</div>';
+  } else {
+    // 原有逻辑
+    h += '<div class="tab-body' + (activeTab==='pending'?' active':'') + '" id="tabPending">';
+    for (var i = 0; i < d.list.length; i++) {
+      var r = d.list[i];
+      if (r.result) continue;
+      h += renderCard(r);
+    }
+    if (!d.pending) h += '<div class="loading" style="padding:40px 0">暂无待审核</div>';
+    h += '</div>';
+
+    if (isFruitVeg || isOther) {
+      h += '<div class="tab-body' + (activeTab==='registered'?' active':'') + '" id="tabRegistered">';
+      var registeredCount2 = 0;
+      for (var i = 0; i < d.list.length; i++) {
+        var rr = d.list[i];
+        if (rr.result !== '已登记') continue;
+        registeredCount2++;
+        h += renderCard(rr);
+      }
+      if (!registeredCount2) h += '<div class="loading" style="padding:40px 0">暂无已登记</div>';
+      h += '</div>';
+    }
+
+    if (!isFruitVeg) {
+      h += '<div class="tab-body' + (activeTab==='shipped'?' active':'') + '" id="tabShipped">';
+      var shippedCount2 = 0;
+      for (var i = 0; i < d.list.length; i++) {
+        var rs = d.list[i];
+        if (rs.result !== '补发') continue;
+        shippedCount2++;
+        h += renderCard(rs);
+      }
+      if (!shippedCount2) h += '<div class="loading" style="padding:40px 0">暂无已发货</div>';
+      h += '</div>';
+    }
+  }
+
+  document.getElementById('app').innerHTML = h;
+}
+
+function switchTab(tab) {
+  localStorage.setItem('activeTab', tab);
+  location.reload();
+}
+
+function onSearch(val) {
+  searchKeyword = val.trim();
+  var cards = document.querySelectorAll('.rpt');
+  for (var i = 0; i < cards.length; i++) {
+    cards[i].classList.toggle('hidden', !matchSearch(reports.find(function(r) { return 'card' + r.id === cards[i].id; })));
+  }
+  // 补发门店分组搜索
+  var kw = searchKeyword.toLowerCase();
+  var groups = document.querySelectorAll('.store-group');
+  for (var i = 0; i < groups.length; i++) {
+    var g = groups[i];
+    if (!kw) { g.style.display = ''; continue; }
+    var storeMatch = (g.getAttribute('data-sg-store') || '').toLowerCase().indexOf(kw) !== -1;
+    var anyItemMatch = false;
+    var items = g.querySelectorAll('.sg-item');
+    for (var j = 0; j < items.length; j++) {
+      var matName = (items[j].getAttribute('data-sg-mat') || '').toLowerCase();
+      var qm = (items[j].getAttribute('data-sg-qm') || '').toLowerCase();
+      if (matName.indexOf(kw) !== -1 || qm.indexOf(kw) !== -1) {
+        items[j].style.display = '';
+        anyItemMatch = true;
+      } else {
+        items[j].style.display = 'none';
+      }
+    }
+    if (storeMatch) {
+      // 搜门店名：展开该门店全部物料
+      for (var j = 0; j < items.length; j++) items[j].style.display = '';
+    }
+    g.style.display = (storeMatch || anyItemMatch) ? '' : 'none';
+  }
+  // 统计表搜索
+  var avoRows = document.querySelectorAll('.avo-stat-row');
+  for (var i = 0; i < avoRows.length; i++) {
+    var rname = (avoRows[i].getAttribute('data-sg-store') || '').toLowerCase();
+    avoRows[i].style.display = !kw || rname.indexOf(kw) !== -1 ? '' : 'none';
+  }
+  var avoTotals = document.querySelectorAll('.avo-total-row');
+  for (var i = 0; i < avoTotals.length; i++) {
+    avoTotals[i].style.display = !kw ? '' : 'none';
+  }
+}
+
+function onConfirm(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '备注说明（选填）'; ta.value = '';
+  openModal('确定确认补发？', function() { doMark(id, '补发', null, ta.value); });
+}
+function onRegister(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '备注说明（选填）'; ta.value = '';
+  openModal('确定确认报损登记？', function() { doMark(id, '确认报损登记', null, ta.value); });
+}
+function onShip(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '备注说明（选填）'; ta.value = '';
+  openModal('确定确认发货？', function() { doShip(id); });
+}
+function onReject(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '拒绝原因（必填）'; ta.value = '';
+  openModal('确定拒绝？', function() {
+    if (!ta.value.trim()) { alert('请填写拒绝原因'); return; }
+    doMark(id, '拒绝', ta.value, null);
+  });
+}
+
+async function doShip(id) {
+  try {
+    await fetch('/api/public/loss-report/issue-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: id})
+    });
+    var btns = document.getElementById('btns' + id);
+    if (btns) btns.innerHTML = '<button class="btn btn-done" disabled>已确认发货</button>';
+  } catch(e) { alert('操作失败'); }
+}
+
+async function doMark(id, result, rejectReason, note) {
+  try {
+    var body = {id: String(id), action: result};
+    if (rejectReason) body.reason = rejectReason;
+    if (note) body.remark = note;
+    if (attFiles.length > 0) {
+      body.attachmentUrl = attFiles.map(function(a){return a.url;}).join(',');
+      attFiles = [];
+    }
+    await fetch('/api/public/loss-report/confirm-single', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    var r = reports.find(function(x) { return x.id === id; });
+    r.result = result;
+    var card = document.getElementById('card' + id);
+    if (card) {
+      var badge = card.querySelector('.top');
+      var isReject = (result === '拒绝');
+      var resultTag = isReject ? tag('已拒绝', 'no') : tag('已确认', 'ok');
+      badge.innerHTML = tag(r.storeName, 'store') + ' ' + resultTag;
+      var btns = document.getElementById('btns' + id);
+      if (btns) {
+        var btnText = isReject ? '已拒绝' : (result === '确认报损登记' ? '已确认报损登记' : '已确认补发');
+        btns.innerHTML = '<button class="btn btn-done" disabled>' + btnText + '</button>';
+      }
+    }
+    document.getElementById('banner').classList.add('on');
+    // update stats
+    var pend = reports.filter(function(x) { return !x.result; }).length;
+    var reg = reports.filter(function(x) { return x.result === '已登记'; }).length;
+    var ship = reports.filter(function(x) { return x.result === '补发'; }).length;
+    var sp = document.getElementById('statPending'), sr = document.getElementById('statRegistered'), ss = document.getElementById('statShipped');
+    if (sp) sp.textContent = pend;
+    if (sr) sr.textContent = reg;
+    if (ss) ss.textContent = ship;
+  } catch(e) { alert('操作失败'); }
+}
+
+function onCheckChange() {
+  var checks = document.querySelectorAll('.rpt-check:checked');
+  var btn = document.getElementById('dlBtn');
+  var all = document.querySelectorAll('.rpt-check');
+  document.getElementById('checkAll').checked = checks.length === all.length;
+  btn.disabled = checks.length === 0;
+  btn.textContent = checks.length ? '下载视频(ZIP)(' + checks.length + ')' : '下载视频(ZIP)';
+}
+function toggleAll(on) {
+  var checks = document.querySelectorAll('.rpt-check');
+  for (var i = 0; i < checks.length; i++) {
+    var card = checks[i].closest('.rpt');
+    var tabBody = checks[i].closest('.tab-body');
+    var hidden = (card && card.classList.contains('hidden')) || (tabBody && !tabBody.classList.contains('active'));
+    if (on && !hidden) {
+      checks[i].checked = true;
+    } else {
+      checks[i].checked = false;
+    }
+  }
+  onCheckChange();
+}
+function exportAvocado(downloaded) {
+  var mid = p.get('materialId') || '';
+  if (!mid) return;
+  var a = document.createElement('a');
+  a.href = '/api/public/loss-report/export-avocado?materialId=' + mid + '&downloaded=' + downloaded;
+  a.download = 'avocado-' + (downloaded ? '已下载' : '未下载') + '.xls';
+  a.click();
+}
+function doDownload() {
+  var ids = [];
+  var checks = document.querySelectorAll('.rpt-check:checked');
+  for (var i = 0; i < checks.length; i++) {
+    ids.push(checks[i].value);
+  }
+  if (!ids.length) { alert('请勾选要下载的物料'); return; }
+  var uid = p.get('uid') || '';
+  // 下载ZIP
+  var a = document.createElement('a');
+  a.href = '/api/public/loss-report/download-videos?ids=' + ids.join(',') + '&markDownloaded=1&uid=' + encodeURIComponent(uid);
+  a.download = 'loss-videos.zip';
+  a.click();
+  // 同时下载Excel
+  fetch('/api/public/loss-report/download-videos-excel?ids=' + ids.join(','))
+    .then(function(r) {
+      var fname = r.headers.get('X-Filename') || 'detail.xls';
+      return r.blob().then(function(blob) { return {blob: blob, name: decodeURIComponent(fname)}; });
+    })
+    .then(function(data) {
+      var url = URL.createObjectURL(data.blob);
+      var b = document.createElement('a');
+      b.href = url; b.download = data.name; b.click();
+      setTimeout(function() { URL.revokeObjectURL(url); }, 100);
+    });
+}
+
+load();
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) load();
+});
+</script>
+</main>
+</body>
+</html>

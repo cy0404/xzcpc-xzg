@@ -1,0 +1,1 @@
+ALTER TABLE loss_report ADD COLUMN urgent TINYINT DEFAULT 0 COMMENT '是否加急 0=否 1=是';

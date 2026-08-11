@@ -29,4 +29,7 @@ public class ExpenseItem {
 
     @TableField(exist = false)
     private String typeName;
+
+    @TableField(exist = false)
+    private String typeDescription;
 }

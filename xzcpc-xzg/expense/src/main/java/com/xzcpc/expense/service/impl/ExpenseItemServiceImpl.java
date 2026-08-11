@@ -55,11 +55,16 @@ public class ExpenseItemServiceImpl implements ExpenseItemService {
     private void fillTypeNames(List<ExpenseItem> items) {
         if (items.isEmpty()) return;
         var typeIds = items.stream().map(ExpenseItem::getTypeId).distinct().toList();
-        var typeMap = typeMapper.selectList(new LambdaQueryWrapper<ExpenseType>()
-                        .in(ExpenseType::getTypeId, typeIds))
-                .stream()
+        var types = typeMapper.selectList(new LambdaQueryWrapper<ExpenseType>()
+                .in(ExpenseType::getTypeId, typeIds));
+        var typeNameMap = types.stream()
                 .collect(Collectors.toMap(ExpenseType::getTypeId, ExpenseType::getName));
-        items.forEach(i -> i.setTypeName(typeMap.getOrDefault(i.getTypeId(), i.getTypeId())));
+        var typeDescMap = types.stream()
+                .collect(Collectors.toMap(ExpenseType::getTypeId, t -> t.getDescription() != null ? t.getDescription() : ""));
+        items.forEach(i -> {
+            i.setTypeName(typeNameMap.getOrDefault(i.getTypeId(), i.getTypeId()));
+            i.setTypeDescription(typeDescMap.getOrDefault(i.getTypeId(), ""));
+        });
     }
 
     @Override

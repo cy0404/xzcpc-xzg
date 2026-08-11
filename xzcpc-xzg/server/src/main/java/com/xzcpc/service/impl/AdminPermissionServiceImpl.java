@@ -91,13 +91,7 @@ public class AdminPermissionServiceImpl implements AdminPermissionService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AdminPermission ensureLocalDevAdmin(String openId, String name, String avatarUrl, String email, String mobile) {
-        AdminPermission permission = ensureLoginUser(openId, name, avatarUrl, email, mobile);
-        if (!AdminRole.isHeadquartersAdmin(permission.getRole())) {
-            permission.setRole(AdminRole.HEADQUARTERS_ADMIN);
-            permission.setAuthorizedAt(LocalDateTime.now());
-            adminPermissionMapper.updateById(permission);
-        }
-        return permission;
+        return ensureLoginUser(openId, name, avatarUrl, email, mobile);
     }
 
     @Override

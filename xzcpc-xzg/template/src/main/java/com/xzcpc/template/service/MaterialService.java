@@ -49,4 +49,7 @@ public interface MaterialService {
 
     /** 按 qmCode 精确查找物料，未找到返回 null */
     MaterialInfo getByQmCode(String qmCode);
+
+    /** 按父级分类搜索物料，keyword 可选模糊匹配 materialName */
+    List<MaterialInfo> searchByParentCategory(String keyword, String parentCategory);
 }

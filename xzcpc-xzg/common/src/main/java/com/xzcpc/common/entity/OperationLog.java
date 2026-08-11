@@ -17,8 +17,11 @@ public class OperationLog {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 操作人ID（小程序端为 sessionId，总部端为 0） */
-    private Long userId;
+    /** 操作人ID（小程序端为微信 openid，总部端为飞书 open_id） */
+    private String userId;
+
+    /** 来源：admin 总部端 / mp 小程序端 */
+    private String source;
 
     /** 操作人标识 */
     private String username;

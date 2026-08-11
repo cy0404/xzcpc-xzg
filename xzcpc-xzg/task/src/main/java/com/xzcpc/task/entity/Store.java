@@ -43,6 +43,12 @@ public class Store {
     /** 老板绑定的微信openid（本地维护） */
     private String ownerOpenid;
 
+    /** 外部问题表单系统门店标识（chat_id），本地维护，用于上报页 URL 映射 */
+    private String chatId;
+
+    /** 督导（月度区域划分，本地维护） */
+    private String supervisorName;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

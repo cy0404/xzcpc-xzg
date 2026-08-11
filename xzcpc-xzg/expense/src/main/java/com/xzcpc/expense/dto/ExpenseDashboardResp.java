@@ -13,6 +13,7 @@ public class ExpenseDashboardResp {
     private Summary summary;
     private List<StoreRanking> storeRanking;
     private List<TypeDistribution> typeDistribution;
+    private List<MonthlyTrend> monthlyTrend;
 
     @Data
     @NoArgsConstructor
@@ -33,8 +34,12 @@ public class ExpenseDashboardResp {
     @AllArgsConstructor
     public static class StoreRanking {
         private String name;
+        private String supervisorName;
         private BigDecimal amount;
+        private int count;
         private int percent;
+        private int pctAmount;
+        private int pctCount;
     }
 
     @Data
@@ -43,5 +48,13 @@ public class ExpenseDashboardResp {
     public static class TypeDistribution {
         private String name;
         private int percent;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MonthlyTrend {
+        private String month;
+        private BigDecimal amount;
     }
 }

@@ -3,12 +3,14 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { useTaskStore } from '@/store/task'
+import { request } from '@/utils/request'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
 const loading = ref(true)
+const entering = ref(false)
 
 const currentTasks = computed(() => taskStore.currentTasks || [])
 const taskCount = computed(() => taskStore.currentTasks?.length || 0)
@@ -24,12 +26,24 @@ onShow(async () => {
   finally { loading.value = false }
 })
 
-function goDetail(task: any) { uni.navigateTo({ url: `/pages/task/detail/index?taskId=${task.taskId}` }) }
+async function enterZone(task: any) {
+  if (entering.value) return
+  uni.navigateTo({
+    url: `/pages/task/zone-entry/index?taskId=${task.taskId}&taskName=${encodeURIComponent(task.taskName)}&storeName=${encodeURIComponent(userStore.storeName)}`
+  })
+}
+
 function goResult(task: any) { uni.navigateTo({ url: `/pages/task/result/index?taskId=${task.taskId}` }) }
-function goContinue(task: any) { goDetail(task) }
+function goHistoryTask(task: any) {
+  if (task.status === 'overdue') {
+    uni.showToast({ title: '任务已过期，无法查看', icon: 'none' })
+    return
+  }
+  goResult(task)
+}
 function enterCurrentTask() {
   const first = currentTasks.value[0]
-  if (first) goDetail(first)
+  if (first) enterZone(first)
 }
 function nowMonth() { const d = new Date(); return `${d.getFullYear()}年${d.getMonth()+1}月` }
 function fmtDeadline(d: string) { if (!d) return '--'; return d.replace('T',' ').substring(0,16) }
@@ -59,7 +73,7 @@ function taskProgress(t: any) { if (!t?.totalMaterials) return 0; return Math.ro
       <view class="section">
         <text class="section-title">当前任务</text>
         <view v-if="currentTasks.length" class="task-list">
-          <view v-for="t in currentTasks" :key="t.taskId" class="task-card" @click="goDetail(t)">
+          <view v-for="t in currentTasks" :key="t.taskId" class="task-card" @click="enterZone(t)">
             <view class="task-top">
               <view class="task-icon">📦</view>
               <view class="task-head">
@@ -86,9 +100,10 @@ function taskProgress(t: any) { if (!t?.totalMaterials) return 0; return Math.ro
 
       <view v-if="taskStore.historyTasks.length" class="section">
         <text class="section-title">历史任务</text>
-        <view v-for="t in taskStore.historyTasks" :key="t.taskId" class="hist-card" @click="goResult(t)">
+        <view v-for="t in taskStore.historyTasks" :key="t.taskId" class="hist-card" :class="{ 'hist-overdue': t.status === 'overdue' }" @click="goHistoryTask(t)">
           <view><text class="hc-name">{{ t.taskName }}</text><text class="hc-meta">{{ t.taskMonth }} · {{ t.totalMaterials }} SKU</text></view>
-          <text class="hc-link">查看结果 ›</text>
+          <text class="hc-overdue" v-if="t.status === 'overdue'">已过期</text>
+          <text class="hc-link" v-else>查看结果 ›</text>
         </view>
       </view>
     </template>
@@ -121,6 +136,8 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .total-progress{margin-top:20rpx}.tp-bar{height:8rpx;border-radius:999rpx;background:#EEF1EF;overflow:hidden}.tp-fill{height:100%;border-radius:999rpx;background:$p}
 .hist-card{display:flex;align-items:center;justify-content:space-between;padding:24rpx 28rpx;background:$s;border-radius:20rpx;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04);margin-bottom:16rpx}
 .hc-name{font-size:28rpx;font-weight:600;color:$t1}.hc-meta{display:block;margin-top:6rpx;font-size:24rpx;color:$t2}.hc-link{font-size:26rpx;color:$p;font-weight:600}
+.hc-overdue{font-size:26rpx;color:$d;font-weight:600}
+.hist-overdue{opacity:.55;background:#F5F5F5}
 .fab-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:24rpx 32rpx calc(env(safe-area-inset-bottom) + 24rpx);background:linear-gradient(to top,#fff,transparent)}
 .fab-btn{width:100%;height:96rpx;border-radius:999rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30rpx;font-weight:700;box-shadow:0 8rpx 24rpx rgba(47,143,87,.3)}
 </style>

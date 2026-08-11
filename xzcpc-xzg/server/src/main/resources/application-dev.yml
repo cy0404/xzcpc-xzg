@@ -19,3 +19,17 @@ spring:
 admin:
   local-dev-login:
     enabled: true
+
+# ---------- PostgreSQL 外部数据源（企迈采购/订货/消耗） ----------
+pg:
+  datasource:
+    url: jdbc:postgresql://119.45.162.160:5433/tea_chain
+    username: postgres
+    password: xzcp123456
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
+      idle-timeout: 300000
+      max-lifetime: 600000

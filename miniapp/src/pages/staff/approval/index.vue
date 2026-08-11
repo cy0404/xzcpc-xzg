@@ -42,19 +42,29 @@ async function openDetail(item: any) {
   empTypeVal.value = detail.value?.employmentType || '全职'
 }
 
+const saving = ref(false)
+
 function backToList() { detail.value = null }
 
 async function approve() {
-  await approveStaffApplication(detail.value.applicationId, { action: 'approve', role: roleVal.value, employmentType: empTypeVal.value })
-  uni.showToast({ title: '审批通过', icon: 'success' })
-  detail.value = null; loadList()
+  if (saving.value) return
+  saving.value = true
+  try {
+    await approveStaffApplication(detail.value.applicationId, { action: 'approve', role: roleVal.value, employmentType: empTypeVal.value })
+    uni.showToast({ title: '审批通过', icon: 'success' })
+    detail.value = null; loadList()
+  } finally { saving.value = false }
 }
 
 async function reject() {
+  if (saving.value) return
   if (!rejectReason.value.trim()) { uni.showToast({ title: '请填写原因', icon: 'none' }); return }
-  await approveStaffApplication(detail.value.applicationId, { action: 'reject', rejectReason: rejectReason.value.trim() })
-  uni.showToast({ title: '已驳回', icon: 'success' })
-  showReject.value = false; detail.value = null; loadList()
+  saving.value = true
+  try {
+    await approveStaffApplication(detail.value.applicationId, { action: 'reject', rejectReason: rejectReason.value.trim() })
+    uni.showToast({ title: '已驳回', icon: 'success' })
+    showReject.value = false; detail.value = null; loadList()
+  } finally { saving.value = false }
 }
 
 function appendTag(t: string) { if (!rejectReason.value.includes(t)) rejectReason.value = rejectReason.value ? `${rejectReason.value}。${t}` : t }

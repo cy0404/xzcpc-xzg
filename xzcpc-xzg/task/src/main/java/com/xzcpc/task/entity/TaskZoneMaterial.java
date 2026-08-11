@@ -35,6 +35,7 @@ public class TaskZoneMaterial { // 任务分区物料快照实体，记录录入
     private String conversionSnapshot;
     private BigDecimal unitPriceSnapshot;
     private String unitInputs;
+    private String appendRecords;
 
     /** 录入时间 */
     private LocalDateTime enteredAt;

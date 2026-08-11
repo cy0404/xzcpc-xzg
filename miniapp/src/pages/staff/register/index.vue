@@ -9,6 +9,8 @@ const storeId = ref('')
 const storeName = ref('')
 const reapplyId = ref('')
 const checking = ref(true)
+const alreadyEmployee = ref(false)
+const existingRole = ref('')
 const form = ref<any>({ name: '', mobile: '', gender: '男', birthday: '', expectedRole: '店员', employmentType: '全职', entryDate: '', emergencyContactName: '', emergencyContactPhone: '', remark: '' })
 const roles = ['店员', '店长', '兼职']
 const today = new Date().toISOString().slice(0, 10)
@@ -59,6 +61,13 @@ onLoad(async (query: any) => {
       const loginRes = await uni.login()
       const existing: any = await checkExistingApplication(loginRes.code, storeId.value)
       if (existing?.found) {
+        // 已是该门店在职员工（店长/老板通过其他方式绑定），无需重复登记
+        if (existing.status === 'already_employee') {
+          alreadyEmployee.value = true
+          existingRole.value = existing.role || ''
+          checking.value = false
+          return
+        }
         uni.redirectTo({
           url: `/pages/staff/register-success/index?applicationId=${existing.applicationId}&name=${encodeURIComponent(existing.name || '')}&storeName=${encodeURIComponent(existing.storeName || storeName.value)}`,
         })
@@ -74,6 +83,7 @@ onLoad(async (query: any) => {
 async function submit() {
   if (saving.value) return
   if (!form.value.name || !form.value.mobile) { uni.showToast({ title: '请填写姓名和手机号', icon: 'none' }); return }
+  if (!/^1[3-9]\d{9}$/.test(form.value.mobile)) { uni.showToast({ title: '手机号格式不正确', icon: 'none' }); return }
   saving.value = true
   try {
     const loginRes: any = await uni.login()
@@ -96,6 +106,21 @@ function onSubmitClick() {
       <view class="hs">🏪 {{ storeName }}</view>
     </view>
 
+    <!-- 已是该门店在职员工，无需重复登记 -->
+    <template v-if="alreadyEmployee">
+      <view class="already-card">
+        <view class="already-icon">✅</view>
+        <text class="already-title">您已是该门店员工</text>
+        <text class="already-desc">您当前角色为「{{ existingRole }}」，无需重复提交登记申请。如需调整岗位，请联系门店负责人。</text>
+      </view>
+      <view class="already-info">
+        <view class="r"><text class="k">门店</text><text class="v">{{ storeName }}</text></view>
+        <view class="r last"><text class="k">角色</text><text class="v tag-role">{{ existingRole }}</text></view>
+      </view>
+    </template>
+
+    <!-- 正常登记表单 -->
+    <template v-else>
     <view class="tip">请填写真实信息。提交后门店负责人会进行审核。</view>
 
     <view class="sec-title">个人信息</view>
@@ -125,7 +150,9 @@ function onSubmitClick() {
           <text class="radio" :class="{on:form.employmentType==='兼职'}" @click="form.employmentType='兼职'">兼职</text>
         </view>
       </view>
-      <view class="r last"><text class="rk"><text class="req">*</text>入职日期</text><input class="rv" v-model="form.entryDate" /></view>
+      <picker mode="date" :value="form.entryDate" :end="today" @change="(e:any)=>form.entryDate=e.detail.value">
+        <view class="r last"><text class="rk"><text class="req">*</text>入职日期</text><text class="rv" :class="{sel:!form.entryDate}">{{ form.entryDate || '请选择' }} ›</text></view>
+      </picker>
     </view>
 
     <view class="sec-title">紧急联系人 <text class="opt">选填</text></view>
@@ -155,6 +182,7 @@ function onSubmitClick() {
       </view>
       <view class="btn" :class="{ disabled: !agreed }" @click="onSubmitClick">{{ saving ? '提交中...' : '提交登记申请' }}</view>
     </view>
+    </template>
   </view>
 </template>
 
@@ -180,4 +208,16 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .agree-link{color:$p;font-weight:500}
 .btn{width:100%;height:88rpx;border-radius:16rpx;background:$p;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30rpx;font-weight:700}
 .btn.disabled{opacity:0.45;pointer-events:none}
+
+/* 已是在职员工提示 */
+.already-card{display:flex;flex-direction:column;align-items:center;text-align:center;padding:48rpx 32rpx;margin-bottom:24rpx;background:$s;border-radius:20rpx;border:2rpx solid $b}
+.already-icon{font-size:80rpx;margin-bottom:24rpx}
+.already-title{font-size:36rpx;font-weight:700;color:$t1;margin-bottom:12rpx}
+.already-desc{font-size:26rpx;color:$t2;line-height:40rpx}
+.already-info{width:100%;background:$s;border-radius:20rpx;padding:28rpx;border:2rpx solid $b}
+.already-info .r{display:flex;justify-content:space-between;padding:20rpx 0;border-bottom:2rpx solid #EEF1EF}
+.already-info .r.last{border:0}
+.already-info .k{color:$t2;font-size:28rpx}
+.already-info .v{color:$t1;font-size:28rpx}
+.tag-role{color:$p;font-weight:600}
 </style>

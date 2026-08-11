@@ -1,7 +1,7 @@
 import { request } from '@/utils/request'
 
-export function fetchTaskList() {
-  return request({ url: '/tasks' })
+export function fetchTaskList(all?: boolean) {
+  return request({ url: '/tasks', data: all ? { all: true } : undefined })
 }
 
 export function fetchTaskDetail(id: number) {

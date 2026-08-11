@@ -25,18 +25,20 @@ public class EmployeeController {
     @OpLog(module = "人员", operation = "查询列表")
     @GetMapping
     public R<Page<Employee>> list(@RequestParam(defaultValue = "") String storeId,
+                                  @RequestParam(defaultValue = "") String supervisorName,
                                   @RequestParam(defaultValue = "") String role,
                                   @RequestParam(defaultValue = "") String status,
                                   @RequestParam(defaultValue = "") String name,
                                   @RequestParam(defaultValue = "1") int pageNum,
                                   @RequestParam(defaultValue = "10") int pageSize) {
-        return R.ok(employeeService.page(storeId, role, status, name, pageNum, pageSize));
+        return R.ok(employeeService.page(storeId, supervisorName, role, status, name, pageNum, pageSize));
     }
 
     @OpLog(module = "人员", operation = "查看统计")
     @GetMapping("/dashboard")
-    public R<PeopleDashboardResp> dashboard(@RequestParam(defaultValue = "month") String range) {
-        return R.ok(employeeService.dashboard(range));
+    public R<PeopleDashboardResp> dashboard(@RequestParam(defaultValue = "month") String range,
+                                            @RequestParam(defaultValue = "") String supervisorName) {
+        return R.ok(employeeService.dashboard(range, supervisorName));
     }
 
     @OpLog(module = "人员", operation = "查询详情")

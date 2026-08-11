@@ -31,4 +31,17 @@ public interface StoreService {
      * 更新门店老板绑定信息（复用已加载的 Store 对象，避免重复查询）。
      */
     void updateOwnerInfo(com.xzcpc.task.entity.Store store, String openid, String name, String phone);
+
+    /**
+     * 获取门店的外部问题表单系统标识（chat_id），无则返回 null。
+     */
+    String getChatId(String storeId);
+
+    /**
+     * 根据 chat_id 反查门店信息，无则返回 null。
+     */
+    com.xzcpc.task.entity.Store getStoreByChatId(String chatId);
+
+    /** 新增门店（手动插入，非外部同步） */
+    void save(com.xzcpc.task.entity.Store store);
 }

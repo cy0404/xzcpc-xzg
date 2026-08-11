@@ -33,6 +33,7 @@ public class PeopleDashboardResp {
     @AllArgsConstructor
     public static class StoreDistribution {
         private String name;
+        private String supervisorName;
         private long count;
         private int percent;
     }

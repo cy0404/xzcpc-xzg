@@ -35,6 +35,7 @@ function onKey(key: string) {
     setValue(key)
     return
   }
+  if (cur.length >= 10) return
   setValue(cur + key)
 }
 

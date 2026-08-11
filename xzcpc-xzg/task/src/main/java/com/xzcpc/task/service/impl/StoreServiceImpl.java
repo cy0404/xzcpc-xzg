@@ -77,6 +77,21 @@ public class StoreServiceImpl implements StoreService {
                 .collect(Collectors.toMap(StoreInfo::getId, Function.identity()));
     }
 
+    @Override
+    public String getChatId(String storeId) {
+        if (!StringUtils.hasText(storeId)) return null;
+        Store store = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
+                .eq(Store::getStoreId, storeId));
+        return store != null ? store.getChatId() : null;
+    }
+
+    @Override
+    public Store getStoreByChatId(String chatId) {
+        if (!StringUtils.hasText(chatId)) return null;
+        return storeMapper.selectOne(new LambdaQueryWrapper<Store>()
+                .eq(Store::getChatId, chatId));
+    }
+
     // ==================== 外部 API 同步到数据库 ====================
 
     /**
@@ -84,8 +99,13 @@ public class StoreServiceImpl implements StoreService {
      * 已存在的门店只更新名称/编码/小程序号/仓库ID，不覆盖 qr_code。
      */
     @Scheduled(cron = "0 0 1 * * *")
-    public void refreshCache() {
+    public void scheduledRefresh() {
         if (!syncEnabled()) return;
+        refreshCache();
+    }
+
+    @Override
+    public void refreshCache() {
         log.info("开始从外部 API 同步门店信息到数据库...");
         try {
             syncFromApi();
@@ -216,6 +236,7 @@ public class StoreServiceImpl implements StoreService {
         info.setOwnerName(s.getOwnerName());
         info.setOwnerPhone(s.getOwnerPhone());
         info.setOwnerOpenid(s.getOwnerOpenid());
+        info.setSupervisorName(s.getSupervisorName());
         return info;
     }
 
@@ -227,4 +248,9 @@ public class StoreServiceImpl implements StoreService {
     private boolean syncEnabled;
 
     private boolean syncEnabled() { return syncEnabled; }
+
+    @Override
+    public void save(com.xzcpc.task.entity.Store store) {
+        storeMapper.insert(store);
+    }
 }

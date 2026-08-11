@@ -1,89 +1,44 @@
 <template>
   <div class="module-tabs">
     <div class="tabs-left">
-      <button
-        type="button"
-        class="module-tab"
-        :class="{ active: activeKey === 'tasks' }"
-        @click="go('/tasks')"
-      >
-        盘点任务
+      <button type="button" class="module-tab" :class="{ active: activeKey === 'tasks' }" @click="go('/tasks')">
+        盘点列表
       </button>
-      <button
-        type="button"
-        class="module-tab"
-        :class="{ active: activeKey === 'templates' }"
-        @click="go('/templates')"
-      >
+      <button type="button" class="module-tab" :class="{ active: activeKey === 'differences' }" @click="go('/tasks/differences')">
+        盘点处理
+      </button>
+      <button type="button" class="module-tab" :class="{ active: activeKey === 'templates' }" @click="go('/templates')">
         盘点模板
       </button>
-      <button
-        type="button"
-        class="module-tab"
-        :class="{ active: activeKey === 'materials' }"
-        @click="go('/materials')"
-      >
+      <button type="button" class="module-tab" :class="{ active: activeKey === 'materials' }" @click="go('/materials')">
         物料管理
       </button>
     </div>
     <div class="tabs-right">
-      <a-input-search
-        v-if="activeKey === 'tasks'"
-        v-model:value="taskSearch"
-        placeholder="搜索..."
-        allow-clear
-        class="tabs-search"
-        @search="handleTaskSearch"
-      />
       <a-avatar size="small" class="tabs-avatar">默认</a-avatar>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
-const taskSearch = ref('')
 
 const activeKey = computed(() =>
-  route.path.startsWith('/templates')
-    ? 'templates'
-    : route.path.startsWith('/materials')
-      ? 'materials'
-      : 'tasks',
+  route.path.includes('/differences') ? 'differences'
+    : route.path.startsWith('/templates') ? 'templates'
+    : route.path.startsWith('/materials') ? 'materials'
+    : 'tasks',
 )
 
 function go(path: string) {
-  if (route.path !== path && !route.path.startsWith(path + '/')) {
+  if (route.path !== path) {
     router.push(path)
   }
 }
-
-function handleTaskSearch(value: string) {
-  const trimmed = (value || '').trim()
-  const query = { ...route.query }
-  if (trimmed) {
-    query.keyword = trimmed
-  } else {
-    delete query.keyword
-  }
-  if (route.path === '/tasks') {
-    router.replace({ path: '/tasks', query })
-  } else {
-    router.push({ path: '/tasks', query })
-  }
-}
-
-watch(
-  () => route.query.keyword,
-  (val) => {
-    taskSearch.value = (val as string) || ''
-  },
-  { immediate: true },
-)
 </script>
 
 <style scoped>
@@ -138,10 +93,6 @@ watch(
 
 .module-tab:hover:not(.active) {
   color: #374151;
-}
-
-.tabs-search {
-  width: 200px;
 }
 
 .tabs-avatar {

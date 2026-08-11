@@ -40,6 +40,9 @@ public class Task { // 月盘任务实体
     @TableField(exist = false)
     private Integer materialCount;
 
+    @TableField(exist = false)
+    private String supervisorName;
+
     @Version
     private Integer version;
 

@@ -11,7 +11,7 @@
 
     <a-card class="filter-card" :bordered="false">
       <a-row :gutter="[16, 16]">
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">门店</div>
           <a-select v-model:value="filters.storeId" placeholder="全部门店" allow-clear show-search :filter-option="filterStore" style="width: 100%">
             <a-select-option v-for="store in stores" :key="store.id" :value="store.id" :label="store.name">
@@ -19,23 +19,27 @@
             </a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="4">
+          <div class="filter-label">督导</div>
+          <a-select v-model:value="filters.supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="handleSearch" />
+        </a-col>
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">状态</div>
           <a-select v-model:value="filters.status" placeholder="全部状态" allow-clear style="width: 100%">
             <a-select-option value="未关联">未关联</a-select-option>
             <a-select-option value="已绑定">已绑定</a-select-option>
           </a-select>
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">姓名</div>
           <a-input v-model:value="filters.name" placeholder="输入姓名" allow-clear @pressEnter="handleSearch" />
         </a-col>
-        <a-col :xs="24" :sm="12" :md="6">
+        <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">手机号</div>
           <a-input v-model:value="filters.phone" placeholder="输入手机号" allow-clear @pressEnter="handleSearch" />
         </a-col>
       </a-row>
-      <div class="filter-actions">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
         <a-button @click="handleReset">重置</a-button>
         <a-button type="primary" @click="handleSearch">查询</a-button>
       </div>
@@ -55,13 +59,13 @@
           <template v-if="column.key === 'openid'">
             <span>{{ maskOpenid(record.openid) }}</span>
           </template>
-          <template v-if="column.key === 'status'">
+          <template v-else-if="column.key === 'status'">
             <a-tag :color="record.status === '已绑定' ? 'green' : 'orange'">{{ record.status }}</a-tag>
           </template>
-          <template v-if="column.key === 'createdAt'">
+          <template v-else-if="column.key === 'createdAt'">
             {{ formatTime(record.createdAt) }}
           </template>
-          <template v-if="column.key === 'action'">
+          <template v-else-if="column.key === 'action'">
             <a-button
               v-if="record.status === '未关联'"
               type="link"
@@ -74,6 +78,9 @@
               size="small"
               @click="openEdit(record)"
             >编辑</a-button>
+          </template>
+          <template v-else>
+            {{ record[column.dataIndex] }}
           </template>
         </template>
       </a-table>
@@ -137,6 +144,7 @@ import {
   type OwnerRegistration,
 } from '../../api/ownerRegistration'
 import { getStores } from '../../api/store'
+import { getSupervisorOptions } from '../../api/supervisor'
 
 type StoreOption = { id: string; name: string }
 
@@ -156,10 +164,12 @@ const form = reactive({
 
 const filters = reactive({
   storeId: undefined as string | undefined,
+  supervisorName: '' as string,
   status: undefined as string | undefined,
   name: '',
   phone: '',
 })
+const supervisorOptions = ref<{ label: string; value: string }[]>([])
 
 const pagination = reactive({
   current: 1,
@@ -168,11 +178,11 @@ const pagination = reactive({
 })
 
 const columns = [
-  { title: '姓名', dataIndex: 'name', key: 'name', width: 100 },
+  { title: '姓名', dataIndex: 'name', key: 'name', width: 100, fixed: 'left' as const },
+  { title: '门店', dataIndex: 'storeName', key: 'storeName', width: 200, ellipsis: true, fixed: 'left' as const },
+  { title: '督导', dataIndex: 'supervisorName', key: 'supervisorName', width: 100 },
   { title: '手机号', dataIndex: 'phone', key: 'phone', width: 130 },
   { title: '角色', dataIndex: 'role', key: 'role', width: 80 },
-  { title: '门店', dataIndex: 'storeName', key: 'storeName', width: 160, ellipsis: true },
-  { title: '门店ID', dataIndex: 'storeId', key: 'storeId', width: 120, ellipsis: true },
   { title: '状态', key: 'status', width: 90 },
   { title: '登记时间', key: 'createdAt', width: 160 },
   { title: 'OpenID', key: 'openid', width: 160 },
@@ -219,6 +229,7 @@ async function loadRecords() {
   try {
     const res: any = await getOwnerRegistrations({
       storeId: filters.storeId,
+      supervisorName: filters.supervisorName || undefined,
       status: filters.status,
       name: filters.name || undefined,
       phone: filters.phone || undefined,
@@ -239,6 +250,7 @@ function handleSearch() {
 
 function handleReset() {
   filters.storeId = undefined
+  filters.supervisorName = ''
   filters.status = undefined
   filters.name = ''
   filters.phone = ''
@@ -312,8 +324,13 @@ function handleSubmit() {
   })
 }
 
+async function fetchSupervisors() {
+  try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
+}
+
 onMounted(async () => {
   await loadStores()
+  await fetchSupervisors()
   await loadRecords()
 })
 </script>

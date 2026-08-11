@@ -14,7 +14,18 @@ export interface AdminUser {
   hasAdminAccess?: boolean
 }
 
-const ADMIN_ROLES = ['headquarters_admin', 'finance_admin', 'hr_admin', 'operation_admin']
+const ADMIN_ROLES = ['headquarters_admin', 'finance_admin', 'hr_admin', 'operation_admin', 'supervisor_admin']
+
+const AUTH_VERSION_KEY = 'auth_version'
+const CURRENT_VERSION = 1  // 权限变更时 +1，强制所有用户重新登录
+
+// 自动清旧版本 token
+const storedVersion = localStorage.getItem(AUTH_VERSION_KEY)
+if (storedVersion !== String(CURRENT_VERSION)) {
+  localStorage.removeItem('admin_token')
+  localStorage.removeItem('admin_user')
+  localStorage.setItem(AUTH_VERSION_KEY, String(CURRENT_VERSION))
+}
 
 export const authRevision = ref(0)
 

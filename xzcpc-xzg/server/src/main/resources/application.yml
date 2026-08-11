@@ -1,15 +1,22 @@
 spring:
   profiles:
     active: prod
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
 
 app:
   sync:
     enabled: false  # 暂时关闭物料/门店外部API同步
   upload:
     path: ./upload
+  server-url: http://162.14.122.80:4026
 
 logging:
   level:
@@ -50,6 +57,11 @@ mp:
 feishu:
   app-id: cli_aa90f3d66d7adbb7
   app-secret: ${FEISHU_APP_SECRET}
+  # 异常告警 → 飞书群自定义机器人 Webhook
+  alert:
+    enabled: ${FEISHU_ALERT_ENABLED:true}
+    webhook-url: ${FEISHU_ALERT_WEBHOOK_URL:}
+    app-name: 象掌柜-总部端
 
 # 总部端管理员 JWT
 report:
@@ -60,3 +72,10 @@ admin:
   jwt:
     secret: ${ADMIN_JWT_SECRET}
     expire-hours: 72
+
+# B1 问题处理：象目经理外部系统对接（资料未就绪，先关闭）
+# enabled=false 时启用过渡期人工推进端点 /api/admin/issue/{id}/sync-status
+xiangmu:
+  enabled: false
+  base-url: https://www.xzcpc-9pd.top
+  records-api-key: wx3081dfa30167bb6e

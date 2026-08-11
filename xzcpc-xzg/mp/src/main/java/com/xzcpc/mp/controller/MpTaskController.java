@@ -16,11 +16,11 @@ public class MpTaskController {
 
     private final MpTaskService taskService;
 
-    @OpLog(module = "小程序-任务", operation = "查询列表")
     @GetMapping
-    public R<Object> list() {
+    public R<Object> list(@RequestParam(defaultValue = "false") boolean all) {
         String storeId = UserContextHolder.get().getStoreId();
-        return R.ok(taskService.list(storeId));
+        String openid = UserContextHolder.get().getOpenid();
+        return R.ok(taskService.list(storeId, all, openid));
     }
 
     @OpLog(module = "小程序-任务", operation = "查询详情")

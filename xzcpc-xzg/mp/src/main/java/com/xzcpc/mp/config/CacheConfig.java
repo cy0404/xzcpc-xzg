@@ -2,6 +2,7 @@ package com.xzcpc.mp.config;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.xzcpc.common.model.MaterialInfo;
 import com.xzcpc.expense.entity.ExpenseItem;
 import com.xzcpc.expense.entity.ExpenseType;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +27,14 @@ public class CacheConfig {
         return Caffeine.newBuilder()
                 .maximumSize(10)
                 .expireAfterWrite(10, TimeUnit.MINUTES)
+                .build();
+    }
+
+    @Bean
+    public Cache<String, List<MaterialInfo>> materialByCategoryCache() {
+        return Caffeine.newBuilder()
+                .maximumSize(50)
+                .expireAfterWrite(5, TimeUnit.MINUTES)
                 .build();
     }
 }

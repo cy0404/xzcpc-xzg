@@ -44,4 +44,7 @@ public class Employee {
 
     @TableLogic(value = "0", delval = "1")
     private Integer delFlag;
+
+    @TableField(exist = false)
+    private String supervisorName;
 }

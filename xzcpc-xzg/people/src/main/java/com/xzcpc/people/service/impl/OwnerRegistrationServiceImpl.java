@@ -2,7 +2,10 @@ package com.xzcpc.people.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xzcpc.common.context.AdminContextHolder;
+import com.xzcpc.common.context.AdminUser;
 import com.xzcpc.common.exception.BusinessException;
+import com.xzcpc.common.service.StoreAccessService;
 import com.xzcpc.people.dto.OwnerRegistrationSaveReq;
 import com.xzcpc.people.entity.Employee;
 import com.xzcpc.people.entity.OwnerRegistration;
@@ -20,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -33,11 +38,32 @@ public class OwnerRegistrationServiceImpl implements OwnerRegistrationService {
     private final EmployeeMapper employeeMapper;
     private final StoreMapper storeMapper;
     private final StoreService storeService;
+    private final StoreAccessService storeAccessService;
 
     @Override
-    public Page<OwnerRegistration> page(String storeId, String status, String name, String phone,
+    public Page<OwnerRegistration> page(String storeId, String supervisorName, String status, String name, String phone,
                                         int pageNum, int pageSize) {
         LambdaQueryWrapper<OwnerRegistration> wrapper = new LambdaQueryWrapper<>();
+
+        // 督导角色：按可访问门店过滤
+        AdminUser admin = AdminContextHolder.get();
+        if (admin != null && storeAccessService.isSupervisorOnly(admin)) {
+            java.util.List<String> accessibleStoreIds = storeAccessService.getAccessibleStoreIds(admin.getOpenId());
+            if (accessibleStoreIds.isEmpty()) {
+                return new Page<>(pageNum, pageSize);
+            }
+            wrapper.in(OwnerRegistration::getStoreId, accessibleStoreIds);
+        }
+
+        // 按指定督导过滤
+        if (StringUtils.hasText(supervisorName)) {
+            java.util.List<String> supervisorStoreIds = storeAccessService.getAccessibleStoreIdsBySupervisorName(supervisorName);
+            if (supervisorStoreIds.isEmpty()) {
+                return new Page<>(pageNum, pageSize);
+            }
+            wrapper.in(OwnerRegistration::getStoreId, supervisorStoreIds);
+        }
+
         if (StringUtils.hasText(storeId)) {
             wrapper.eq(OwnerRegistration::getStoreId, storeId.trim());
         }
@@ -51,7 +77,16 @@ public class OwnerRegistrationServiceImpl implements OwnerRegistrationService {
             wrapper.like(OwnerRegistration::getPhone, phone.trim());
         }
         wrapper.orderByDesc(OwnerRegistration::getCreatedAt).orderByDesc(OwnerRegistration::getId);
-        return registrationMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        Page<OwnerRegistration> result = registrationMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
+        List<OwnerRegistration> records = result.getRecords();
+        if (!records.isEmpty()) {
+            Set<String> storeIds = records.stream().map(OwnerRegistration::getStoreId).filter(id -> id != null).collect(java.util.stream.Collectors.toSet());
+            if (!storeIds.isEmpty()) {
+                Map<String, String> supervisorMap = storeAccessService.getSupervisorNamesByStoreIds(storeIds);
+                records.forEach(r -> r.setSupervisorName(supervisorMap.getOrDefault(r.getStoreId(), "")));
+            }
+        }
+        return result;
     }
 
     @Override
@@ -60,6 +95,16 @@ public class OwnerRegistrationServiceImpl implements OwnerRegistrationService {
         if (reg == null) {
             throw new BusinessException(404, "登记记录不存在");
         }
+
+        // 督导角色校验：只能查看自己管辖门店的记录
+        AdminUser admin = AdminContextHolder.get();
+        if (admin != null && storeAccessService.isSupervisorOnly(admin) && reg.getStoreId() != null) {
+            List<String> accessibleStoreIds = storeAccessService.getAccessibleStoreIds(admin.getOpenId());
+            if (accessibleStoreIds.isEmpty() || !accessibleStoreIds.contains(reg.getStoreId())) {
+                throw new BusinessException(404, "登记记录不存在");
+            }
+        }
+
         return reg;
     }
 
@@ -101,7 +146,6 @@ public class OwnerRegistrationServiceImpl implements OwnerRegistrationService {
         }
 
         if ("老板".equals(role)) {
-            assertBossSlotAvailable(store, openid);
             storeService.updateOwnerInfo(store, openid, name, phone);
         } else {
             if (StringUtils.hasText(store.getOwnerOpenid()) && store.getOwnerOpenid().equals(openid)) {
@@ -127,22 +171,6 @@ public class OwnerRegistrationServiceImpl implements OwnerRegistrationService {
         }
     }
 
-    private void assertBossSlotAvailable(Store store, String openid) {
-        if (store != null && StringUtils.hasText(store.getOwnerOpenid())
-                && !store.getOwnerOpenid().equals(openid)) {
-            throw new BusinessException(400, "该门店老板角色已被绑定，请联系总部");
-        }
-        Employee otherBoss = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
-                .eq(Employee::getStoreId, store.getStoreId())
-                .eq(Employee::getRole, "老板")
-                .eq(Employee::getStatus, "在职")
-                .ne(Employee::getOpenid, openid)
-                .last("LIMIT 1"));
-        if (otherBoss != null) {
-            throw new BusinessException(400, "该门店老板角色已被绑定，请联系总部");
-        }
-    }
-
     private void upsertEmployee(OwnerRegistration reg, String name, String phone, String role, String storeName) {
         Employee emp = employeeMapper.selectOne(new LambdaQueryWrapper<Employee>()
                 .eq(Employee::getStoreId, reg.getStoreId())
@@ -162,6 +190,7 @@ public class OwnerRegistrationServiceImpl implements OwnerRegistrationService {
         emp.setMobile(phone);
         emp.setRole(role);
         emp.setStoreName(storeName);
+        emp.setDelFlag(0);
         if (emp.getEntryDate() == null) {
             emp.setEntryDate(LocalDate.now());
         }
@@ -186,11 +215,13 @@ public class OwnerRegistrationServiceImpl implements OwnerRegistrationService {
             contact.setStoreName(storeName);
             contact.setContactName(name);
             contact.setContactPhone(phone);
+            contact.setDelFlag(0);
             contactMapper.insert(contact);
         } else {
             contact.setStoreName(storeName);
             contact.setContactName(name);
             contact.setContactPhone(phone);
+            contact.setDelFlag(0);
             contactMapper.updateById(contact);
         }
     }

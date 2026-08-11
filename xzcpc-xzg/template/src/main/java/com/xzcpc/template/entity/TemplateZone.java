@@ -12,7 +12,6 @@ import java.util.Map;
 public class TemplateZone {
 
     @TableId(type = IdType.AUTO)
-    @TableField("zone_id")
     private Integer id;
 
     private String bizCode;

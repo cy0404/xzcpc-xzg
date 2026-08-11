@@ -30,14 +30,21 @@ public class MpWebMvcConfig implements WebMvcConfigurer {
                                      "/api/mp/auth/owner/qrcode-img",
                                      "/api/mp/public/**",
                                      "/api/mp/staff/registrations",
-                                     "/api/mp/stores/refresh");
+                                     "/api/mp/stores-all",
+                                     "/api/mp/stores-all/refresh",
+                                     "/api/mp/upload/**");
     }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // 映射 /upload/** 到本地 upload 目录，使上传的图片可直接通过 URL 访问
         String absolutePath = Paths.get(uploadPath).toAbsolutePath().toUri().toString();
+        String oldPath = Paths.get("./upload").toAbsolutePath().toUri().toString();
+        // 映射 /upload/** 到新路径，旧路径兜底
         registry.addResourceHandler("/upload/**")
-                .addResourceLocations(absolutePath);
+                .addResourceLocations(absolutePath, oldPath);
+        // 容器图片优先读 upload/containers/（可随时加图），找不到再读 JAR 内置
+        registry.addResourceHandler("/containers/**")
+                .addResourceLocations(absolutePath + "/containers/",
+                                      "classpath:/static/containers/");
     }
 }

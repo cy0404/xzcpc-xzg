@@ -18,6 +18,7 @@ public class JacksonConfig {
         return builder -> {
             builder.serializers(new LocalDateTimeSerializer(FORMATTER));
             builder.deserializers(new LocalDateTimeDeserializer(FORMATTER));
+            builder.deserializerByType(java.time.LocalDate.class, new LenientLocalDateDeserializer());
         };
     }
 }

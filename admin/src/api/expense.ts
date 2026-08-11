@@ -12,7 +12,7 @@ export function getExpenseRecords(params?: {
   return api.get('/expenses', { params })
 }
 
-export function getExpenseDashboard(params?: { range?: string }) {
+export function getExpenseDashboard(params?: { range?: string; startDate?: string; endDate?: string }) {
   return api.get('/expenses/dashboard', { params })
 }
 

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { fetchExpenseDetail, deleteExpense, type ExpenseRecord } from '@/api/expense'
+import { fetchExpenseDetail, fetchExpenseMaterial, deleteExpense, type ExpenseRecord } from '@/api/expense'
 import Skeleton from '@/components/Skeleton.vue'
 
 const expenseId = ref('')
 const loading = ref(true)
 const detail = ref<ExpenseRecord | null>(null)
+const material = ref<any>(null)
 const showDelete = ref(false)
 const deleting = ref(false)
 
@@ -22,8 +23,12 @@ onShow(() => { if (expenseId.value) loadDetail() })
 
 async function loadDetail() {
   loading.value = true
-  try { detail.value = await fetchExpenseDetail(expenseId.value) as any }
-  finally { loading.value = false }
+  try {
+    detail.value = await fetchExpenseDetail(expenseId.value) as any
+    if (detail.value?.typeName === '自购食材') {
+      material.value = await fetchExpenseMaterial(expenseId.value)
+    }
+  } finally { loading.value = false }
 }
 function goEdit() { uni.navigateTo({ url: `/pages/expense/form/index?expenseId=${expenseId.value}` }) }
 function fmtMoney(n: number) { return Number(n || 0).toFixed(2) }
@@ -47,6 +52,16 @@ function fmtMoney(n: number) { return Number(n || 0).toFixed(2) }
         <view class="row"><text class="rk">日期</text><text class="rv">{{ detail.occurredDate }}</text></view>
         <view class="row"><text class="rk">说明</text><text class="rv">{{ detail.remark || '--' }}</text></view>
         <view class="row"><text class="rk">经手人</text><text class="rv">{{ detail.handlerName }}</text></view>
+      </view>
+
+      <!-- 物料明细 -->
+      <view v-if="material" class="card">
+        <text class="card-title">📦 物料明细</text>
+        <view class="row"><text class="rk">物料名称</text><text class="rv">{{ material.materialName }}</text></view>
+        <view class="row"><text class="rk">分类</text><text class="rv">{{ material.parentCategory }} · {{ material.category }}</text></view>
+        <view class="row"><text class="rk">数量</text><text class="rv">{{ material.purchaseQty }} {{ material.unit || 'kg' }}</text></view>
+        <view class="row"><text class="rk">单价</text><text class="rv">¥{{ material.unitPrice ? Number(material.unitPrice).toFixed(2) : '--' }}</text></view>
+        <view class="row"><text class="rk">合计</text><text class="rv">¥{{ material.totalAmount ? Number(material.totalAmount).toFixed(2) : '--' }}</text></view>
       </view>
 
       <!-- 凭证 -->
