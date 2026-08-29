@@ -789,7 +789,8 @@ public class LossReportServiceImpl implements LossReportService {
         List<Map<String, Object>> logs = jdbcTemplate.queryForList(
                 "SELECT t.report_id, t.action, t.remark FROM loss_report_log t " +
                 "INNER JOIN (SELECT report_id, MAX(created_at) AS max_created FROM loss_report_log WHERE report_id IN (" + placeholders + ") AND action NOT IN ('submit','delete','download','outbound_create') GROUP BY report_id) latest " +
-                "ON t.report_id = latest.report_id AND t.created_at = latest.max_created",
+                "ON t.report_id = latest.report_id AND t.created_at = latest.max_created " +
+                "WHERE t.action NOT IN ('submit','delete','download','outbound_create')",
                 ids.toArray());
         Map<Long, Map<String, Object>> logMap = new HashMap<>();
         for (Map<String, Object> l : logs) {
