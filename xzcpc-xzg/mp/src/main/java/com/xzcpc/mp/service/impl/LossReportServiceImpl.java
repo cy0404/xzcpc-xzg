@@ -24,9 +24,13 @@ import com.xzcpc.template.mapper.MaterialConversionRuleMapper;
 import com.xzcpc.template.mapper.MaterialInventoryRuleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -156,20 +160,7 @@ public class LossReportServiceImpl implements LossReportService {
         // 加急：仅在无需店长审批（已到pending状态）时才发卡片；需要店长审批的在approve方法中发送
         if (report.getUrgent() != null && report.getUrgent() == 1 && "arrival".equals(report.getLossType())
                 && !"pending_approval".equals(report.getStatus())) {
-            Long rid = report.getId();
-            String url = serverUrl;
-            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                new org.springframework.transaction.support.TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        try {
-                            new org.springframework.web.client.RestTemplate().postForEntity(
-                                    url + "/api/public/loss-report/send-urgent-card",
-                                    Map.of("reportId", rid.toString()),
-                                    String.class);
-                        } catch (Exception ignored) {}
-                    }
-                });
+            sendUrgentCardAfterCommit(report);
         }
         return report;
     }
@@ -626,7 +617,7 @@ public class LossReportServiceImpl implements LossReportService {
     @Transactional
     public LossReport approve(Long id, String storeId) {
         LossReport r = lossReportMapper.selectById(id);
-        if (r == null || !r.getStoreId().equals(storeId)) throw new BusinessException("报损记录不存在");
+        if (r == null || !Objects.equals(r.getStoreId(), storeId)) throw new BusinessException("报损记录不存在");
         if (!"pending_approval".equals(r.getStatus())) return r;  // 已处理过，幂等
         if ("daily".equals(r.getLossType())) {
             r.setStatus("completed");
@@ -635,36 +626,21 @@ public class LossReportServiceImpl implements LossReportService {
         }
         r.setConfirmedAt(LocalDateTime.now());
         r.setUpdatedAt(LocalDateTime.now());
-        lossReportMapper.updateById(r);
+        if (lossReportMapper.updateById(r) != 1) return r;  // 乐观锁冲突：他人已处理
         addLog(id, "approve", r.getHandlerName(), null);
         // 加急到货报损：店长审批通过后发加急卡片
-        if (r.getUrgent() != null && r.getUrgent() == 1 && "arrival".equals(r.getLossType())) {
-            Long rid = r.getId();
-            String url = serverUrl;
-            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                new org.springframework.transaction.support.TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        try {
-                            new org.springframework.web.client.RestTemplate().postForEntity(
-                                    url + "/api/public/loss-report/send-urgent-card",
-                                    Map.of("reportId", rid.toString()),
-                                    String.class);
-                        } catch (Exception ignored) {}
-                    }
-                });
-        }
+        sendUrgentCardAfterCommit(r);
         return r;
     }
 
     @Override
     public void rejectApproval(Long id, String storeId) {
         LossReport r = lossReportMapper.selectById(id);
-        if (r == null || !r.getStoreId().equals(storeId)) throw new BusinessException("报损记录不存在");
+        if (r == null || !Objects.equals(r.getStoreId(), storeId)) throw new BusinessException("报损记录不存在");
         if (!"pending_approval".equals(r.getStatus())) return;  // 已处理过，幂等
         r.setStatus("rejected");
         r.setUpdatedAt(LocalDateTime.now());
-        lossReportMapper.updateById(r);
+        if (lossReportMapper.updateById(r) != 1) return;  // 乐观锁冲突：他人已处理
         addLog(id, "reject_approval", r.getHandlerName(), null);
     }
 
@@ -673,10 +649,12 @@ public class LossReportServiceImpl implements LossReportService {
     public Map<String, Object> batchApprove(List<Long> ids, String action, String storeId) {
         if (ids == null || ids.isEmpty()) throw new BusinessException("请选择要处理的报损记录");
         if (!"approve".equals(action) && !"reject".equals(action)) throw new BusinessException("无效的处理动作");
+        if (ids.size() > MAX_BATCH_SIZE) throw new BusinessException("一次最多批量处理" + MAX_BATCH_SIZE + "条");
         int ok = 0, skip = 0;
         for (Long id : ids) {
             LossReport r = lossReportMapper.selectById(id);
-            if (r == null || !r.getStoreId().equals(storeId)) continue;   // 非本店记录跳过
+            // 已删除或非本店记录：跳过并计数，不中断批次
+            if (r == null || !Objects.equals(r.getStoreId(), storeId)) { skip++; continue; }
             if (!"pending_approval".equals(r.getStatus())) { skip++; continue; }  // 已处理过，幂等跳过
             if ("approve".equals(action)) {
                 if ("daily".equals(r.getLossType())) {
@@ -686,29 +664,17 @@ public class LossReportServiceImpl implements LossReportService {
                 }
                 r.setConfirmedAt(LocalDateTime.now());
                 r.setUpdatedAt(LocalDateTime.now());
-                lossReportMapper.updateById(r);
-                addLog(id, "approve", r.getHandlerName(), null);
-                // 加急到货报损：店长审批通过后发加急卡片（照单条 approve）
-                if (r.getUrgent() != null && r.getUrgent() == 1 && "arrival".equals(r.getLossType())) {
-                    Long rid = r.getId();
-                    String url = serverUrl;
-                    org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                        new org.springframework.transaction.support.TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    new org.springframework.web.client.RestTemplate().postForEntity(
-                                            url + "/api/public/loss-report/send-urgent-card",
-                                            Map.of("reportId", rid.toString()),
-                                            String.class);
-                                } catch (Exception ignored) {}
-                            }
-                        });
-                }
             } else {
                 r.setStatus("rejected");
                 r.setUpdatedAt(LocalDateTime.now());
-                lossReportMapper.updateById(r);
+            }
+            // 乐观锁冲突（他人并发处理）：updateById 返回 0，不计成功、不写日志、不发卡片
+            if (lossReportMapper.updateById(r) != 1) { skip++; continue; }
+            if ("approve".equals(action)) {
+                addLog(id, "approve", r.getHandlerName(), null);
+                // 加急到货报损：店长审批通过后发加急卡片（照单条 approve）
+                sendUrgentCardAfterCommit(r);
+            } else {
                 addLog(id, "reject_approval", r.getHandlerName(), null);
             }
             ok++;
@@ -853,6 +819,30 @@ public class LossReportServiceImpl implements LossReportService {
             case "not_receive" -> "未收到货";
             default -> a;
         };
+    }
+
+    /** 单次批量审批最大条数 */
+    private static final int MAX_BATCH_SIZE = 200;
+
+    /** 加急到货报损：事务提交后发加急卡片（3s 连接 / 5s 读取超时，失败静默） */
+    private void sendUrgentCardAfterCommit(LossReport r) {
+        if (r.getUrgent() == null || r.getUrgent() != 1 || !"arrival".equals(r.getLossType())) return;
+        Long rid = r.getId();
+        String url = serverUrl;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+                    factory.setConnectTimeout(3000);
+                    factory.setReadTimeout(5000);
+                    new RestTemplate(factory).postForEntity(
+                            url + "/api/public/loss-report/send-urgent-card",
+                            Map.of("reportId", rid.toString()),
+                            String.class);
+                } catch (Exception ignored) {}
+            }
+        });
     }
 
     /** 批量解析报损记录是否属于水果蔬菜类 */

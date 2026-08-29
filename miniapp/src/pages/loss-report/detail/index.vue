@@ -28,7 +28,9 @@ async function fetchLogs() {
 }
 
 function actionLabel(a: string) {
-  const m: Record<string, string> = { submit: '提交报损', approve: '审批通过', reject_approval: '审批拒绝', confirm: '厂家确认补发', reject: '厂家拒绝', register: '厂家确认登记', issue_voucher: '厂家确认发券', receive: '已收货', not_receive: '未收到货', update: '修改报损', delete: '删除报损' }
+  const m: Record<string, string> = { submit: '提交报损', approve: '审批通过', reject_approval: '审批拒绝', confirm: '厂家确认补发', reject: '厂家拒绝', register: '厂家确认登记', receive: '已收货', not_receive: '未收到货', update: '修改报损', delete: '删除报损' }
+  // 发券仅水果蔬菜类，其他类（牛油果泥/其他）为发货
+  if (a === 'issue_voucher') return report.value?.isFruitVeg ? '厂家确认发券' : '厂家确认发货'
   return m[a] || a
 }
 
@@ -54,7 +56,7 @@ const nextStep = computed(() => {
   const isArrival = report.value?.lossType === 'arrival'
   if (s === 'pending_approval') return '等待店长审批'
   if (s === 'pending') return '等待厂家确认'
-  if (s === 'registered') return report.value?.isFruitVeg ? '已登记，等待厂家发券' : '已发券，等待厂家发货'
+  if (s === 'registered') return report.value?.isFruitVeg ? '已登记，等待厂家发券' : '已登记，等待厂家发货'
   if (s === 'confirmed_resend') return '等待门店收货'
   if (isArrival && (s === 'completed' || s === 'closed' || s === 'rejected' || s === 'received' || s === 'not_received')) return ''
   if (!isArrival && (s === 'completed' || s === 'rejected')) return ''

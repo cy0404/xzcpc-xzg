@@ -45,7 +45,7 @@ public interface LossReportService {
     /** 审批拒绝：店员提交 → rejected */
     void rejectApproval(Long id, String storeId);
 
-    /** 批量审批：action=approve|reject，返回 {total, success, skipped, failIds} */
+    /** 批量审批：action=approve|reject，返回 {success, skipped}（删除/非本店/已处理/并发冲突均计入 skipped） */
     Map<String, Object> batchApprove(List<Long> ids, String action, String storeId);
 
     /** 已收货 */

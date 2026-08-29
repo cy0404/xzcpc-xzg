@@ -392,6 +392,12 @@ function toggleBatchMode() {
   batchMode.value = !batchMode.value
   selectedIds.value.clear()
 }
+// 切 tab 时退出批量模式，避免误批当前不可见的记录
+function switchTab(key: string) {
+  if (activeTab.value === key) return
+  activeTab.value = key
+  if (batchMode.value) toggleBatchMode()
+}
 function toggleSelect(r: any) {
   if (r.status !== 'pending_approval') return
   if (selectedIds.value.has(r.id)) selectedIds.value.delete(r.id)
@@ -414,7 +420,8 @@ function doBatch(action: 'approve' | 'reject') {
       batchSubmitting.value = true
       try {
         const r: any = await batchApproveLoss(ids, action)
-        const ok = r?.success ?? ids.length
+        // success 字段缺失时按 0 计（不猜测全成功），跳过数缺失按 0
+        const ok = r?.success ?? 0
         const skip = r?.skipped ?? 0
         uni.showToast({ title: `已${label} ${ok} 条${skip ? `，跳过 ${skip} 条` : ''}`, icon: 'none', duration: 2500 })
         batchMode.value = false; selectedIds.value.clear()
@@ -486,7 +493,7 @@ function statusClass(s: string) {
     <view class="tab-bar">
       <scroll-view scroll-x enhanced show-scrollbar="false" class="tab-scroll">
         <view class="tab-row">
-          <view v-for="t in tabs" :key="t.key" class="tab-item" :class="{ on: activeTab === t.key }" @click="activeTab = t.key">
+          <view v-for="t in tabs" :key="t.key" class="tab-item" :class="{ on: activeTab === t.key }" @click="switchTab(t.key)">
             {{ t.label }}
           </view>
         </view>
