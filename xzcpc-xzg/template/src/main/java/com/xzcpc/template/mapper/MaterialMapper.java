@@ -56,4 +56,18 @@ public interface MaterialMapper extends BaseMapper<Material> {
      */
     @Select("SELECT * FROM material WHERE qm_code = #{qmCode} AND del_flag = 0 LIMIT 1")
     Material selectAnyByQmCode(String qmCode);
+
+    /**
+     * 按 qm_code 查任意状态存量物料（含 del_flag=1/2），供"全部同步"模式下
+     * 存量/淘汰物料统一按接口覆盖归位。绕过 MyBatis-Plus 逻辑删除过滤。
+     */
+    @Select("SELECT * FROM material WHERE qm_code = #{qmCode} LIMIT 1")
+    Material selectAnyByQmCodeAny(String qmCode);
+
+    /**
+     * 全量同步收尾：残留 del_flag=2（接口已无此 code 的淘汰物料）统一归 1。
+     * 接口仍存在的 del_flag=2 物料已在同步循环中复活为 0，到这里的只剩接口没有的。
+     */
+    @Update("UPDATE material SET del_flag = 1, updated_at = NOW() WHERE del_flag = 2")
+    int markEliminatedDeleted();
 }

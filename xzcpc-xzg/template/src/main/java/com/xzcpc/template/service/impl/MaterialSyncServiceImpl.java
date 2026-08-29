@@ -191,14 +191,14 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             if (semiCodes.contains(m.getCode())) {
                 continue;
             }
-            // 优先按 qm_code 匹配存量物料（存量 material_id 是旧 id 体系如 WP0917，qm_code 与接口 code 同编码）：
-            // 命中 → 规则全量刷新（盘点单价/换算/采购/订货字段，以接口为准）+ 一级分类成本映射，
-            //     material 表其他字段不动
-            Material existing = materialMapper.selectAnyByQmCode(m.getCode());
+            // 全部同步：按 qm_code 匹配任意状态存量（del_flag=0/1/2 都命中，无存量/淘汰区分），
+            // 统一全量覆盖 material 字段 + del_flag 归位（接口 ENABLED→0 复活、DISABLED→1）
+            // + 规则全量刷新。保留存量 material_id（模板/任务快照引用不破坏）。
+            Material existing = materialMapper.selectAnyByQmCodeAny(m.getCode());
             if (existing != null) {
-                if (PARENT_CATEGORY_MAP.containsKey(m.getPrimaryCategory())) {
-                    updateParentCategoryFields(existing.getMaterialId(), mapParentCategory(m.getPrimaryCategory()));
-                }
+                upsertMaterial(existing.getMaterialId(), m.getCode(), m.getName(),
+                        mapParentCategory(m.getPrimaryCategory()), m.getSecondaryCategory(),
+                        m.getSpecification(), STATUS_DISABLED.equals(m.getStatus()), stats);
                 upsertRules(RuleSource.of(m), stats);
                 continue;
             }
@@ -212,12 +212,6 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                     mapParentCategory(m.getPrimaryCategory()), m.getSecondaryCategory(),
                     m.getSpecification(), disabled, stats);
             if (outcome.needRules()) {
-                upsertRules(RuleSource.of(m), stats);
-            } else if (outcome.activeExisting()) {
-                // cm id 体系的存量：分类成本映射刷新 + 规则全量刷新（以接口为准）
-                if (PARENT_CATEGORY_MAP.containsKey(m.getPrimaryCategory())) {
-                    updateParentCategoryFields(m.getId(), mapParentCategory(m.getPrimaryCategory()));
-                }
                 upsertRules(RuleSource.of(m), stats);
             }
         }
@@ -270,6 +264,12 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         // 3. 清理不在源中的物料（源集合 = 原料接口 + 半成品接口；手工创建 M 开头保留）
         if (deleteAbsent) {
             stats.deleted = deleteAbsentMaterials(sourceIds);
+            // 残留 del_flag=2（接口已无此 code 的淘汰物料）统一归 1——
+            // 接口仍存在的 del_flag=2 已在循环中复活为 0，到这里的只剩接口没有的
+            int marked = materialMapper.markEliminatedDeleted();
+            if (marked > 0) {
+                log.info("del_flag=2 淘汰物料统一归 1：{} 条", marked);
+            }
         }
 
         log.info("物料同步完成：新增 {}，复活 {}，删除 {}，未匹配跳过 {}，空名跳过 {}，"
@@ -318,9 +318,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     }
 
     /**
-     * upsert 物料，返回分支结果。三分支：
-     * - 库中 del_flag=0（状态为 0 的存量）：material 表不变更（含 del_flag），规则表采购字段由调用方补录
-     * - 库中 del_flag=1：按接口全量覆盖并复活（自定义 SQL 绕过逻辑删除过滤）
+     * upsert 物料。全部同步模式下无存量/淘汰区分：
+     * - 库中已存在（del_flag=0/1/2 任意）：按接口全量覆盖字段并归位 del_flag
+     *   （接口 ENABLED→0 即复活，DISABLED→1），保留原 material_id（快照表引用不破坏）
      * - 库中不存在：插入
      * 采购单价/采购单位维护在 material_inventory_rule 表。
      */
@@ -342,24 +342,20 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             stats.inserted++;
             return new UpsertOutcome(!disabled, false);
         }
-        if (material.getDelFlag() != null && material.getDelFlag() == 1) {
-            // 复活：全量覆盖，del_flag 按接口重写
-            material.setQmCode(code);
-            material.setParentCategory(parentCategory);
-            material.setCategory(category);
-            material.setMaterialName(name);
-            material.setSpec(spec);
-            material.setDelFlag(disabled ? 1 : 0);
-            materialMapper.upsertSyncFields(material);
-            stats.updated++;
-            return new UpsertOutcome(!disabled, false);
-        }
-        // 存量 del_flag=0：状态为 0 的数据不变更
-        return new UpsertOutcome(false, true);
+        // 已存在（含 del_flag=1/2）：全量覆盖字段，del_flag 按接口重写（ENABLED→0 复活）
+        material.setQmCode(code);
+        material.setParentCategory(parentCategory);
+        material.setCategory(category);
+        material.setMaterialName(name);
+        material.setSpec(spec);
+        material.setDelFlag(disabled ? 1 : 0);
+        materialMapper.upsertSyncFields(material);
+        stats.updated++;
+        return new UpsertOutcome(!disabled, false);
     }
 
-    /** upsert 分支结果：needRules=需生成/刷新规则；activeExisting=存量启用物料（只补规则表采购字段） */
-    private record UpsertOutcome(boolean needRules, boolean activeExisting) {}
+    /** upsert 分支结果：needRules=需生成/刷新规则（禁用物料不建） */
+    private record UpsertOutcome(boolean needRules, boolean ignored) {}
 
     private int deleteAbsentMaterials(Set<String> sourceIds) {
         List<Material> all = materialMapper.selectList(new LambdaQueryWrapper<>());
