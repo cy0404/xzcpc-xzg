@@ -75,7 +75,8 @@ public class IssueFeedbackServiceImpl implements IssueFeedbackService {
     }
 
     @Override
-    public void submit(String feedbackType, String storeId, String storeName, String phone, String content, String images, String ip) {
+    public void submit(String feedbackType, String channel, String storeId, String storeName,
+                       String phone, String content, String images, String ip) {
         checkRate(ip);
         if (!StringUtils.hasText(phone) || !phone.matches("^1\\d{10}$")) {
             throw new BusinessException("请填写正确的11位手机号");
@@ -110,6 +111,8 @@ public class IssueFeedbackServiceImpl implements IssueFeedbackService {
 
         IssueFeedback f = new IssueFeedback();
         f.setFeedbackType(feedbackType.trim());
+        // 渠道默认扫码（scan）；未来接入平台差评时由对应同步入口写入 meituan/xiaohongshu 等
+        f.setChannel(StringUtils.hasText(channel) ? channel.trim() : "scan");
         f.setStoreId(StringUtils.hasText(storeId) ? storeId.trim() : null);
         f.setStoreName(StringUtils.hasText(storeName) ? normalizeStoreName(storeName) : null);
         f.setContent(content.trim());
@@ -222,14 +225,18 @@ public class IssueFeedbackServiceImpl implements IssueFeedbackService {
     }
 
     @Override
-    public Page<IssueFeedback> adminPage(String feedbackType, String storeId, String storeName, String status,
+    public Page<IssueFeedback> adminPage(String feedbackType, String channel, String storeId, String storeName, String status,
                                          String keyword, String startDate, String endDate,
-                                         int pageNum, int pageSize) {
+                                         int pageNum, int pageSize, List<String> accessibleStoreIds) {
         LambdaQueryWrapper<IssueFeedback> qw = new LambdaQueryWrapper<>();
         qw.eq(StringUtils.hasText(feedbackType), IssueFeedback::getFeedbackType, feedbackType);
+        qw.eq(StringUtils.hasText(channel), IssueFeedback::getChannel, channel);
         qw.eq(StringUtils.hasText(status), IssueFeedback::getStatus, status);
         qw.eq(StringUtils.hasText(storeId), IssueFeedback::getStoreId, storeId);
         qw.like(StringUtils.hasText(storeName), IssueFeedback::getStoreName, storeName);
+        // 督导数据范围：仅返回其负责门店的记录（空列表表示督导未配置门店，由 controller 提前返回空页）
+        qw.in(accessibleStoreIds != null && !accessibleStoreIds.isEmpty(),
+                IssueFeedback::getStoreId, accessibleStoreIds);
         if (StringUtils.hasText(keyword)) {
             qw.and(w -> w.like(IssueFeedback::getContent, keyword)
                     .or().like(IssueFeedback::getStoreName, keyword));
@@ -241,12 +248,23 @@ public class IssueFeedbackServiceImpl implements IssueFeedbackService {
     }
 
     @Override
-    public IssueFeedback detailForAdmin(Long id) {
+    public IssueFeedback detailForAdmin(Long id, List<String> accessibleStoreIds) {
         IssueFeedback f = issueFeedbackMapper.selectById(id);
         if (f == null) {
             throw new BusinessException("反馈记录不存在");
         }
+        checkStoreScope(f.getStoreId(), accessibleStoreIds);
         return f;
+    }
+
+    /** 督导数据范围校验：accessibleStoreIds 非 null 时，记录门店必须在其负责门店内 */
+    private void checkStoreScope(String storeId, List<String> accessibleStoreIds) {
+        if (accessibleStoreIds == null) {
+            return;
+        }
+        if (!accessibleStoreIds.contains(storeId)) {
+            throw new BusinessException("无权操作该门店的反馈");
+        }
     }
 
     @Override
@@ -269,7 +287,7 @@ public class IssueFeedbackServiceImpl implements IssueFeedbackService {
     }
 
     @Override
-    public void updateStatus(Long id, String status, String processNote) {
+    public void updateStatus(Long id, String status, String processNote, List<String> accessibleStoreIds) {
         if (id == null || !StringUtils.hasText(status)) {
             throw new BusinessException("参数不完整");
         }
@@ -283,6 +301,7 @@ public class IssueFeedbackServiceImpl implements IssueFeedbackService {
         if (f == null) {
             throw new BusinessException("反馈记录不存在");
         }
+        checkStoreScope(f.getStoreId(), accessibleStoreIds);
         f.setStatus(status);
         if (StringUtils.hasText(processNote)) {
             f.setProcessNote(processNote.trim());

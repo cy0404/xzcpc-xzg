@@ -21,6 +21,9 @@ public class IssueFeedback {
     /** 反馈类型（门店服务|饮品品质|其他，sys_config 可配） */
     private String feedbackType;
 
+    /** 渠道：scan=扫码反馈；meituan=美团；xiaohongshu=小红书（未来接入平台差评） */
+    private String channel;
+
     /** 门店ID（store_info.id，可为空） */
     private String storeId;
 

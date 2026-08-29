@@ -2,8 +2,8 @@
   <div class="feedback-page">
     <div class="page-title-row">
       <div>
-        <h1 class="page-title">问题反馈</h1>
-        <p class="page-subtitle">顾客/公众扫码提交的问题反馈，支持按类型、门店、状态、日期筛选与导出；处理进度顾客可在 H5 凭手机号查看。</p>
+        <h1 class="page-title">评价管理</h1>
+        <p class="page-subtitle">顾客/公众扫码提交的评价反馈，支持按类型、门店、状态、日期筛选与导出；后续将接入美团、小红书等平台差评。</p>
       </div>
       <a-button type="primary" @click="exportFeedback" :loading="exporting">导出 Excel</a-button>
     </div>
@@ -11,6 +11,12 @@
     <!-- 筛选 -->
     <a-card class="filter-card" :bordered="false">
       <a-row :gutter="[16, 12]">
+        <a-col :xs="12" :md="6">
+          <div class="filter-label">渠道</div>
+          <a-select v-model:value="filters.channel" placeholder="全部渠道" style="width:100%" allow-clear @change="fetchList">
+            <a-select-option v-for="o in channelOptions" :key="o.value" :value="o.value">{{ o.label }}</a-select-option>
+          </a-select>
+        </a-col>
         <a-col :xs="12" :md="6">
           <div class="filter-label">反馈类型</div>
           <a-select v-model:value="filters.feedbackType" placeholder="全部类型" style="width:100%" allow-clear @change="fetchList">
@@ -46,7 +52,10 @@
     <a-card :bordered="false">
       <a-table :columns="cols" :data-source="list" :loading="loading" :pagination="pagination" row-key="id" size="middle" :scroll="{ x: 1000 }" @change="handleTable">
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'feedbackType'">
+          <template v-if="column.key === 'channel'">
+            <a-tag style="border-radius:12px" :style="channelStyle(record.channel)">{{ channelText(record.channel) }}</a-tag>
+          </template>
+          <template v-else-if="column.key === 'feedbackType'">
             <a-tag color="#2F8F57" style="border-radius:12px" :style="{ background: '#2F8F5718', borderColor: '#2F8F5740', color: '#2F8F57' }">{{ record.feedbackType || '--' }}</a-tag>
           </template>
           <template v-else-if="column.key === 'status'">
@@ -136,8 +145,23 @@ const exporting = ref(false)
 const saving = ref(false)
 const list = ref<any[]>([])
 const pagination = reactive({ current: 1, pageSize: 10, total: 0 })
-const filters = reactive({ feedbackType: '', storeName: '', status: '', keyword: '', startDate: '', endDate: '' })
+const filters = reactive({ channel: '', feedbackType: '', storeName: '', status: '', keyword: '', startDate: '', endDate: '' })
 const typeOptions = ref<string[]>([])
+
+/** 渠道选项：scan=扫码反馈（现有）；meituan/xiaohongshu 为未来接入平台差评预留 */
+const CHANNEL_MAP: Record<string, { text: string; color: string; bg: string; border: string }> = {
+  scan: { text: '扫码反馈', color: '#2F8F57', bg: '#E7F4EB', border: '#B7DCC2' },
+  meituan: { text: '美团', color: '#FFB800', bg: '#FFF8E6', border: '#FFE3A3' },
+  xiaohongshu: { text: '小红书', color: '#E8574F', bg: '#FDEBEA', border: '#F5C0BC' },
+}
+const channelOptions = Object.entries(CHANNEL_MAP).map(([value, m]) => ({ value, label: m.text }))
+function channelText(c?: string) {
+  return (CHANNEL_MAP[c || ''] || { text: c || '--' }).text
+}
+function channelStyle(c?: string) {
+  const m = CHANNEL_MAP[c || ''] || { text: c || '--', color: '#66706A', bg: '#F0F2F1', border: '#D9DEDB' }
+  return { background: m.bg, borderColor: m.border, color: m.color }
+}
 const dateRange = ref<any>(null)
 const drawerOpen = ref(false)
 const cur = ref<any>(null)
@@ -165,6 +189,7 @@ function statusStyle(s?: string) {
 }
 
 const cols = [
+  { title: '渠道', key: 'channel', width: 90 },
   { title: '反馈类型', key: 'feedbackType', width: 100 },
   { title: '门店', dataIndex: 'storeName', width: 130, ellipsis: true, fixed: 'left' },
   { title: '手机号', dataIndex: 'phone', width: 120 },
@@ -199,6 +224,7 @@ async function fetchList() {
   loading.value = true
   try {
     const res: any = await getFeedbackList({
+      channel: filters.channel || undefined,
       feedbackType: filters.feedbackType || undefined,
       storeName: filters.storeName || undefined,
       status: filters.status || undefined,
@@ -213,7 +239,7 @@ async function fetchList() {
 }
 
 function resetFilters() {
-  filters.feedbackType = ''; filters.storeName = ''; filters.status = ''; filters.keyword = ''; filters.startDate = ''; filters.endDate = ''
+  filters.channel = ''; filters.feedbackType = ''; filters.storeName = ''; filters.status = ''; filters.keyword = ''; filters.startDate = ''; filters.endDate = ''
   dateRange.value = null
   fetchList()
 }
@@ -250,6 +276,7 @@ async function exportFeedback() {
   exporting.value = true
   try {
     const params = new URLSearchParams()
+    if (filters.channel) params.append('channel', filters.channel)
     if (filters.feedbackType) params.append('feedbackType', filters.feedbackType)
     if (filters.storeName) params.append('storeName', filters.storeName)
     if (filters.status) params.append('status', filters.status)
@@ -264,7 +291,7 @@ async function exportFeedback() {
     const blob = await resp.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = '问题反馈.xlsx'; a.click()
+    a.href = url; a.download = '评价管理.xlsx'; a.click()
     URL.revokeObjectURL(url)
   } catch { message.error('导出失败') }
   finally { exporting.value = false }

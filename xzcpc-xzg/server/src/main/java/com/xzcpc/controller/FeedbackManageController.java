@@ -1,7 +1,10 @@
 package com.xzcpc.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xzcpc.common.context.AdminContextHolder;
+import com.xzcpc.common.context.AdminUser;
 import com.xzcpc.common.response.R;
+import com.xzcpc.common.service.StoreAccessService;
 import com.xzcpc.entity.IssueFeedback;
 import com.xzcpc.service.IssueFeedbackService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,6 +21,7 @@ import java.util.Map;
 
 /**
  * 总部端扫码问题反馈台账（admin 登录后访问，AdminLoginInterceptor 自动保护）。
+ * 督导数据范围：普通督导（supervisor_admin）仅可查看/处理自己负责门店（supervisor_store_access 映射）的反馈。
  */
 @RestController
 @RequestMapping("/api/admin/feedback")
@@ -25,6 +29,16 @@ import java.util.Map;
 public class FeedbackManageController {
 
     private final IssueFeedbackService issueFeedbackService;
+    private final StoreAccessService storeAccessService;
+
+    /** 督导数据范围：普通督导返回其负责的门店ID列表；总部/运营（全量角色）返回 null 表示不过滤 */
+    private List<String> storeScope() {
+        AdminUser admin = AdminContextHolder.get();
+        if (storeAccessService.isSupervisorOnly(admin)) {
+            return storeAccessService.getAccessibleStoreIds(admin.getOpenId());
+        }
+        return null;
+    }
 
     /** 反馈类型选项（sys_config 可配，供筛选下拉） */
     @GetMapping("/options")
@@ -36,6 +50,7 @@ public class FeedbackManageController {
     @GetMapping("/list")
     public R<Page<IssueFeedback>> list(
             @RequestParam(required = false) String feedbackType,
+            @RequestParam(required = false) String channel,
             @RequestParam(required = false) String storeId,
             @RequestParam(required = false) String storeName,
             @RequestParam(required = false) String status,
@@ -44,20 +59,24 @@ public class FeedbackManageController {
             @RequestParam(required = false) String endDate,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return R.ok(issueFeedbackService.adminPage(feedbackType, storeId, storeName, status,
-                keyword, startDate, endDate, pageNum, pageSize));
+        List<String> scope = storeScope();
+        if (scope != null && scope.isEmpty()) {
+            return R.ok(new Page<>(pageNum, pageSize)); // 督导未配置负责门店，返回空页
+        }
+        return R.ok(issueFeedbackService.adminPage(feedbackType, channel, storeId, storeName, status,
+                keyword, startDate, endDate, pageNum, pageSize, scope));
     }
 
     /** 反馈详情 */
     @GetMapping("/{id}")
     public R<IssueFeedback> detail(@PathVariable Long id) {
-        return R.ok(issueFeedbackService.detailForAdmin(id));
+        return R.ok(issueFeedbackService.detailForAdmin(id, storeScope()));
     }
 
     /** 更新处理状态（pending→processing→done/closed，自动记时间戳；processNote 为处理说明，顾客可见） */
     @PostMapping("/{id}/status")
     public R<Void> updateStatus(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        issueFeedbackService.updateStatus(id, body.get("status"), body.get("processNote"));
+        issueFeedbackService.updateStatus(id, body.get("status"), body.get("processNote"), storeScope());
         return R.ok();
     }
 
@@ -65,6 +84,7 @@ public class FeedbackManageController {
     @GetMapping("/export")
     public void export(
             @RequestParam(required = false) String feedbackType,
+            @RequestParam(required = false) String channel,
             @RequestParam(required = false) String storeId,
             @RequestParam(required = false) String storeName,
             @RequestParam(required = false) String keyword,
@@ -72,13 +92,17 @@ public class FeedbackManageController {
             @RequestParam(required = false) String endDate,
             HttpServletResponse response) throws Exception {
 
-        List<IssueFeedback> list = issueFeedbackService.adminPage(feedbackType, storeId, storeName, null,
-                keyword, startDate, endDate, 1, 99999).getRecords();
+        List<String> scope = storeScope();
+        if (scope != null && scope.isEmpty()) {
+            scope = List.of("__no_accessible_store__"); // 督导未配置门店时导出空表（in 无匹配）
+        }
+        List<IssueFeedback> list = issueFeedbackService.adminPage(feedbackType, channel, storeId, storeName, null,
+                keyword, startDate, endDate, 1, 99999, scope).getRecords();
 
         Workbook wb = new XSSFWorkbook();
-        Sheet sheet = wb.createSheet("问题反馈");
+        Sheet sheet = wb.createSheet("评价管理");
         Row header = sheet.createRow(0);
-        String[] heads = {"反馈类型", "门店", "手机号", "状态", "反馈内容", "图片", "提交时间"};
+        String[] heads = {"渠道", "反馈类型", "门店", "手机号", "状态", "反馈内容", "图片", "提交时间"};
         CellStyle headStyle = wb.createCellStyle();
         Font headFont = wb.createFont();
         headFont.setBold(true);
@@ -94,6 +118,7 @@ public class FeedbackManageController {
             IssueFeedback f = list.get(i);
             Row row = sheet.createRow(i + 1);
             int col = 0;
+            row.createCell(col++).setCellValue(channelText(f.getChannel()));
             row.createCell(col++).setCellValue(nvl(f.getFeedbackType()));
             row.createCell(col++).setCellValue(nvl(f.getStoreName()));
             row.createCell(col++).setCellValue(nvl(f.getPhone()));
@@ -103,10 +128,10 @@ public class FeedbackManageController {
             row.createCell(col++).setCellValue(f.getCreatedAt() != null ? f.getCreatedAt().format(dtf) : "");
         }
         for (int i = 0; i < heads.length; i++) {
-            sheet.setColumnWidth(i, i == 4 ? 6000 : 4000);
+            sheet.setColumnWidth(i, i == 5 ? 6000 : 4000);
         }
 
-        String fileName = URLEncoder.encode("问题反馈.xlsx", StandardCharsets.UTF_8).replace("+", "%20");
+        String fileName = URLEncoder.encode("评价管理.xlsx", StandardCharsets.UTF_8).replace("+", "%20");
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + fileName);
         wb.write(response.getOutputStream());
@@ -115,6 +140,16 @@ public class FeedbackManageController {
 
     private static String nvl(String s) {
         return s != null ? s : "";
+    }
+
+    /** 渠道码转中文（导出用） */
+    private static String channelText(String channel) {
+        return switch (channel == null ? "" : channel) {
+            case "scan" -> "扫码反馈";
+            case "meituan" -> "美团";
+            case "xiaohongshu" -> "小红书";
+            default -> nvl(channel);
+        };
     }
 
     /** 状态码转中文（导出用） */

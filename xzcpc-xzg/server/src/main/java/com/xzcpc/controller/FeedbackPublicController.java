@@ -115,6 +115,7 @@ public class FeedbackPublicController {
         }
         issueFeedbackService.submit(
                 body.get("feedbackType"),
+                body.get("channel"),
                 body.get("storeId"),
                 body.get("storeName"),
                 body.get("phone"),

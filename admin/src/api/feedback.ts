@@ -6,6 +6,7 @@ export function getFeedbackOptions() {
 
 export function getFeedbackList(params?: {
   feedbackType?: string
+  channel?: string
   storeId?: string
   storeName?: string
   status?: string

@@ -30,7 +30,7 @@
               <QuestionCircleOutlined /><span>问题处理</span>
             </div>
             <div class="nav-link" :class="{ active: menuKeyMap.feedback }" v-if="canSeeFeedback" @click="go('/feedback')">
-              <MessageOutlined /><span>问题反馈</span>
+              <MessageOutlined /><span>评价管理</span>
             </div>
             <div class="nav-link" :class="{ active: menuKeyMap.loss }" v-if="canSeeTask" @click="go('/loss')">
               <ExclamationCircleOutlined /><span>报损管理</span>
@@ -111,7 +111,7 @@ const siderWidth = computed(() => collapsed.value ? '80px' : '220px')
 const canAccessAdmin = computed(() => { authRevision.value; return hasAdminAccess() })
 const isSupervisor = computed(() => { authRevision.value; return hasRole('supervisor_admin') })
 const canSeeTask = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('operation_admin') || isSupervisor.value) })
-const canSeeFeedback = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('operation_admin')) })
+const canSeeFeedback = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('operation_admin') || isSupervisor.value) })
 const canSeeExpense = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('finance_admin') || isSupervisor.value) })
 const canSeePeople = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('hr_admin') || isSupervisor.value) })
 const canSeeLogs = computed(() => { authRevision.value; return canAccessAdmin.value && hasRole('headquarters_admin') })

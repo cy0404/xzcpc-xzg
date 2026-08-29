@@ -113,7 +113,7 @@ const router = createRouter({
       path: '/feedback',
       name: 'FeedbackLedger',
       component: () => import('../views/feedback/FeedbackList.vue'),
-      meta: { roles: ['headquarters_admin', 'operation_admin'] },
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
       path: '/supervisor',
