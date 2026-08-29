@@ -21,8 +21,10 @@ application-local.yml
 
 # ===== 临时/调试文件（不入库）=====
 /tmp*
+*-cookies.txt
 *.cookies.txt
 /bt594*.json
+/xinfo_*.json
 /chat_ids.txt
 /feedback-qrcode.png
 /h5-app-new.js
