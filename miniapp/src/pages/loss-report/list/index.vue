@@ -71,13 +71,13 @@ const resolvedCount = computed(() => records.value.filter(r => r.status === 'con
 onShow(() => { if (userStore.token && userStore.bound) fetchList() })
 
 onPullDownRefresh(async () => {
-  await fetchList()
+  await fetchList(false)  // 下拉刷新：保留列表显示，不切骨架
   uni.stopPullDownRefresh()
 })
 
-async function fetchList() {
-  loading.value = true
-  try { const res: any = await getLossList({ pageSize: 50 }); records.value = res.records || [] }
+async function fetchList(showSkeleton = true) {
+  if (showSkeleton) loading.value = true
+  try { const res: any = await getLossList({ pageSize: 500 }); records.value = res.records || [] }
   finally { loading.value = false }
 }
 
@@ -426,6 +426,11 @@ function doBatch(action: 'approve' | 'reject') {
         const ok = r?.success ?? 0
         const skip = r?.skipped ?? 0
         uni.showToast({ title: `已${label} ${ok} 条${skip ? `，跳过 ${skip} 条` : ''}`, icon: 'none', duration: 2500 })
+        // 乐观更新：本地立即将选中记录置为终态，操作按钮马上消失（fetchList 结果回来再校准）
+        const idSet = new Set(ids)
+        records.value = records.value.map(lr => idSet.has(lr.id)
+          ? { ...lr, status: action === 'approve' ? (lr.lossType === 'arrival' ? 'pending' : 'completed') : 'rejected' }
+          : lr)
         batchMode.value = false; selectedIds.value.clear()
         fetchList()
       } catch { uni.showToast({ title: '批量操作失败', icon: 'none' }) }
@@ -437,14 +442,14 @@ function doBatch(action: 'approve' | 'reject') {
 async function doApprove(r: any) {
   if (actionLoadingId.value) return
   actionLoadingId.value = r.id
-  try { await approveLoss(r.id); uni.showToast({ title: '已通过', icon: 'success' }); fetchList() }
+  try { await approveLoss(r.id); uni.showToast({ title: '已通过', icon: 'success' }); r.status = r.lossType === 'arrival' ? 'pending' : 'completed'; fetchList() }
   catch { fetchList() }  // 并发冲突时静默刷新
   finally { actionLoadingId.value = 0 }
 }
 async function doReject(r: any) {
   if (actionLoadingId.value) return
   actionLoadingId.value = r.id
-  try { await rejectApproval(r.id); uni.showToast({ title: '已拒绝', icon: 'success' }); fetchList() }
+  try { await rejectApproval(r.id); uni.showToast({ title: '已拒绝', icon: 'success' }); r.status = 'rejected'; fetchList() }
   catch { fetchList() }
   finally { actionLoadingId.value = 0 }
 }
@@ -492,7 +497,7 @@ function statusClass(s: string) {
       <!-- 批量入口：进入/退出批量模式 -->
       <view v-if="canManage && (batchMode || showBatchEntry)" class="ov-batch" :class="{ 'batch-on': batchMode }" @click="toggleBatchMode()">
         <text class="ovb-txt">{{ batchMode ? '已选 ' + selectedIds.size + ' 条' : '批量处理待审核报损' }}</text>
-        <text class="ovb-btn">{{ batchMode ? '取消' : '去批量 ›' }}</text>
+        <text class="ovb-btn">{{ batchMode ? '取消' : '去处理 ›' }}</text>
       </view>
     </view>
 
@@ -509,7 +514,15 @@ function statusClass(s: string) {
 
     <!-- 报损记录 -->
     <view class="section">
-      <view v-if="tabRecords.length" class="record-list">
+      <!-- 加载中：骨架（不渲染旧数据，避免返回列表页时闪现旧状态按钮） -->
+      <view v-if="loading" class="list-loading">
+        <view v-for="i in 4" :key="i" class="lk-card">
+          <view class="lk-line" style="width:30%"></view>
+          <view class="lk-line" style="width:70%"></view>
+          <view class="lk-line" style="width:50%"></view>
+        </view>
+      </view>
+      <view v-else-if="tabRecords.length" class="record-list">
         <view v-for="r in tabRecords" :key="r.id" class="rec-card" :class="{ 'batch-on': batchMode }" @click="batchMode ? toggleSelect(r) : goDetail(r)">
           <view v-if="batchMode" class="rec-check" :class="{ on: selectedIds.has(r.id), disabled: r.status !== 'pending_approval' }" @click.stop="toggleSelect(r)">✓</view>
           <view class="rc-main">
@@ -750,11 +763,17 @@ $p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$s:#fff;$b
 .b-btn{flex:1;height:76rpx;border-radius:999rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700;color:#fff}.b-btn-daily{background:$p}.b-btn-arrival{background:$w}
 
 .tab-bar{display:flex;align-items:center;gap:12rpx;margin:0 20rpx 16rpx}.tab-scroll{flex:1;width:0}.tab-row{display:flex;gap:12rpx;white-space:nowrap}.tab-item{flex-shrink:0;padding:10rpx 24rpx;border-radius:999rpx;font-size:24rpx;color:$t2;background:#fff;border:1px solid $b}.tab-item.on{background:$p;color:#fff;border-color:$p}
-.ov-batch{display:flex;align-items:center;justify-content:space-between;margin-top:16rpx;padding:14rpx 24rpx;border-radius:12rpx;background:$p;color:#fff;font-size:26rpx;font-weight:700}
-.ov-batch.batch-on{background:#FEF0EF;color:#E05A47;border:1px solid #F3C1BC}
+.ov-batch{display:flex;align-items:center;justify-content:space-between;margin-top:16rpx;padding:14rpx 24rpx;border-radius:999rpx;background:#FDF3E7;border:1.5rpx solid #F0D9AE;color:#E58A2D;font-size:26rpx;font-weight:700}
+.ov-batch.batch-on{background:#FEF0EF;color:#E05A47;border-color:#F3C1BC}
 .ovb-btn{font-size:24rpx;font-weight:700;opacity:.95}
 .section{margin:0 20rpx 24rpx}.section-title{font-size:32rpx;font-weight:700;color:$t1;margin-bottom:16rpx}
 .record-list{display:flex;flex-direction:column;gap:16rpx}
+// 加载骨架
+.list-loading{display:flex;flex-direction:column;gap:16rpx}
+.lk-card{padding:24rpx;background:$s;border-radius:16rpx;border:1px solid $b}
+.lk-line{height:28rpx;border-radius:6rpx;background:linear-gradient(90deg,#F0F2F0 25%,#E5E9E5 50%,#F0F2F0 75%);background-size:200% 100%;animation:lk 1.2s infinite}
+.lk-line+.lk-line{margin-top:16rpx}
+@keyframes lk{from{background-position:200% 0}to{background-position:-200% 0}}
 .rec-card{padding:24rpx;background:$s;border-radius:16rpx;border:1px solid $b}
 .rec-check{flex-shrink:0;width:40rpx;height:40rpx;margin-right:20rpx;border-radius:50%;border:2rpx solid #C9CDD4;display:flex;align-items:center;justify-content:center;font-size:24rpx;color:transparent;background:#fff}.rec-check.on{border-color:$p;background:$p;color:#fff}.rec-check.disabled{opacity:.35}
 .rec-card.batch-on{display:flex;align-items:flex-start}.rc-main{flex:1;min-width:0}
@@ -762,7 +781,7 @@ $p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$s:#fff;$b
 .batch-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16rpx;padding:12rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);background:rgba(255,255,255,.92);backdrop-filter:blur(20rpx);box-shadow:0 -10rpx 40rpx rgba(0,0,0,.04)}
 .bb-left{display:flex;align-items:center}.bb-check{margin-right:8rpx}.bb-select-txt{font-size:26rpx;color:$t1}
 .bb-right{display:flex;gap:16rpx}
-.bb-btn{height:76rpx;padding:0 36rpx;border-radius:999rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700;color:#fff}.bb-ok{background:$p}.bb-reject{background:#FEF0EF;color:#E05A47;border:1px solid #F3C1BC}
+.bb-btn{height:76rpx;padding:0 36rpx;border-radius:999rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700;color:#fff}.bb-ok{background:$w}.bb-reject{background:#FEF0EF;color:#E05A47;border:1px solid #F3C1BC}
 .rc-top{display:flex;justify-content:space-between;margin-bottom:12rpx}
 .rc-type{font-size:22rpx;padding:4rpx 16rpx;border-radius:999rpx;background:$b;color:$t2}.rc-type.orange{background:#FFF8EE;color:$w}
 .rc-status{font-size:22rpx;padding:4rpx 16rpx;border-radius:999rpx;background:$ps;color:$p}.rc-status.s-warn{background:#FFF8EE;color:$w}.rc-status.s-ok{background:$ps;color:$p}.rc-status.s-blue{background:#E8F0FE;color:#1A73E8}.rc-status.s-red{background:#FEF0EF;color:#E05A47}.rc-status.s-gray{background:$b;color:$t3}
