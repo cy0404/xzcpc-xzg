@@ -669,6 +669,57 @@ public class LossReportServiceImpl implements LossReportService {
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> batchApprove(List<Long> ids, String action, String storeId) {
+        if (ids == null || ids.isEmpty()) throw new BusinessException("请选择要处理的报损记录");
+        if (!"approve".equals(action) && !"reject".equals(action)) throw new BusinessException("无效的处理动作");
+        int ok = 0, skip = 0;
+        for (Long id : ids) {
+            LossReport r = lossReportMapper.selectById(id);
+            if (r == null || !r.getStoreId().equals(storeId)) continue;   // 非本店记录跳过
+            if (!"pending_approval".equals(r.getStatus())) { skip++; continue; }  // 已处理过，幂等跳过
+            if ("approve".equals(action)) {
+                if ("daily".equals(r.getLossType())) {
+                    r.setStatus("completed");
+                } else {
+                    r.setStatus("pending");
+                }
+                r.setConfirmedAt(LocalDateTime.now());
+                r.setUpdatedAt(LocalDateTime.now());
+                lossReportMapper.updateById(r);
+                addLog(id, "approve", r.getHandlerName(), null);
+                // 加急到货报损：店长审批通过后发加急卡片（照单条 approve）
+                if (r.getUrgent() != null && r.getUrgent() == 1 && "arrival".equals(r.getLossType())) {
+                    Long rid = r.getId();
+                    String url = serverUrl;
+                    org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                try {
+                                    new org.springframework.web.client.RestTemplate().postForEntity(
+                                            url + "/api/public/loss-report/send-urgent-card",
+                                            Map.of("reportId", rid.toString()),
+                                            String.class);
+                                } catch (Exception ignored) {}
+                            }
+                        });
+                }
+            } else {
+                r.setStatus("rejected");
+                r.setUpdatedAt(LocalDateTime.now());
+                lossReportMapper.updateById(r);
+                addLog(id, "reject_approval", r.getHandlerName(), null);
+            }
+            ok++;
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", ok);
+        result.put("skipped", skip);
+        return result;
+    }
+
+    @Override
     public void receive(Long id, String storeId, String operator, String remark) {
         LossReport r = lossReportMapper.selectById(id);
         if (r == null || !r.getStoreId().equals(storeId)) throw new BusinessException("报损记录不存在");

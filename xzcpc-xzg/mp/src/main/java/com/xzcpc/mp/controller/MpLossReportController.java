@@ -7,6 +7,7 @@ import com.xzcpc.common.annotation.OpLog;
 import com.xzcpc.common.response.R;
 import com.xzcpc.mp.client.QmaiClient;
 import com.xzcpc.mp.context.UserContextHolder;
+import com.xzcpc.mp.dto.BatchApproveReq;
 import com.xzcpc.mp.dto.DailyLossCreateReq;
 import com.xzcpc.mp.entity.LossReport;
 import com.xzcpc.mp.service.LossReportService;
@@ -109,6 +110,13 @@ public class MpLossReportController {
         String storeId = UserContextHolder.get().getStoreId();
         lossReportService.rejectApproval(id, storeId);
         return R.ok();
+    }
+
+    /** 批量审批（通过/拒绝），已处理或非本店记录自动跳过 */
+    @PostMapping("/batch-approve")
+    public R<Map<String, Object>> batchApprove(@RequestBody BatchApproveReq req) {
+        String storeId = UserContextHolder.get().getStoreId();
+        return R.ok(lossReportService.batchApprove(req.getIds(), req.getAction(), storeId));
     }
 
     /** 修改日常报损 */

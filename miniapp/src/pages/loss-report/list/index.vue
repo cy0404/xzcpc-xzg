@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
-import { getLossList, createLoss, getContainers, searchMaterials, uploadLossVideo, uploadLossImage, appendLossVoucher, closeLoss, approveLoss, rejectApproval, receiveLoss, notReceiveLoss } from '@/api/loss-report'
+import { getLossList, createLoss, getContainers, searchMaterials, uploadLossVideo, uploadLossImage, appendLossVoucher, closeLoss, approveLoss, rejectApproval, receiveLoss, notReceiveLoss, batchApproveLoss } from '@/api/loss-report'
 import { BASE_URL, H5_BASE } from '@/utils/constants'
 
 const userStore = useUserStore()
@@ -380,6 +380,51 @@ const tabRecords = computed(() => {
 })
 const actionLoadingId = ref(0)
 
+// ============ 批量审批（店长/老板） ============
+const batchMode = ref(false)
+const selectedIds = ref<Set<number>>(new Set())
+const batchSubmitting = ref(false)
+// 批量模式只允许勾选待审核记录（全部/待审核 tab 通用）
+const selectableRecords = computed(() => tabRecords.value.filter(r => r.status === 'pending_approval'))
+const allSelected = computed(() => selectableRecords.value.length > 0 && selectableRecords.value.every(r => selectedIds.value.has(r.id)))
+
+function toggleBatchMode() {
+  batchMode.value = !batchMode.value
+  selectedIds.value.clear()
+}
+function toggleSelect(r: any) {
+  if (r.status !== 'pending_approval') return
+  if (selectedIds.value.has(r.id)) selectedIds.value.delete(r.id)
+  else selectedIds.value.add(r.id)
+}
+function toggleSelectAll() {
+  if (allSelected.value) selectedIds.value.clear()
+  else selectableRecords.value.forEach(r => selectedIds.value.add(r.id))
+}
+function doBatch(action: 'approve' | 'reject') {
+  if (batchSubmitting.value || selectedIds.value.size === 0) return
+  const ids = [...selectedIds.value]
+  const label = action === 'approve' ? '通过' : '拒绝'
+  uni.showModal({
+    title: `批量${label}`,
+    content: `确定批量${label}选中的 ${ids.length} 条报损记录吗？`,
+    confirmText: `批量${label}`,
+    success: async (res) => {
+      if (!res.confirm) return
+      batchSubmitting.value = true
+      try {
+        const r: any = await batchApproveLoss(ids, action)
+        const ok = r?.success ?? ids.length
+        const skip = r?.skipped ?? 0
+        uni.showToast({ title: `已${label} ${ok} 条${skip ? `，跳过 ${skip} 条` : ''}`, icon: 'none', duration: 2500 })
+        batchMode.value = false; selectedIds.value.clear()
+        fetchList()
+      } catch { uni.showToast({ title: '批量操作失败', icon: 'none' }) }
+      finally { batchSubmitting.value = false }
+    },
+  })
+}
+
 async function doApprove(r: any) {
   if (actionLoadingId.value) return
   actionLoadingId.value = r.id
@@ -437,19 +482,25 @@ function statusClass(s: string) {
       </view>
     </view>
 
-    <!-- Tab 栏 -->
-    <scroll-view scroll-x enhanced show-scrollbar="false" class="tab-scroll">
-      <view class="tab-row">
-        <view v-for="t in tabs" :key="t.key" class="tab-item" :class="{ on: activeTab === t.key }" @click="activeTab = t.key">
-          {{ t.label }}
+    <!-- Tab 栏 + 批量入口 -->
+    <view class="tab-bar">
+      <scroll-view scroll-x enhanced show-scrollbar="false" class="tab-scroll">
+        <view class="tab-row">
+          <view v-for="t in tabs" :key="t.key" class="tab-item" :class="{ on: activeTab === t.key }" @click="activeTab = t.key">
+            {{ t.label }}
+          </view>
         </view>
-      </view>
-    </scroll-view>
+      </scroll-view>
+      <view v-if="canManage && !batchMode && (activeTab === 'all' || activeTab === 'pending_approval')" class="batch-entry" @click="toggleBatchMode()">批量</view>
+      <view v-else-if="batchMode" class="batch-entry batch-entry-on" @click="toggleBatchMode()">取消</view>
+    </view>
 
     <!-- 报损记录 -->
     <view class="section">
       <view v-if="tabRecords.length" class="record-list">
-        <view v-for="r in tabRecords" :key="r.id" class="rec-card" @click="goDetail(r)">
+        <view v-for="r in tabRecords" :key="r.id" class="rec-card" :class="{ 'batch-on': batchMode }" @click="batchMode ? toggleSelect(r) : goDetail(r)">
+          <view v-if="batchMode" class="rec-check" :class="{ on: selectedIds.has(r.id), disabled: r.status !== 'pending_approval' }" @click.stop="toggleSelect(r)">✓</view>
+          <view class="rc-main">
           <view class="rc-top">
             <text class="rc-type" :class="r.lossType === 'arrival' ? 'orange' : ''">{{ r.lossType === 'arrival' ? '到货验收' : '日常报损' }}</text>
             <text class="rc-status" :class="statusClass(r.status)">{{ statusLabel(r.status, r) }}</text>
@@ -465,22 +516,23 @@ function statusClass(s: string) {
           <text v-if="r.rejectReason && !r.latestLogAction" class="rc-reject">拒绝原因：{{ r.rejectReason }}</text>
           <text v-if="r.lossType === 'arrival' && r.latestLogAction && r.latestLogAction !== '提交报损'" :class="r.latestLogAction.includes('拒绝') ? 'rc-reject' : 'rc-progress'">{{ r.latestLogAction }}<text v-if="r.latestLogRemark">：{{ r.latestLogRemark }}</text></text>
           <!-- 待审批：仅店长/老板可见 -->
-          <view v-if="r.status === 'pending_approval' && canManage" class="rc-actions">
+          <view v-if="r.status === 'pending_approval' && canManage && !batchMode" class="rc-actions">
             <view class="rca-btn rca-no" @click.stop="doReject(r)">拒绝</view>
             <view class="rca-btn rca-ok" @click.stop="doApprove(r)">通过</view>
           </view>
           <!-- 已确认补发/已发券：所有人可见 -->
-          <view v-else-if="r.status === 'confirmed_resend'" class="rc-actions">
+          <view v-else-if="r.status === 'confirmed_resend' && !batchMode" class="rc-actions">
             <view class="rca-btn rca-no" @click.stop="doNotReceive(r)">{{ r.isFruitVeg ? '未收到' : '未收到货' }}</view>
             <view class="rca-btn rca-ok" @click.stop="doReceive(r)">{{ r.isFruitVeg ? '已收到' : '已收货' }}</view>
           </view>
           <!-- 厂家拒绝：重新提交 + 关闭 -->
-          <view v-else-if="r.status === 'rejected' && r.lossType === 'arrival'" class="rc-actions">
+          <view v-else-if="r.status === 'rejected' && r.lossType === 'arrival' && !batchMode" class="rc-actions">
             <view class="rca-btn rca-no" @click.stop="doClose(r)">关闭</view>
             <view class="rca-btn rca-ok" @click.stop="resubmitArrival(r)">重新提交</view>
           </view>
           <!-- 其他状态：原有箭头 -->
-          <view v-else class="rc-arrow">查看报损 ›</view>
+          <view v-else-if="!batchMode" class="rc-arrow">查看报损 ›</view>
+          </view>
         </view>
       </view>
       <view v-else class="empty">{{ activeTab === 'all' ? '暂无报损记录' : '暂无' + tabs.find(t=>t.key===activeTab)?.label + '的报损' }}</view>
@@ -488,9 +540,21 @@ function statusClass(s: string) {
   </view>
 
   <!-- 底部固定快捷入口 -->
-  <view class="bottom-bar">
+  <view v-if="!batchMode" class="bottom-bar">
     <view class="b-btn b-btn-arrival" @click="openArrival()">到货验收报损</view>
     <view class="b-btn b-btn-daily" @click="goDailyLoss()">日常报损</view>
+  </view>
+
+  <!-- 批量操作条 -->
+  <view v-else class="batch-bar">
+    <view class="bb-left" @click="toggleSelectAll">
+      <view class="rec-check bb-check" :class="{ on: allSelected }">✓</view>
+      <text class="bb-select-txt">{{ allSelected ? '取消全选' : '全选' }}</text>
+    </view>
+    <view class="bb-right">
+      <view class="bb-btn bb-reject" @click="doBatch('reject')">批量拒绝</view>
+      <view class="bb-btn bb-ok" @click="doBatch('approve')">批量通过 ({{ selectedIds.size }})</view>
+    </view>
   </view>
 
   <!-- 新建报损弹窗 -->
@@ -673,10 +737,18 @@ $p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$s:#fff;$b
 // 底部按钮
 .b-btn{flex:1;height:76rpx;border-radius:999rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700;color:#fff}.b-btn-daily{background:$p}.b-btn-arrival{background:$w}
 
-.tab-scroll{width:100%;margin-bottom:16rpx}.tab-row{display:flex;gap:12rpx;padding:0 20rpx;white-space:nowrap}.tab-item{flex-shrink:0;padding:10rpx 24rpx;border-radius:999rpx;font-size:24rpx;color:$t2;background:#fff;border:1px solid $b}.tab-item.on{background:$p;color:#fff;border-color:$p}
+.tab-bar{display:flex;align-items:center;gap:12rpx;margin:0 20rpx 16rpx}.tab-scroll{flex:1;width:0}.tab-row{display:flex;gap:12rpx;white-space:nowrap}.tab-item{flex-shrink:0;padding:10rpx 24rpx;border-radius:999rpx;font-size:24rpx;color:$t2;background:#fff;border:1px solid $b}.tab-item.on{background:$p;color:#fff;border-color:$p}
+.batch-entry{flex-shrink:0;padding:10rpx 28rpx;border-radius:999rpx;font-size:24rpx;font-weight:700;color:#fff;background:$p}.batch-entry-on{background:#FEF0EF;color:#E05A47;border:1px solid #F3C1BC}
 .section{margin:0 20rpx 24rpx}.section-title{font-size:32rpx;font-weight:700;color:$t1;margin-bottom:16rpx}
 .record-list{display:flex;flex-direction:column;gap:16rpx}
 .rec-card{padding:24rpx;background:$s;border-radius:16rpx;border:1px solid $b}
+.rec-check{flex-shrink:0;width:40rpx;height:40rpx;margin-right:20rpx;border-radius:50%;border:2rpx solid #C9CDD4;display:flex;align-items:center;justify-content:center;font-size:24rpx;color:transparent;background:#fff}.rec-check.on{border-color:$p;background:$p;color:#fff}.rec-check.disabled{opacity:.35}
+.rec-card.batch-on{display:flex;align-items:flex-start}.rc-main{flex:1;min-width:0}
+// 批量操作条
+.batch-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16rpx;padding:12rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);background:rgba(255,255,255,.92);backdrop-filter:blur(20rpx);box-shadow:0 -10rpx 40rpx rgba(0,0,0,.04)}
+.bb-left{display:flex;align-items:center}.bb-check{margin-right:8rpx}.bb-select-txt{font-size:26rpx;color:$t1}
+.bb-right{display:flex;gap:16rpx}
+.bb-btn{height:76rpx;padding:0 36rpx;border-radius:999rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700;color:#fff}.bb-ok{background:$p}.bb-reject{background:#FEF0EF;color:#E05A47;border:1px solid #F3C1BC}
 .rc-top{display:flex;justify-content:space-between;margin-bottom:12rpx}
 .rc-type{font-size:22rpx;padding:4rpx 16rpx;border-radius:999rpx;background:$b;color:$t2}.rc-type.orange{background:#FFF8EE;color:$w}
 .rc-status{font-size:22rpx;padding:4rpx 16rpx;border-radius:999rpx;background:$ps;color:$p}.rc-status.s-warn{background:#FFF8EE;color:$w}.rc-status.s-ok{background:$ps;color:$p}.rc-status.s-blue{background:#E8F0FE;color:#1A73E8}.rc-status.s-red{background:#FEF0EF;color:#E05A47}.rc-status.s-gray{background:$b;color:$t3}

@@ -21,6 +21,11 @@ export function rejectApproval(id: number) {
   return request({ url: `/loss-report/${id}/reject-approval`, method: 'POST' })
 }
 
+/** 店长批量审批：action=approve|reject，返回 { success, skipped } */
+export function batchApproveLoss(ids: number[], action: 'approve' | 'reject') {
+  return request<any>({ url: '/loss-report/batch-approve', method: 'POST', data: { ids, action } })
+}
+
 export function getLossLogs(id: number) {
   return request<any[]>({ url: `/loss-report/${id}/logs`, showLoading: false })
 }
