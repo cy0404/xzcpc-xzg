@@ -214,10 +214,8 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                     continue;
                 }
                 boolean disabled = STATUS_DISABLED.equals(sp.getStatus());
-                // 无信息量规格（1000g/kg、kg/kg 等纯单位格式）不写入，留空待人工补
-                String spec = isMeaninglessSpec(sp.getSpecification()) ? null : sp.getSpecification();
                 upsertMaterial(sp.getId(), sp.getCode(), sp.getName(),
-                        SEMI_PARENT_CATEGORY, SEMI_CATEGORY, spec, disabled, stats);
+                        SEMI_PARENT_CATEGORY, SEMI_CATEGORY, sp.getSpecification(), disabled, stats);
                 upsertSemiRule(sp, sp.getId(), disabled, stats);
                 continue;
             }
@@ -229,9 +227,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             if (!StringUtils.hasText(semi.getCategory())) {
                 updateCategoryFields(semi.getMaterialId(), SEMI_CATEGORY);
             }
-            // 存量无意义规格（接口同步的 1000g/kg 等）清空
-            if (isMeaninglessSpec(semi.getSpec())) {
-                updateSpecFields(semi.getMaterialId(), null);
+            // 存量规格为空时补齐接口原值（规格按接口同步、不清空，仅在缺失时补）
+            if (!StringUtils.hasText(semi.getSpec()) && StringUtils.hasText(sp.getSpecification())) {
+                updateSpecFields(semi.getMaterialId(), sp.getSpecification());
             }
             // 存量也全量刷新规则（base_unit/inventory_units/unit_price/order_price，以接口为准；
             // 规则归属存量行 material_id，与接口 id 可能不一致；unit 为空/禁用时 upsertSemiRule 内部跳过）
@@ -280,7 +278,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         materialMapper.updateCategoryFields(m);
     }
 
-    /** 存量物料：刷新规格（仅用于清空无意义规格），其他字段不动 */
+    /** 存量物料：规格为空时补齐接口原值，其他字段不动 */
     private void updateSpecFields(String materialId, String spec) {
         Material m = new Material();
         m.setMaterialId(materialId);
@@ -484,14 +482,6 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         // 会留下 1kg=1000g 等换算行，与半成品"仅称重单位"语义冲突）
         conversionRuleMapper.delete(new LambdaQueryWrapper<MaterialConversionRule>()
                 .eq(MaterialConversionRule::getRuleId, rule.getRuleId()));
-    }
-
-    /** 无信息量规格（纯单位/纯换算格式，如 1000g/kg、kg/kg、1kg、L）→ 同步时清空；
-     *  有包装信息的（如 50g/包、1kg/瓶、500g/包*24包/件）保留 */
-    private static boolean isMeaninglessSpec(String spec) {
-        if (spec == null) return false;
-        String s = spec.trim().toLowerCase();
-        return s.matches("^(\\d*\\s*)(g|kg|l|ml)(\\s*/\\s*\\d*\\s*(g|kg|l|ml))?$");
     }
 
     private MaterialConversionRule buildConversion(String ruleId, String type,

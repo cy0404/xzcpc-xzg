@@ -43,7 +43,7 @@ public interface MaterialMapper extends BaseMapper<Material> {
     int updateCategoryFields(Material material);
 
     /**
-     * 同步专用更新（存量物料）：仅刷新规格，其他字段不动。
+     * 同步专用更新（存量物料）：仅刷新规格（空时补齐接口原值用），其他字段不动。
      * 显式 AND del_flag = 0，防止把已停用物料意外刷新。
      */
     @Update("UPDATE material SET spec = #{spec}, updated_at = NOW() "
