@@ -60,6 +60,8 @@ app:
     # 均默认 false（只补字段）；全量校准完成后开一次，跑完关闭
     insert-new: ${APP_SYNC_INSERT_NEW:false}
     delete-absent: ${APP_SYNC_DELETE_ABSENT:false}
+    # 半成品同步开关：暂时关闭（半成品数据待校准）；开启设 APP_SYNC_SEMI_ENABLED=true
+    semi-enabled: ${APP_SYNC_SEMI_ENABLED:false}
 
 admin:
   jwt:

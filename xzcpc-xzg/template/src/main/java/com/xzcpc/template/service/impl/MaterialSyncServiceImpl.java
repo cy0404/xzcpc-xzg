@@ -103,6 +103,15 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     @Value("${app.sync.insert-new:false}")
     private boolean insertNew;
 
+    /**
+     * 是否同步半成品（拉取接口 + 插新/规则/分类刷新）。
+     * 默认 true；暂时关闭（false）时不拉半成品接口，但库中已标记半成品
+     * （category='半成品'）的 code/material_id 仍纳入跳过与源集合，
+     * 防止原料循环按 qm_code 刷新其规则/换算、deleteAbsent 误删。
+     */
+    @Value("${app.sync.semi-enabled:true}")
+    private boolean semiEnabled;
+
     // ==================== 入口 ====================
 
     @Override
@@ -141,12 +150,33 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         });
         // 半成品 id 也并入源集合：原料接口不含半成品（半成品独立 86 条，id 前缀 cmq28/cmpdo），
         // 不加进来 deleteAbsent 会把已入库的半成品物料全部误删。2.5 步骤复用同一列表，只拉一次。
-        List<XInfoSemiFinishedProduct> semiProducts = xinfoApiClient.fetchSemiFinishedProducts();
-        Set<String> semiCodes = new HashSet<>(semiProducts.size());
+        // semi-enabled=false 时不拉半成品接口（暂时不同步半成品）
+        List<XInfoSemiFinishedProduct> semiProducts = Collections.emptyList();
+        if (semiEnabled) {
+            semiProducts = xinfoApiClient.fetchSemiFinishedProducts();
+        } else {
+            log.info("半成品同步已关闭（app.sync.semi-enabled=false），跳过半成品接口拉取");
+        }
+        Set<String> semiCodes = new HashSet<>();
         for (XInfoSemiFinishedProduct sp : semiProducts) {
             if (hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
                 sourceIds.add(sp.getId());
                 semiCodes.add(sp.getCode());
+            }
+        }
+        // 半成品关闭时：库中已标记半成品（category='半成品'）的 code 纳入跳过集合、
+        // material_id 纳入源集合——原料循环不会按 qm_code 命中刷新其规则/换算，
+        // deleteAbsent 也不会误删（原料 secondaryCategory 无"半成品"值，可唯一识别）
+        if (!semiEnabled) {
+            List<Material> semiRows = materialMapper.selectList(new LambdaQueryWrapper<Material>()
+                    .eq(Material::getCategory, SEMI_CATEGORY));
+            for (Material s : semiRows) {
+                if (StringUtils.hasText(s.getQmCode())) {
+                    semiCodes.add(s.getQmCode());
+                }
+                if (StringUtils.hasText(s.getMaterialId())) {
+                    sourceIds.add(s.getMaterialId());
+                }
             }
         }
 
