@@ -141,9 +141,11 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         // 半成品 id 也并入源集合：原料接口不含半成品（半成品独立 86 条，id 前缀 cmq28/cmpdo），
         // 不加进来 deleteAbsent 会把已入库的半成品物料全部误删。2.5 步骤复用同一列表，只拉一次。
         List<XInfoSemiFinishedProduct> semiProducts = xinfoApiClient.fetchSemiFinishedProducts();
+        Set<String> semiCodes = new HashSet<>(semiProducts.size());
         for (XInfoSemiFinishedProduct sp : semiProducts) {
             if (hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
                 sourceIds.add(sp.getId());
+                semiCodes.add(sp.getCode());
             }
         }
 
@@ -151,6 +153,11 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         for (XInfoMaterial m : materials) {
             if (!hasRealName(m.getId(), m.getName(), m.getCode())) {
                 stats.emptyNameSkipped++;
+                continue;
+            }
+            // 半成品 code 跳过：原料/半成品接口有 19 条 code 重叠（同一物料两边都有），原料循环
+            // 会按 unitConversion 建换算行（1kg=1000g），与半成品"无换算"语义冲突，统一由 2.5 处理
+            if (semiCodes.contains(m.getCode())) {
                 continue;
             }
             // 优先按 qm_code 匹配存量物料（存量 material_id 是旧 id 体系如 WP0917，qm_code 与接口 code 同编码）：
@@ -207,9 +214,11 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                     continue;
                 }
                 boolean disabled = STATUS_DISABLED.equals(sp.getStatus());
+                // 无信息量规格（1000g/kg、kg/kg 等纯单位格式）不写入，留空待人工补
+                String spec = isMeaninglessSpec(sp.getSpecification()) ? null : sp.getSpecification();
                 upsertMaterial(sp.getId(), sp.getCode(), sp.getName(),
-                        SEMI_PARENT_CATEGORY, SEMI_CATEGORY, sp.getSpecification(), disabled, stats);
-                upsertSemiRule(sp, disabled, stats);
+                        SEMI_PARENT_CATEGORY, SEMI_CATEGORY, spec, disabled, stats);
+                upsertSemiRule(sp, sp.getId(), disabled, stats);
                 continue;
             }
             // 存量半成品：父级分类为空时补「食材成本」、二级分类为空时补「半成品」
@@ -220,9 +229,13 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             if (!StringUtils.hasText(semi.getCategory())) {
                 updateCategoryFields(semi.getMaterialId(), SEMI_CATEGORY);
             }
+            // 存量无意义规格（接口同步的 1000g/kg 等）清空
+            if (isMeaninglessSpec(semi.getSpec())) {
+                updateSpecFields(semi.getMaterialId(), null);
+            }
             // 存量也全量刷新规则（base_unit/inventory_units/unit_price/order_price，以接口为准；
-            // unit 为空/禁用时 upsertSemiRule 内部跳过）
-            upsertSemiRule(sp, STATUS_DISABLED.equals(sp.getStatus()), stats);
+            // 规则归属存量行 material_id，与接口 id 可能不一致；unit 为空/禁用时 upsertSemiRule 内部跳过）
+            upsertSemiRule(sp, semi.getMaterialId(), STATUS_DISABLED.equals(sp.getStatus()), stats);
         }
 
         // 3. 清理不在源中的物料（源集合 = 原料接口 + 半成品接口；手工创建 M 开头保留）
@@ -265,6 +278,14 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         m.setMaterialId(materialId);
         m.setCategory(category);
         materialMapper.updateCategoryFields(m);
+    }
+
+    /** 存量物料：刷新规格（仅用于清空无意义规格），其他字段不动 */
+    private void updateSpecFields(String materialId, String spec) {
+        Material m = new Material();
+        m.setMaterialId(materialId);
+        m.setSpec(spec);
+        materialMapper.updateSpecFields(m);
     }
 
     /**
@@ -417,9 +438,11 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     /**
      * 半成品基础规则：半成品接口无换算字段，仅建 base_unit / inventory_units / order_unit / order_price，
      * unit_price 取 qimaiPrice（元/unit 口径，null 兜底 0）。
+     * materialId 为规则归属的 material_id：插新=接口 id，存量=存量行 id（qm_code 命中的旧行，
+     * 与接口 id 不一致，用接口 id 查会建出孤儿规则、旧规则残留换算行不被清理）。
      * unit 为空不建（后台人工补）；禁用物料不建；已存在且不覆盖时跳过（overwriteRules 门控）。
      */
-    private void upsertSemiRule(XInfoSemiFinishedProduct sp, boolean disabled, SyncStats stats) {
+    private void upsertSemiRule(XInfoSemiFinishedProduct sp, String materialId, boolean disabled, SyncStats stats) {
         if (disabled) {
             log.debug("半成品 {}[{}] 为禁用状态，跳过规则生成", sp.getId(), sp.getName());
             return;
@@ -430,14 +453,14 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             return;
         }
         MaterialInventoryRule rule = ruleMapper.selectOne(new LambdaQueryWrapper<MaterialInventoryRule>()
-                .eq(MaterialInventoryRule::getMaterialId, sp.getId()));
+                .eq(MaterialInventoryRule::getMaterialId, materialId));
         if (rule != null && !overwriteRules) {
             return;
         }
         if (rule == null) {
             rule = new MaterialInventoryRule();
             rule.setRuleId("TMP");
-            rule.setMaterialId(sp.getId());
+            rule.setMaterialId(materialId);
             rule.setBaseUnit(unit);
             rule.setInventoryUnits(unit);
             rule.setUnitPrice(sp.getQimaiPrice() == null ? BigDecimal.ZERO : sp.getQimaiPrice());
@@ -457,6 +480,18 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             ruleMapper.updateById(rule);
             stats.rulesUpdated++;
         }
+        // 半成品无换算：清理残留换算行（19 条 code 与原料接口重叠，原料循环历史双重处理
+        // 会留下 1kg=1000g 等换算行，与半成品"仅称重单位"语义冲突）
+        conversionRuleMapper.delete(new LambdaQueryWrapper<MaterialConversionRule>()
+                .eq(MaterialConversionRule::getRuleId, rule.getRuleId()));
+    }
+
+    /** 无信息量规格（纯单位/纯换算格式，如 1000g/kg、kg/kg、1kg、L）→ 同步时清空；
+     *  有包装信息的（如 50g/包、1kg/瓶、500g/包*24包/件）保留 */
+    private static boolean isMeaninglessSpec(String spec) {
+        if (spec == null) return false;
+        String s = spec.trim().toLowerCase();
+        return s.matches("^(\\d*\\s*)(g|kg|l|ml)(\\s*/\\s*\\d*\\s*(g|kg|l|ml))?$");
     }
 
     private MaterialConversionRule buildConversion(String ruleId, String type,
