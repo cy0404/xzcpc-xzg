@@ -41,8 +41,10 @@ import java.util.Set;
  * 存量优先模式（接口数据校准前默认）：按 qm_code 匹配存量物料（存量 material_id 是旧 id 体系如 WP0917，
  * qm_code 与接口 code 同编码），命中 → 只补规则表采购单价/采购单位 + 一级分类成本映射，material 表其他字段
  * 不动（存量维持不变更）；接口有、库里没有的默认不插入（insert-new=true 才插）、存量默认不删
- * （delete-absent=true 才做全量镜像）。半成品接口无采购字段（2026-08-27 实测 0/86），仅按 qm_code
- * 补存量规则行采购字段，字段为 null 时跳过不覆盖，接口补充后自动补录。
+ * （delete-absent=true 才做全量镜像）。半成品独立 86 条（id 前缀 cmq28/cmpdo），id 并入源集合
+ * （deleteAbsent 不清理半成品）：存量按 qm_code 补规则行采购/订货字段，insert-new=true 时接口有
+ * 库里没有的也插入并建基础规则（无换算行；order_unit=unit、order_price=cost，已与业务确认
+ * cost 即半成品订货价格），字段为 null 时跳过不覆盖。
  *
  * 设计要点：
  * - 拉取失败或返回空 → 抛异常中止整轮，任何删除不执行（防误删全量）
@@ -69,6 +71,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             "包材物料", "包材成本",
             "自购食材物料", "自购食材成本"
     );
+
+    /** 半成品统一父级分类：xinfo 半成品接口无分类字段，业务口径全部归入「食材成本」（已与用户确认） */
+    private static final String SEMI_PARENT_CATEGORY = "食材成本";
 
     private final XInfoApiClient xinfoApiClient;
     private final MaterialMapper materialMapper;
@@ -120,9 +125,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         SyncStats stats = new SyncStats();
 
         // 1. 拉取原料（空响应/异常由客户端抛出，整轮中止，防误删）
-        //    半成品不建规则、不进源集合（deleteAbsent 开启时仍会被清理），仅在步骤 2.5 按
-        //    qm_code 补存量采购字段——半成品接口当前无 purchaseUnit/purchasePrice 字段（2026-08-27
-        //    实测 0/86），字段为 null 时跳过不覆盖，将来接口补充后同步自动补录
+        //    半成品 id 并入源集合（deleteAbsent 不清理），存量/插新处理见步骤 2.5——
+        //    半成品接口当前无 purchaseUnit/purchasePrice 字段（2026-08-27 实测 0/86），
+        //    字段为 null 时跳过不覆盖，将来接口补充后同步自动补录
         List<XInfoMaterial> materials = xinfoApiClient.fetchMaterials();
         Set<String> sourceIds = new HashSet<>(materials.size());
         // 仅收集"有真实名称"的物料进源集合：名称为空或名称=编码占位（如 name='WP0005'）的
@@ -130,6 +135,14 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         materials.forEach(m -> {
             if (hasRealName(m.getId(), m.getName(), m.getCode())) sourceIds.add(m.getId());
         });
+        // 半成品 id 也并入源集合：原料接口不含半成品（半成品独立 86 条，id 前缀 cmq28/cmpdo），
+        // 不加进来 deleteAbsent 会把已入库的半成品物料全部误删。2.5 步骤复用同一列表，只拉一次。
+        List<XInfoSemiFinishedProduct> semiProducts = xinfoApiClient.fetchSemiFinishedProducts();
+        for (XInfoSemiFinishedProduct sp : semiProducts) {
+            if (hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
+                sourceIds.add(sp.getId());
+            }
+        }
 
         // 2. 原料 upsert + 规则（名称为空/编码占位的不拉取）
         for (XInfoMaterial m : materials) {
@@ -169,39 +182,51 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             }
         }
 
-        // 2.5 半成品存量补采购/订货字段：半成品接口无 primaryCategory 等字段，不建规则、不插入新物料，
-        //     只按 qm_code 匹配 del_flag=0 存量规则行补采购/订货字段。
+        // 2.5 半成品：存量（qm_code 命中 del_flag=0）补采购/订货字段、父级分类为空时补「食材成本」；
+        //     insert-new=true 时接口有库里没有的也插入（material_id=接口 id，父级分类=食材成本，二级分类
+        //     接口无字段留空），并建基础规则（半成品无换算，仅 base_unit/inventory_units/
+        //     order_unit/order_price，unit 为空的不建，后台人工补）。
         //     半成品无独立订货单位（unit 即基础单位），order_unit 取 unit；
         //     order_price 取 cost（接口字段名，业务口径即「实际成本价 = netOutputQuantity×每克价」，
         //     已与业务确认 = 半成品订货价格；qimaiPrice/qimaiStockPrice 均非订货价）；
         //     stock_unit 接口无独立库存单位字段，暂不覆盖（传 null）。
         //     接口字段为 null（采购字段当前全 null；cost 6 条 null、unit 16 条空）时由
         //     updatePurchaseRuleFields 的字段级 null/空保护跳过，不覆盖人工维护的已有值。
-        for (XInfoSemiFinishedProduct sp : xinfoApiClient.fetchSemiFinishedProducts()) {
+        for (XInfoSemiFinishedProduct sp : semiProducts) {
             if (!hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
                 stats.emptyNameSkipped++;
                 continue;
             }
-            if (sp.getPurchasePrice() == null && !StringUtils.hasText(sp.getPurchaseUnit())
-                    && sp.getCost() == null && !StringUtils.hasText(sp.getUnit())) {
-                continue;
-            }
             Material semi = materialMapper.selectAnyByQmCode(sp.getCode());
             if (semi == null) {
-                stats.newSkipped++;
+                if (!insertNew) {
+                    stats.newSkipped++;
+                    continue;
+                }
+                boolean disabled = STATUS_DISABLED.equals(sp.getStatus());
+                upsertMaterial(sp.getId(), sp.getCode(), sp.getName(),
+                        SEMI_PARENT_CATEGORY, null, sp.getSpecification(), disabled, stats);
+                upsertSemiRule(sp, disabled, stats);
+                continue;
+            }
+            // 存量半成品：父级分类为空时补「食材成本」（接口无分类字段，旧数据/迁移数据可能为空；已有值不覆盖）
+            if (!StringUtils.hasText(semi.getParentCategory())) {
+                updateParentCategoryFields(semi.getMaterialId(), SEMI_PARENT_CATEGORY);
+            }
+            if (sp.getPurchasePrice() == null && !StringUtils.hasText(sp.getPurchaseUnit())
+                    && sp.getCost() == null && !StringUtils.hasText(sp.getUnit())) {
                 continue;
             }
             updatePurchaseRuleFields(semi.getMaterialId(), sp.getPurchasePrice(), sp.getPurchaseUnit(),
                     sp.getCost(), sp.getUnit(), null, stats);
         }
 
-        // 3. 清理不在源中的物料（半成品不建规则、不进源集合，deleteAbsent 开启时也会被逻辑删除；
-        //    手工创建 M 开头保留）
+        // 3. 清理不在源中的物料（源集合 = 原料接口 + 半成品接口；手工创建 M 开头保留）
         if (deleteAbsent) {
             stats.deleted = deleteAbsentMaterials(sourceIds);
         }
 
-        log.info("物料同步完成：补存量采购字段 {}，新增 {}，复活 {}，删除 {}（含半成品），未匹配跳过 {}，空名跳过 {}，"
+        log.info("物料同步完成：补存量采购字段 {}，新增 {}，复活 {}，删除 {}，未匹配跳过 {}，空名跳过 {}，"
                         + "规则创建 {}，规则更新 {}，换算行 {}，解析失败 {} 段，耗时 {}ms",
                 stats.purchaseUpdated, stats.inserted, stats.updated, stats.deleted, stats.newSkipped,
                 stats.emptyNameSkipped, stats.rulesCreated, stats.rulesUpdated, stats.conversionRows,
@@ -222,7 +247,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         return PARENT_CATEGORY_MAP.getOrDefault(primaryCategory, primaryCategory);
     }
 
-    /** 存量原料：按映射刷新一级分类（成本科目名），其他字段不动 */
+    /** 存量物料：刷新一级分类（成本科目名），其他字段不动 */
     private void updateParentCategoryFields(String materialId, String mappedParentCategory) {
         Material m = new Material();
         m.setMaterialId(materialId);
@@ -402,6 +427,51 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         if (ruleNew) {
             log.debug("物料 {}[{}] 规则已生成：base={}，unit换算 {} 条，weight换算 {} 条",
                     src.materialId(), src.name(), baseUnit, unitEntries.size(), weightEntries.size());
+        }
+    }
+
+    /**
+     * 半成品基础规则：半成品接口无换算字段，仅建 base_unit / inventory_units / order_unit / order_price，
+     * unit_price 取 qimaiPrice（元/unit 口径，null 兜底 0）。
+     * unit 为空不建（后台人工补）；禁用物料不建；已存在且不覆盖时仅补齐缺失。
+     */
+    private void upsertSemiRule(XInfoSemiFinishedProduct sp, boolean disabled, SyncStats stats) {
+        if (disabled) {
+            log.debug("半成品 {}[{}] 为禁用状态，跳过规则生成", sp.getId(), sp.getName());
+            return;
+        }
+        String unit = sp.getUnit() != null ? sp.getUnit().trim() : null;
+        if (!StringUtils.hasText(unit)) {
+            log.warn("半成品 {}[{}] 无单位，跳过规则生成（后台人工补）", sp.getId(), sp.getName());
+            return;
+        }
+        MaterialInventoryRule rule = ruleMapper.selectOne(new LambdaQueryWrapper<MaterialInventoryRule>()
+                .eq(MaterialInventoryRule::getMaterialId, sp.getId()));
+        if (rule != null && !overwriteRules) {
+            return;
+        }
+        if (rule == null) {
+            rule = new MaterialInventoryRule();
+            rule.setRuleId("TMP");
+            rule.setMaterialId(sp.getId());
+            rule.setBaseUnit(unit);
+            rule.setInventoryUnits(unit);
+            rule.setUnitPrice(sp.getQimaiPrice() == null ? BigDecimal.ZERO : sp.getQimaiPrice());
+            rule.setOrderPrice(sp.getCost());
+            rule.setOrderUnit(unit);
+            ruleMapper.insert(rule);
+            // 正式编码 MR + 8 位自增 id（与 upsertRules 一致）
+            rule.setRuleId("MR" + String.format("%08d", rule.getId()));
+            ruleMapper.updateById(rule);
+            stats.rulesCreated++;
+        } else {
+            rule.setBaseUnit(unit);
+            rule.setInventoryUnits(unit);
+            rule.setUnitPrice(sp.getQimaiPrice() == null ? BigDecimal.ZERO : sp.getQimaiPrice());
+            rule.setOrderPrice(sp.getCost());
+            rule.setOrderUnit(unit);
+            ruleMapper.updateById(rule);
+            stats.rulesUpdated++;
         }
     }
 
