@@ -710,6 +710,7 @@ public class LossReportServiceImpl implements LossReportService {
         return logMapper.selectList(new LambdaQueryWrapper<LossReportLog>()
                 .eq(LossReportLog::getReportId, reportId)
                 .ne(LossReportLog::getAction, "download")
+                .ne(LossReportLog::getAction, "outbound_create")
                 .orderByAsc(LossReportLog::getCreatedAt))
                 .stream().map(l -> {
                     Map<String, Object> m = new LinkedHashMap<>();
@@ -787,7 +788,7 @@ public class LossReportServiceImpl implements LossReportService {
         String placeholders = ids.stream().map(id -> "?").collect(Collectors.joining(","));
         List<Map<String, Object>> logs = jdbcTemplate.queryForList(
                 "SELECT t.report_id, t.action, t.remark FROM loss_report_log t " +
-                "INNER JOIN (SELECT report_id, MAX(created_at) AS max_created FROM loss_report_log WHERE report_id IN (" + placeholders + ") AND action NOT IN ('submit','delete','download') GROUP BY report_id) latest " +
+                "INNER JOIN (SELECT report_id, MAX(created_at) AS max_created FROM loss_report_log WHERE report_id IN (" + placeholders + ") AND action NOT IN ('submit','delete','download','outbound_create') GROUP BY report_id) latest " +
                 "ON t.report_id = latest.report_id AND t.created_at = latest.max_created",
                 ids.toArray());
         Map<Long, Map<String, Object>> logMap = new HashMap<>();
@@ -799,7 +800,12 @@ public class LossReportServiceImpl implements LossReportService {
             if (l != null) {
                 String action = (String) l.get("action");
                 if (!"submit".equals(action) && !"delete".equals(action)) {
-                    r.setLatestLogAction(actionLabel(action));
+                    String label = actionLabel(action);
+                    // 发券仅水果蔬菜类，其他类（牛油果泥/其他）为发货
+                    if ("issue_voucher".equals(action)) {
+                        label = Boolean.TRUE.equals(r.getIsFruitVeg()) ? "厂家确认发券" : "厂家确认发货";
+                    }
+                    r.setLatestLogAction(label);
                     r.setLatestLogRemark((String) l.getOrDefault("remark", ""));
                 }
             }
