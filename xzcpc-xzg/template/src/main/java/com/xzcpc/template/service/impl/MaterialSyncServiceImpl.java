@@ -151,14 +151,14 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                 continue;
             }
             // 优先按 qm_code 匹配存量物料（存量 material_id 是旧 id 体系如 WP0917，qm_code 与接口 code 同编码）：
-            // 命中 → 只补规则表采购单价/采购单位 + 一级分类成本映射，material 表其他字段不动（存量维持不变更）
+            // 命中 → 规则全量刷新（盘点单价/换算/采购/订货字段，以接口为准）+ 一级分类成本映射，
+            //     material 表其他字段不动
             Material existing = materialMapper.selectAnyByQmCode(m.getCode());
             if (existing != null) {
                 if (PARENT_CATEGORY_MAP.containsKey(m.getPrimaryCategory())) {
                     updateParentCategoryFields(existing.getMaterialId(), mapParentCategory(m.getPrimaryCategory()));
                 }
-                updatePurchaseRuleFields(existing.getMaterialId(), m.getPurchasePrice(), m.getPurchaseUnit(),
-                        m.getStandardCostPrice(), m.getUsageUnit(), m.getStockUnit(), stats);
+                upsertRules(RuleSource.of(m), stats);
                 continue;
             }
             // 接口有、库里没有：默认不插入（数据校准前避免引入不准数据），insert-new=true 时按 id 走现状插入
@@ -173,12 +173,11 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             if (outcome.needRules()) {
                 upsertRules(RuleSource.of(m), stats);
             } else if (outcome.activeExisting()) {
-                // cm id 体系的存量：分类成本映射刷新 + 只补规则表采购/订货字段
+                // cm id 体系的存量：分类成本映射刷新 + 规则全量刷新（以接口为准）
                 if (PARENT_CATEGORY_MAP.containsKey(m.getPrimaryCategory())) {
                     updateParentCategoryFields(m.getId(), mapParentCategory(m.getPrimaryCategory()));
                 }
-                updatePurchaseRuleFields(m.getId(), m.getPurchasePrice(), m.getPurchaseUnit(),
-                        m.getStandardCostPrice(), m.getUsageUnit(), m.getStockUnit(), stats);
+                upsertRules(RuleSource.of(m), stats);
             }
         }
 
@@ -191,7 +190,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         //     已与业务确认 = 半成品订货价格；qimaiPrice/qimaiStockPrice 均非订货价）；
         //     stock_unit 接口无独立库存单位字段，暂不覆盖（传 null）。
         //     接口字段为 null（采购字段当前全 null；cost 6 条 null、unit 16 条空）时由
-        //     updatePurchaseRuleFields 的字段级 null/空保护跳过，不覆盖人工维护的已有值。
+        //     upsertSemiRule 内部跳过（unit 空/禁用不建规则）。
         for (XInfoSemiFinishedProduct sp : semiProducts) {
             if (!hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
                 stats.emptyNameSkipped++;
@@ -213,12 +212,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             if (!StringUtils.hasText(semi.getParentCategory())) {
                 updateParentCategoryFields(semi.getMaterialId(), SEMI_PARENT_CATEGORY);
             }
-            if (sp.getPurchasePrice() == null && !StringUtils.hasText(sp.getPurchaseUnit())
-                    && sp.getCost() == null && !StringUtils.hasText(sp.getUnit())) {
-                continue;
-            }
-            updatePurchaseRuleFields(semi.getMaterialId(), sp.getPurchasePrice(), sp.getPurchaseUnit(),
-                    sp.getCost(), sp.getUnit(), null, stats);
+            // 存量也全量刷新规则（base_unit/inventory_units/unit_price/order_price，以接口为准；
+            // unit 为空/禁用时 upsertSemiRule 内部跳过）
+            upsertSemiRule(sp, STATUS_DISABLED.equals(sp.getStatus()), stats);
         }
 
         // 3. 清理不在源中的物料（源集合 = 原料接口 + 半成品接口；手工创建 M 开头保留）
@@ -226,9 +222,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             stats.deleted = deleteAbsentMaterials(sourceIds);
         }
 
-        log.info("物料同步完成：补存量采购字段 {}，新增 {}，复活 {}，删除 {}，未匹配跳过 {}，空名跳过 {}，"
+        log.info("物料同步完成：新增 {}，复活 {}，删除 {}，未匹配跳过 {}，空名跳过 {}，"
                         + "规则创建 {}，规则更新 {}，换算行 {}，解析失败 {} 段，耗时 {}ms",
-                stats.purchaseUpdated, stats.inserted, stats.updated, stats.deleted, stats.newSkipped,
+                stats.inserted, stats.updated, stats.deleted, stats.newSkipped,
                 stats.emptyNameSkipped, stats.rulesCreated, stats.rulesUpdated, stats.conversionRows,
                 stats.parseFailures, System.currentTimeMillis() - start);
         return materials.size();
@@ -299,34 +295,6 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     /** upsert 分支结果：needRules=需生成/刷新规则；activeExisting=存量启用物料（只补规则表采购字段） */
     private record UpsertOutcome(boolean needRules, boolean activeExisting) {}
 
-    /**
-     * 存量 del_flag=0 物料的规则：补采购单价/采购单位 + 订货单价/订货单位 + 库存单位，其他不动。
-     * 所有字段全为 null（如半成品接口当前无采购字段）时跳过不写；字段级 null 保护在
-     * updatePurchaseFields 动态 SQL 里（null 不覆盖已有值）。规则不存在则跳过（warn）。
-     */
-    private void updatePurchaseRuleFields(String materialId, BigDecimal purchasePrice,
-                                          String purchaseUnit, BigDecimal orderPrice,
-                                          String orderUnit, String stockUnit, SyncStats stats) {
-        if (purchasePrice == null && purchaseUnit == null && orderPrice == null && orderUnit == null
-                && stockUnit == null) {
-            return;
-        }
-        MaterialInventoryRule rule = ruleMapper.selectOne(new LambdaQueryWrapper<MaterialInventoryRule>()
-                .eq(MaterialInventoryRule::getMaterialId, materialId));
-        if (rule == null) {
-            log.warn("物料 {} 无盘点规则，跳过采购/订货字段补录", materialId);
-            return;
-        }
-        rule.setPurchasePrice(purchasePrice);
-        // 字符串字段空串归一为 null：动态 SQL 只判 null，空串会误覆盖人工维护的已有值
-        rule.setPurchaseUnit(StringUtils.hasText(purchaseUnit) ? purchaseUnit : null);
-        rule.setOrderPrice(orderPrice);
-        rule.setOrderUnit(StringUtils.hasText(orderUnit) ? orderUnit : null);
-        rule.setStockUnit(StringUtils.hasText(stockUnit) ? stockUnit : null);
-        ruleMapper.updatePurchaseFields(rule);
-        stats.purchaseUpdated++;
-    }
-
     private int deleteAbsentMaterials(Set<String> sourceIds) {
         List<Material> all = materialMapper.selectList(new LambdaQueryWrapper<>());
         int deleted = 0;
@@ -388,7 +356,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             rule.setMaterialId(src.materialId());
             rule.setBaseUnit(baseUnit);
             rule.setInventoryUnits(buildInventoryUnits(baseUnit, unitEntries, weightEntries));
-            rule.setUnitPrice(resolveUnitPrice(src, baseUnit, unitEntries));
+            rule.setUnitPrice(resolveUnitPrice(src, baseUnit));
             rule.setPurchasePrice(src.purchasePrice());
             rule.setPurchaseUnit(src.purchaseUnit());
             rule.setOrderPrice(src.orderPrice());
@@ -402,7 +370,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         } else {
             rule.setBaseUnit(baseUnit);
             rule.setInventoryUnits(buildInventoryUnits(baseUnit, unitEntries, weightEntries));
-            rule.setUnitPrice(resolveUnitPrice(src, baseUnit, unitEntries));
+            rule.setUnitPrice(resolveUnitPrice(src, baseUnit));
             rule.setPurchasePrice(src.purchasePrice());
             rule.setPurchaseUnit(src.purchaseUnit());
             rule.setOrderPrice(src.orderPrice());
@@ -433,7 +401,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     /**
      * 半成品基础规则：半成品接口无换算字段，仅建 base_unit / inventory_units / order_unit / order_price，
      * unit_price 取 qimaiPrice（元/unit 口径，null 兜底 0）。
-     * unit 为空不建（后台人工补）；禁用物料不建；已存在且不覆盖时仅补齐缺失。
+     * unit 为空不建（后台人工补）；禁用物料不建；已存在且不覆盖时跳过（overwriteRules 门控）。
      */
     private void upsertSemiRule(XInfoSemiFinishedProduct sp, boolean disabled, SyncStats stats) {
         if (disabled) {
@@ -506,52 +474,14 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
 
     /**
      * 价格口径：unit_price = 基础单位单价。
-     * xinfo inventoryPrice 为使用单位价，能算出 usageUnit→baseUnit 比率时除以比率折算；
-     * 算不出或比率不可用时原值落库；null → 0。
+     * xinfo inventoryPrice 即基础单位价（已与 standardCostPrice 交叉验证：
+     * 南姜 inventoryPrice=0.014 元/g = 14 元/kg，试饮杯 0.1 元/个 × 50 = 5 元/捆），直接落库；
+     * null → 0。
      */
-    private BigDecimal resolveUnitPrice(RuleSource src, String baseUnit,
-                                        List<ConversionTextParser.ConversionEntry> unitEntries) {
+    private BigDecimal resolveUnitPrice(RuleSource src, String baseUnit) {
         BigDecimal price = src.inventoryPrice();
-        if (price == null) return BigDecimal.ZERO;
-        if (!StringUtils.hasText(src.usageUnit()) || src.usageUnit().trim().equals(baseUnit)) {
-            return price;
-        }
-        BigDecimal ratio = computeUsageToBaseRatio(src.usageUnit().trim(), baseUnit, unitEntries);
-        if (ratio != null) {
-            return price.divide(ratio, 4, RoundingMode.HALF_UP);
-        }
-        return price;
+        return price == null ? BigDecimal.ZERO : price;
     }
-
-    /** 沿 unit 换算链 BFS 计算：1 usageUnit = ? baseUnit；无法到达返回 null */
-    private BigDecimal computeUsageToBaseRatio(String usageUnit, String baseUnit,
-                                               List<ConversionTextParser.ConversionEntry> entries) {
-        Map<String, List<Edge>> graph = new HashMap<>();
-        for (ConversionTextParser.ConversionEntry e : entries) {
-            BigDecimal fromToTo = e.toQuantity().divide(e.fromQuantity(), 10, RoundingMode.HALF_UP);
-            BigDecimal toToFrom = e.fromQuantity().divide(e.toQuantity(), 10, RoundingMode.HALF_UP);
-            graph.computeIfAbsent(e.fromUnit(), k -> new ArrayList<>()).add(new Edge(e.toUnit(), fromToTo));
-            graph.computeIfAbsent(e.toUnit(), k -> new ArrayList<>()).add(new Edge(e.fromUnit(), toToFrom));
-        }
-        if (!graph.containsKey(usageUnit)) return null;
-        Map<String, BigDecimal> visited = new HashMap<>();
-        Deque<String> queue = new ArrayDeque<>();
-        visited.put(usageUnit, BigDecimal.ONE);
-        queue.add(usageUnit);
-        while (!queue.isEmpty()) {
-            String cur = queue.poll();
-            BigDecimal factor = visited.get(cur);
-            if (cur.equals(baseUnit)) return factor;
-            for (Edge edge : graph.getOrDefault(cur, List.of())) {
-                if (visited.containsKey(edge.toUnit())) continue;
-                visited.put(edge.toUnit(), factor.multiply(edge.ratio()));
-                queue.add(edge.toUnit());
-            }
-        }
-        return null;
-    }
-
-    private record Edge(String toUnit, BigDecimal ratio) {}
 
     private int countSegments(String text) {
         if (!StringUtils.hasText(text)) return 0;
@@ -586,7 +516,6 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     private static class SyncStats {
         int inserted;          // 新插入（insert-new=true 时）
         int updated;           // 复活（del_flag=1 → 按接口全量覆盖）
-        int purchaseUpdated;   // 存量 del_flag=0，仅补采购单价/采购单位
         int deleted;
         int newSkipped;        // 接口有、库里没有且 insert-new=false，跳过未插入
         int emptyNameSkipped;  // 接口名称空，不拉取
