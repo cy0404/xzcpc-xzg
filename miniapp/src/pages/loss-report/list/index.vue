@@ -387,6 +387,8 @@ const batchSubmitting = ref(false)
 // 批量模式只允许勾选待审核记录（全部/待审核 tab 通用）
 const selectableRecords = computed(() => tabRecords.value.filter(r => r.status === 'pending_approval'))
 const allSelected = computed(() => selectableRecords.value.length > 0 && selectableRecords.value.every(r => selectedIds.value.has(r.id)))
+// 批量入口：当前列表有待审核记录时显示
+const showBatchEntry = computed(() => tabRecords.value.some(r => r.status === 'pending_approval'))
 
 function toggleBatchMode() {
   batchMode.value = !batchMode.value
@@ -487,9 +489,14 @@ function statusClass(s: string) {
         <view class="ov-m"><text class="oml">待审核</text><text class="omv warn">{{ records.filter(r=>r.status==='pending_approval').length }}</text></view>
         <view class="ov-m"><text class="oml">待收货</text><text class="omv ok">{{ resolvedCount }}</text></view>
       </view>
+      <!-- 批量入口：进入/退出批量模式 -->
+      <view v-if="canManage && (batchMode || showBatchEntry)" class="ov-batch" :class="{ 'batch-on': batchMode }" @click="toggleBatchMode()">
+        <text class="ovb-txt">{{ batchMode ? '已选 ' + selectedIds.size + ' 条' : '批量处理待审核报损' }}</text>
+        <text class="ovb-btn">{{ batchMode ? '取消' : '去批量 ›' }}</text>
+      </view>
     </view>
 
-    <!-- Tab 栏 + 批量入口 -->
+    <!-- Tab 栏 -->
     <view class="tab-bar">
       <scroll-view scroll-x enhanced show-scrollbar="false" class="tab-scroll">
         <view class="tab-row">
@@ -498,8 +505,6 @@ function statusClass(s: string) {
           </view>
         </view>
       </scroll-view>
-      <view v-if="canManage && !batchMode && (activeTab === 'all' || activeTab === 'pending_approval')" class="batch-entry" @click="toggleBatchMode()">批量</view>
-      <view v-else-if="batchMode" class="batch-entry batch-entry-on" @click="toggleBatchMode()">取消</view>
     </view>
 
     <!-- 报损记录 -->
@@ -745,7 +750,9 @@ $p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$s:#fff;$b
 .b-btn{flex:1;height:76rpx;border-radius:999rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700;color:#fff}.b-btn-daily{background:$p}.b-btn-arrival{background:$w}
 
 .tab-bar{display:flex;align-items:center;gap:12rpx;margin:0 20rpx 16rpx}.tab-scroll{flex:1;width:0}.tab-row{display:flex;gap:12rpx;white-space:nowrap}.tab-item{flex-shrink:0;padding:10rpx 24rpx;border-radius:999rpx;font-size:24rpx;color:$t2;background:#fff;border:1px solid $b}.tab-item.on{background:$p;color:#fff;border-color:$p}
-.batch-entry{flex-shrink:0;padding:10rpx 28rpx;border-radius:999rpx;font-size:24rpx;font-weight:700;color:#fff;background:$p}.batch-entry-on{background:#FEF0EF;color:#E05A47;border:1px solid #F3C1BC}
+.ov-batch{display:flex;align-items:center;justify-content:space-between;margin-top:16rpx;padding:14rpx 24rpx;border-radius:12rpx;background:$p;color:#fff;font-size:26rpx;font-weight:700}
+.ov-batch.batch-on{background:#FEF0EF;color:#E05A47;border:1px solid #F3C1BC}
+.ovb-btn{font-size:24rpx;font-weight:700;opacity:.95}
 .section{margin:0 20rpx 24rpx}.section-title{font-size:32rpx;font-weight:700;color:$t1;margin-bottom:16rpx}
 .record-list{display:flex;flex-direction:column;gap:16rpx}
 .rec-card{padding:24rpx;background:$s;border-radius:16rpx;border:1px solid $b}
