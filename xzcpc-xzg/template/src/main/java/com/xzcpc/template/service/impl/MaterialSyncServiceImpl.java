@@ -27,6 +27,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -434,7 +435,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     }
 
     /**
-     * 半成品基础规则：半成品接口无换算字段，仅建 base_unit / inventory_units / order_unit / order_price，
+     * 半成品基础规则：半成品接口无换算字段，换算行从规格自动解析（1000g/kg → 1000g=1kg）。
      * unit_price 取 qimaiPrice（元/unit 口径，null 兜底 0）。
      * materialId 为规则归属的 material_id：插新=接口 id，存量=存量行 id（qm_code 命中的旧行，
      * 与接口 id 不一致，用接口 id 查会建出孤儿规则、旧规则残留换算行不被清理）。
@@ -455,12 +456,15 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         if (rule != null && !overwriteRules) {
             return;
         }
+        // 规格自动解析换算：1000g/kg → 1000g=1kg；50g/包 → 50g=1包；纯单位规格（kg/kg 等）无换算
+        List<ConversionTextParser.ConversionEntry> specEntries =
+                ConversionTextParser.parseSpec(sp.getId(), sp.getName(), sp.getSpecification());
         if (rule == null) {
             rule = new MaterialInventoryRule();
             rule.setRuleId("TMP");
             rule.setMaterialId(materialId);
             rule.setBaseUnit(unit);
-            rule.setInventoryUnits(unit);
+            rule.setInventoryUnits(buildInventoryUnits(unit, specEntries, Collections.emptyList()));
             rule.setUnitPrice(sp.getQimaiPrice() == null ? BigDecimal.ZERO : sp.getQimaiPrice());
             rule.setOrderPrice(sp.getCost());
             rule.setOrderUnit(unit);
@@ -471,17 +475,22 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             stats.rulesCreated++;
         } else {
             rule.setBaseUnit(unit);
-            rule.setInventoryUnits(unit);
+            rule.setInventoryUnits(buildInventoryUnits(unit, specEntries, Collections.emptyList()));
             rule.setUnitPrice(sp.getQimaiPrice() == null ? BigDecimal.ZERO : sp.getQimaiPrice());
             rule.setOrderPrice(sp.getCost());
             rule.setOrderUnit(unit);
             ruleMapper.updateById(rule);
             stats.rulesUpdated++;
         }
-        // 半成品无换算：清理残留换算行（19 条 code 与原料接口重叠，原料循环历史双重处理
-        // 会留下 1kg=1000g 等换算行，与半成品"仅称重单位"语义冲突）
+        // 换算行：先清残留（19 条 code 与原料接口重叠，原料循环历史双重处理留下的），
+        // 再按规格自动生成（sort_no 从 1，unit 类）
         conversionRuleMapper.delete(new LambdaQueryWrapper<MaterialConversionRule>()
                 .eq(MaterialConversionRule::getRuleId, rule.getRuleId()));
+        int sort = 1;
+        for (ConversionTextParser.ConversionEntry e : specEntries) {
+            conversionRuleMapper.insert(buildConversion(rule.getRuleId(), TYPE_UNIT, e, sort++));
+        }
+        stats.conversionRows += specEntries.size();
     }
 
     private MaterialConversionRule buildConversion(String ruleId, String type,
