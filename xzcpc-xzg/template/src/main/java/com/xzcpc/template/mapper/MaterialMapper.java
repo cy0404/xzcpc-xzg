@@ -35,6 +35,14 @@ public interface MaterialMapper extends BaseMapper<Material> {
     int updateParentCategoryFields(Material material);
 
     /**
+     * 同步专用更新（存量物料）：仅刷新二级分类，其他字段不动。
+     * 显式 AND del_flag = 0，防止把已停用物料意外刷新。
+     */
+    @Update("UPDATE material SET category = #{category}, updated_at = NOW() "
+            + "WHERE material_id = #{materialId} AND del_flag = 0")
+    int updateCategoryFields(Material material);
+
+    /**
      * 按 qm_code 查存量启用物料（del_flag=0），供同步按编码匹配存量补录采购字段。
      * 存量物料 material_id 是旧 id 体系（如 WP0917），但 qm_code 与接口 code 同编码，可对上。
      */

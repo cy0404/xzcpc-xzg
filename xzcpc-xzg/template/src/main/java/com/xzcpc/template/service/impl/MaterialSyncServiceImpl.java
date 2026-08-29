@@ -75,6 +75,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     /** 半成品统一父级分类：xinfo 半成品接口无分类字段，业务口径全部归入「食材成本」（已与用户确认） */
     private static final String SEMI_PARENT_CATEGORY = "食材成本";
 
+    /** 半成品统一二级分类：接口无分类字段，业务口径二级分类即「半成品」（已与用户确认） */
+    private static final String SEMI_CATEGORY = "半成品";
+
     private final XInfoApiClient xinfoApiClient;
     private final MaterialMapper materialMapper;
     private final MaterialInventoryRuleMapper ruleMapper;
@@ -181,9 +184,10 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             }
         }
 
-        // 2.5 半成品：存量（qm_code 命中 del_flag=0）补采购/订货字段、父级分类为空时补「食材成本」；
-        //     insert-new=true 时接口有库里没有的也插入（material_id=接口 id，父级分类=食材成本，二级分类
-        //     接口无字段留空），并建基础规则（半成品无换算，仅 base_unit/inventory_units/
+        // 2.5 半成品：存量（qm_code 命中 del_flag=0）补采购/订货字段、父级分类为空时补「食材成本」、
+        //     二级分类为空时补「半成品」；insert-new=true 时接口有库里没有的也插入
+        //     （material_id=接口 id，父级分类=食材成本、二级分类=半成品，接口无分类字段），
+        //     并建基础规则（半成品无换算，仅 base_unit/inventory_units/
         //     order_unit/order_price，unit 为空的不建，后台人工补）。
         //     半成品无独立订货单位（unit 即基础单位），order_unit 取 unit；
         //     order_price 取 cost（接口字段名，业务口径即「实际成本价 = netOutputQuantity×每克价」，
@@ -204,13 +208,17 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                 }
                 boolean disabled = STATUS_DISABLED.equals(sp.getStatus());
                 upsertMaterial(sp.getId(), sp.getCode(), sp.getName(),
-                        SEMI_PARENT_CATEGORY, null, sp.getSpecification(), disabled, stats);
+                        SEMI_PARENT_CATEGORY, SEMI_CATEGORY, sp.getSpecification(), disabled, stats);
                 upsertSemiRule(sp, disabled, stats);
                 continue;
             }
-            // 存量半成品：父级分类为空时补「食材成本」（接口无分类字段，旧数据/迁移数据可能为空；已有值不覆盖）
+            // 存量半成品：父级分类为空时补「食材成本」、二级分类为空时补「半成品」
+            // （接口无分类字段，旧数据/迁移数据可能为空；已有值不覆盖）
             if (!StringUtils.hasText(semi.getParentCategory())) {
                 updateParentCategoryFields(semi.getMaterialId(), SEMI_PARENT_CATEGORY);
+            }
+            if (!StringUtils.hasText(semi.getCategory())) {
+                updateCategoryFields(semi.getMaterialId(), SEMI_CATEGORY);
             }
             // 存量也全量刷新规则（base_unit/inventory_units/unit_price/order_price，以接口为准；
             // unit 为空/禁用时 upsertSemiRule 内部跳过）
@@ -249,6 +257,14 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         m.setMaterialId(materialId);
         m.setParentCategory(mappedParentCategory);
         materialMapper.updateParentCategoryFields(m);
+    }
+
+    /** 存量物料：刷新二级分类，其他字段不动 */
+    private void updateCategoryFields(String materialId, String category) {
+        Material m = new Material();
+        m.setMaterialId(materialId);
+        m.setCategory(category);
+        materialMapper.updateCategoryFields(m);
     }
 
     /**
