@@ -5,6 +5,7 @@ import com.xzcpc.common.response.R;
 import com.xzcpc.template.entity.Material;
 import com.xzcpc.template.service.MaterialService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,6 +17,10 @@ import java.util.Map;
 public class MaterialController {
 
     private final MaterialService materialService;
+
+    /** 同步总开关（与 MaterialSyncJob 一致），关闭时手动触发接口直接拒绝 */
+    @Value("${app.sync.enabled:false}")
+    private boolean syncEnabled;
 
     @OpLog(module = "物料", operation = "分页查询")
     @GetMapping
@@ -60,6 +65,9 @@ public class MaterialController {
     @OpLog(module = "物料", operation = "手动同步物料")
     @PostMapping("/sync")
     public R<Map<String, Object>> sync() {
+        if (!syncEnabled) {
+            return R.fail("物料同步未开启（app.sync.enabled=false）");
+        }
         int count = materialService.syncFromApi();
         return R.ok(Map.of("count", count, "message", "同步完成，共 " + count + " 条"));
     }
