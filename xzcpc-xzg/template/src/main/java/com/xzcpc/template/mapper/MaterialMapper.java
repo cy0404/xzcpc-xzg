@@ -3,6 +3,7 @@ package com.xzcpc.template.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xzcpc.template.entity.Material;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
@@ -70,4 +71,11 @@ public interface MaterialMapper extends BaseMapper<Material> {
      */
     @Update("UPDATE material SET del_flag = 1, updated_at = NOW() WHERE del_flag = 2")
     int markEliminatedDeleted();
+
+    /**
+     * 仅按接口状态归位 del_flag（半成品同步关闭时用）：不改任何其他字段，
+     * 避免误删的接口 ENABLED 半成品无法恢复、接口 DISABLED 的保持停用。
+     */
+    @Update("UPDATE material SET del_flag = #{delFlag}, updated_at = NOW() WHERE material_id = #{materialId}")
+    int updateDelFlagOnly(@Param("materialId") String materialId, @Param("delFlag") int delFlag);
 }

@@ -143,25 +143,34 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         //    字段为 null 时跳过不覆盖，将来接口补充后同步自动补录
         List<XInfoMaterial> materials = xinfoApiClient.fetchMaterials();
         Set<String> sourceIds = new HashSet<>(materials.size());
+        Set<String> sourceCodes = new HashSet<>(materials.size());
         // 仅收集"有真实名称"的物料进源集合：名称为空或名称=编码占位（如 name='WP0005'）的
         // 一律不拉取、不进源集合，deleteAbsent 会把库中对应物料逻辑删除（企迈补名后自动复活）
         materials.forEach(m -> {
-            if (hasRealName(m.getId(), m.getName(), m.getCode())) sourceIds.add(m.getId());
+            if (hasRealName(m.getId(), m.getName(), m.getCode())) {
+                sourceIds.add(m.getId());
+                sourceCodes.add(m.getCode());
+            }
         });
         // 半成品 id 也并入源集合：原料接口不含半成品（半成品独立 86 条，id 前缀 cmq28/cmpdo），
         // 不加进来 deleteAbsent 会把已入库的半成品物料全部误删。2.5 步骤复用同一列表，只拉一次。
-        // semi-enabled=false 时不拉半成品接口（暂时不同步半成品）
-        List<XInfoSemiFinishedProduct> semiProducts = Collections.emptyList();
+        // semi-enabled=false 时仍拉半成品接口，但仅用于「保护集合 + del_flag 归位」：
+        // 不插新、不建规则、不改任何字段——否则 deleteAbsent 误删的接口 ENABLED 半成品
+        // （category 非"半成品"或不在原料接口的行）永远无法恢复。拉取失败同样抛异常中止，
+        // 半成品数据缺失时 deleteAbsent 的保护集合不全，宁可整轮不跑也不误删。
+        List<XInfoSemiFinishedProduct> semiProducts;
         if (semiEnabled) {
             semiProducts = xinfoApiClient.fetchSemiFinishedProducts();
         } else {
-            log.info("半成品同步已关闭（app.sync.semi-enabled=false），跳过半成品接口拉取");
+            log.info("半成品同步已关闭（app.sync.semi-enabled=false），仅拉取接口用于存量保护与 del_flag 归位");
+            semiProducts = xinfoApiClient.fetchSemiFinishedProducts();
         }
         Set<String> semiCodes = new HashSet<>();
         for (XInfoSemiFinishedProduct sp : semiProducts) {
             if (hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
                 sourceIds.add(sp.getId());
                 semiCodes.add(sp.getCode());
+                sourceCodes.add(sp.getCode());
             }
         }
         // 半成品关闭时：库中已标记半成品（category='半成品'）的 code 纳入跳过集合、
@@ -173,6 +182,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             for (Material s : semiRows) {
                 if (StringUtils.hasText(s.getQmCode())) {
                     semiCodes.add(s.getQmCode());
+                    sourceCodes.add(s.getQmCode());
                 }
                 if (StringUtils.hasText(s.getMaterialId())) {
                     sourceIds.add(s.getMaterialId());
@@ -199,7 +209,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                 upsertMaterial(existing.getMaterialId(), m.getCode(), m.getName(),
                         mapParentCategory(m.getPrimaryCategory()), m.getSecondaryCategory(),
                         m.getSpecification(), STATUS_DISABLED.equals(m.getStatus()), stats);
-                upsertRules(RuleSource.of(m), stats);
+                // 规则归属存量行 material_id（接口 id 可能已换新体系，挂接口 id 会建孤儿规则、
+                // 存量规则更新不到——与 upsertSemiRule 的处理一致）
+                upsertRules(RuleSource.of(existing.getMaterialId(), m), stats);
                 continue;
             }
             // 接口有、库里没有：默认不插入（数据校准前避免引入不准数据），insert-new=true 时按 id 走现状插入
@@ -212,21 +224,26 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                     mapParentCategory(m.getPrimaryCategory()), m.getSecondaryCategory(),
                     m.getSpecification(), disabled, stats);
             if (outcome.needRules()) {
-                upsertRules(RuleSource.of(m), stats);
+                upsertRules(RuleSource.of(m.getId(), m), stats);
             }
         }
 
-        // 2.5 半成品：存量（qm_code 命中 del_flag=0）补采购/订货字段、父级分类为空时补「食材成本」、
-        //     二级分类为空时补「半成品」；insert-new=true 时接口有库里没有的也插入
-        //     （material_id=接口 id，父级分类=食材成本、二级分类=半成品，接口无分类字段），
-        //     并建基础规则（半成品无换算，仅 base_unit/inventory_units/
-        //     order_unit/order_price，unit 为空的不建，后台人工补）。
-        //     半成品无独立订货单位（unit 即基础单位），order_unit 取 unit；
-        //     order_price 取 cost（接口字段名，业务口径即「实际成本价 = netOutputQuantity×每克价」，
-        //     已与业务确认 = 半成品订货价格；qimaiPrice/qimaiStockPrice 均非订货价）；
-        //     stock_unit 接口无独立库存单位字段，暂不覆盖（传 null）。
-        //     接口字段为 null（采购字段当前全 null；cost 6 条 null、unit 16 条空）时由
-        //     upsertSemiRule 内部跳过（unit 空/禁用不建规则）。
+        // 2.5 半成品：
+        //     semi-enabled=true（完整同步）：存量（qm_code 命中 del_flag=0）补采购/订货字段、
+        //       父级分类为空时补「食材成本」、二级分类为空时补「半成品」；insert-new=true 时
+        //       接口有库里没有的也插入（material_id=接口 id，父级分类=食材成本、
+        //       二级分类=半成品，接口无分类字段），并建基础规则（半成品无换算，
+        //       仅 base_unit/inventory_units/order_unit/order_price，unit 为空的不建，
+        //       后台人工补）。半成品无独立订货单位（unit 即基础单位），order_unit 取 unit；
+        //       order_price 取 cost（接口字段名，业务口径即「实际成本价 =
+        //       netOutputQuantity×每克价」，已与业务确认 = 半成品订货价格；
+        //       qimaiPrice/qimaiStockPrice 均非订货价）；stock_unit 接口无独立库存单位字段，
+        //       暂不覆盖（传 null）。接口字段为 null（采购字段当前全 null；cost 6 条 null、
+        //       unit 16 条空）时由 upsertSemiRule 内部跳过（unit 空/禁用不建规则）。
+        //     semi-enabled=false（关闭，仅保护）：不插新、不建规则、不改字段，只按接口状态
+        //       归位 del_flag（ENABLED→0 复活误删残留、DISABLED→1），qm_code 命中任意状态
+        //       （del_flag=0/1/2 都覆盖）。
+        if (semiEnabled) {
         for (XInfoSemiFinishedProduct sp : semiProducts) {
             if (!hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
                 stats.emptyNameSkipped++;
@@ -260,10 +277,29 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             // 规则归属存量行 material_id，与接口 id 可能不一致；unit 为空/禁用时 upsertSemiRule 内部跳过）
             upsertSemiRule(sp, semi.getMaterialId(), STATUS_DISABLED.equals(sp.getStatus()), stats);
         }
+        } else {
+            // 半成品同步关闭：仅按接口状态归位存量 del_flag（ENABLED→0 复活、DISABLED→1），
+            // 不插新（库里没有的跳过）、不建规则、不改任何字段（价格/规格/分类待校准，保持现状）
+            for (XInfoSemiFinishedProduct sp : semiProducts) {
+                if (!hasRealName(sp.getId(), sp.getName(), sp.getCode())) {
+                    stats.emptyNameSkipped++;
+                    continue;
+                }
+                Material semi = materialMapper.selectAnyByQmCodeAny(sp.getCode());
+                if (semi == null) {
+                    continue;
+                }
+                int want = STATUS_DISABLED.equals(sp.getStatus()) ? 1 : 0;
+                if (semi.getDelFlag() != null && semi.getDelFlag() == want) {
+                    continue;
+                }
+                materialMapper.updateDelFlagOnly(semi.getMaterialId(), want);
+            }
+        }
 
-        // 3. 清理不在源中的物料（源集合 = 原料接口 + 半成品接口；手工创建 M 开头保留）
+        // 3. 清理不在源中的物料（源集合 = 原料接口 code + 半成品 code；手工创建 M 开头保留）
         if (deleteAbsent) {
-            stats.deleted = deleteAbsentMaterials(sourceIds);
+            stats.deleted = deleteAbsentMaterials(sourceCodes);
             // 残留 del_flag=2（接口已无此 code 的淘汰物料）统一归 1——
             // 接口仍存在的 del_flag=2 已在循环中复活为 0，到这里的只剩接口没有的
             int marked = materialMapper.markEliminatedDeleted();
@@ -357,11 +393,15 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
     /** upsert 分支结果：needRules=需生成/刷新规则（禁用物料不建） */
     private record UpsertOutcome(boolean needRules, boolean ignored) {}
 
-    private int deleteAbsentMaterials(Set<String> sourceIds) {
+    /**
+     * 清理不在接口源中的物料。按 qm_code 判断而非 material_id：接口 id 会随上游重建更换
+     * 体系（新旧两套并存），按 material_id 匹配会把接口仍存在但 id 已换的存量物料误删。
+     */
+    private int deleteAbsentMaterials(Set<String> sourceCodes) {
         List<Material> all = materialMapper.selectList(new LambdaQueryWrapper<>());
         int deleted = 0;
         for (Material m : all) {
-            if (sourceIds.contains(m.getMaterialId())) continue;
+            if (m.getQmCode() != null && sourceCodes.contains(m.getQmCode())) continue;
             if (m.getMaterialId() != null && m.getMaterialId().startsWith("M")) continue; // 手工物料保留
             materialMapper.deleteById(m.getId());
             deleted++;
@@ -371,13 +411,13 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
 
     // ==================== 规则生成 ====================
 
-    /** 规则数据源：原料与半成品统一抽象 */
+    /** 规则数据源：原料与半成品统一抽象；materialId 为规则归属（存量=存量行 id，插新=接口 id） */
     private record RuleSource(String materialId, String name, String baseUnit, String usageUnit,
                               String unitConversion, String weighingConversion, BigDecimal inventoryPrice,
                               BigDecimal purchasePrice, String purchaseUnit,
                               BigDecimal orderPrice, String orderUnit, String stockUnit) {
-        static RuleSource of(XInfoMaterial m) {
-            return new RuleSource(m.getId(), m.getName(), m.getBaseUnit(), m.getUsageUnit(),
+        static RuleSource of(String materialId, XInfoMaterial m) {
+            return new RuleSource(materialId, m.getName(), m.getBaseUnit(), m.getUsageUnit(),
                     m.getUnitConversion(), m.getWeighingConversion(), m.getInventoryPrice(),
                     m.getPurchasePrice(), m.getPurchaseUnit(),
                     m.getStandardCostPrice(), m.getUsageUnit(), m.getStockUnit());
