@@ -1,0 +1,135 @@
+### 消息场景说明
+
+报货单接单消息推送。
+
+### 通用消息格式
+
+| 参数 | 描述 | 是否必须 | 类型 | 示例值 |
+| -------- | -------- | ----- | -------- | ------ |
+| openId | openId鉴权参数 | true | string | d14c1559e87b747d577c834b275a4310 |
+| grantCode | grantCode鉴权参数 | true | string | ba67d4fa46 |
+| nonce | 随机正整数 | true | long | 11886 |
+| timestamp | 当前时间戳 | true | long | 1465185768 |
+| token | token鉴权参数 | true | string | cFw0t9IuvL9jVo9qAzk0qMcw5BM= |
+| params | 消息体，详细说明见下方报货单接单消息体说明 | true | jsonString | {} |
+
+### 消息推送示例
+
+```json
+{
+  "openId": "d14c1559e87b747d577c834b275a4310",
+  "grantCode": "ba67d4fa46",
+  "nonce": 11886,
+  "timestamp": 1465185768,
+  "token": "cFw0t9IuvL9jVo9qAzk0qMcw5BM=",
+  "params": {
+    "sellerId": 217930,
+    "storeId": 555264,
+    "declareNo": "BH20260507000001",
+    "amount": 158400,
+    "discountAmount": 0,
+    "freight": 0,
+    "orgSubject": "加盟门店",
+    "joinContract": null,
+    "companySubject": "重庆公司",
+    "remark": "报货单接单测试",
+    "creator": "system",
+    "createdAt": "1777420800000",
+    "storeWarehouseNo": "MDCK000208",
+    "warehouseNo": "PSCK000021",
+    "warehouseMark": null,
+    "channelTradeNo": null,
+    "accountNo": null,
+    "auditAt": "1777421100000",
+    "onlinePay": 0,
+    "settleSubjectCode": null,
+    "settleSubjectName": null,
+    "expArrivalDate": null,
+    "productList": [
+      {
+        "productCode": "WP0532",
+        "productMark": "",
+        "productName": "东北榛子酱（新规）",
+        "productSpec": null,
+        "productNum": 4,
+        "price": 39600,
+        "amount": 158400,
+        "discountPrice": 0,
+        "discountAmount": 0,
+        "performanceCode": null,
+        "isGift": 0,
+        "productUnit": null,
+        "productUnitCode": null,
+        "stockUnit": "件",
+        "stockUnitCode": "DW0010",
+        "requireNum": 4
+      }
+    ]
+  }
+}
+```
+
+### 报货单接单消息体说明
+
+| 参数 | 描述 | 是否必须 | 类型 | 示例值 |
+| -------- | -------- | ----- | -------- | ------ |
+| sellerId | 店铺id | true | long | 217930 |
+| storeId | 门店id | true | long | 555264 |
+| declareNo | 报货单号 | true | string | BH20260507000001 |
+| amount | 报货金额 | true | decimal | 158400 |
+| discountAmount | 优惠金额 | true | decimal | 0 |
+| freight | 运费 | true | decimal | 0 |
+| orgSubject | 组织主体 | true | string | 加盟门店 |
+| joinContract | 加盟合同号 | true | string |  |
+| companySubject | 公司主体 | true | string | 重庆公司 |
+| remark | 备注信息 | true | string | 报货单接单测试 |
+| creator | 创建人 | true | string | system |
+| createdAt | 创建时间 | true | string | 1777420800000 |
+| storeWarehouseNo | 门店仓库编码 | true | string | MDCK000208 |
+| warehouseNo | 仓库编码(配送中心) | true | string | PSCK000021 |
+| warehouseMark | 仓库标识(配送中心) | true | string |  |
+| channelTradeNo | 支付流水号 | true | string |  |
+| accountNo | 收款账户 | true | string |  |
+| auditAt | 接单审核时间 | true | string | 1777421100000 |
+| onlinePay | 线上支付 0-否 1-是 | true | int | 0 |
+| settleSubjectCode | 结算主体 | true | string |  |
+| settleSubjectName | 结算主体名称 | true | string |  |
+| expArrivalDate | 期望到货日期 | false | date |  |
+| productList | 报货单商品明细列表 | true | list | [] |
+
+### 报货单接单商品明细说明
+
+| 参数 | 描述 | 是否必须 | 类型 | 示例值 |
+| -------- | -------- | ----- | -------- | ------ |
+| productCode | 物品编码 | true | string | WP0532 |
+| productMark | 物品标识 | true | string |  |
+| productName | 物品名称 | true | string | 东北榛子酱（新规） |
+| productSpec | 物品规格 | true | string |  |
+| productNum | 报货数量（库存单位） | true | decimal | 4 |
+| price | 报货单价 | true | decimal | 39600 |
+| amount | 物品金额 | true | decimal | 158400 |
+| discountPrice | 优惠单价 | true | decimal | 0 |
+| discountAmount | 优惠金额 | true | decimal | 0 |
+| performanceCode | 履约方编码 | true | string |  |
+| isGift | 是否赠品 1-是，0-否 | true | int | 0 |
+| productUnit | 订货单位名称 | false | string |  |
+| productUnitCode | 订货单位编码 | false | string |  |
+| stockUnit | 库存单位名称 | false | string | 件 |
+| stockUnitCode | 库存单位编码 | false | string | DW0010 |
+| requireNum | 订货单位数量 | false | decimal | 4 |
+
+### 返回示例
+
+回调根据 HTTP 响应码为 `200`，且返回 `{"code":0}` 判断为成功，否则为失败。
+
+返回字符串的 json 格式，内容如下表。
+
+#### 成功格式
+
+```json
+{
+  "status": true,
+  "code": 0,
+  "message": "ok"
+}
+```

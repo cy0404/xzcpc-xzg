@@ -1,0 +1,165 @@
+#### 接口的说明/描述
+
+### 请求地址
+
+| 环境 | 请求地址 |
+| -------- | -------- |
+|沙箱环境|xxx|
+|正式环境|https://openapi.qmai.cn/v3/scm/order/transfer/list|
+
+### 公共请求参数
+[开发指南->接口调用约定【必读】](https://open.qmai.com/home/documentCenter?id=9)
+
+### 业务请求参数
+
+| 参数 | 描述                      | 是否必须 | 类型 | 示例值 |
+| -------- |-------------------------|----|---|------|
+|createdEndAt|创建结束时间|false|string|2025-05-22 17:50:20|
+|createdStartAt|创建开始时间	|false|string|2025-05-22 17:50:20|
+|creator|创建人|false|string||
+|inWareNo|调入仓库编码|false|string||
+|outWareNo|调出仓库编码	|false|string||
+|pageNo|页数,示例值|true|int|1|
+|pageSize|每页数量|true|int|10|
+|productCodeList|品项编码集合|false|list||
+|statusList|单据状态列表：1-待审核 2-待出库 3-已取消 4-已完成 5-已驳回 6-待入库|false|list||
+|transferEndAt|调拨结束时间	|false|string|2025-05-22 17:52:58|
+|transferStartAt|调拨开始时间	|false|string|2025-05-22 17:52:58|
+|transferNoList|调拨申请单号|false|list||
+|transferType|调拨类型：1-店间调拨 2-仓店调拨 3-店仓退配 4-仓间调拨|false|int||
+|updatedEndAt|修改结束时间		|false|string|2025-05-22 17:52:58|
+|updatedStartAt|修改开始时间			|false|string|2025-05-22 17:52:58|
+### 请求示例
+```javascript
+{
+    "createdEndAt": "",
+    "createdStartAt": "",
+    "creator": "",
+    "inWareNo": "",
+    "outWareNo": "",
+    "pageNo": 0,
+    "pageSize": 0,
+    "productCodeList": [],
+    "statusList": [],
+    "transferEndAt": "",
+    "transferNoList": [],
+    "transferStartAt": "",
+    "transferType": 0,
+    "updatedEndAt": "",
+    "updatedStartAt": ""
+}
+```
+
+### 公共响应参数
+[开发指南->接口调用约定【必读】](https://open.qmai.com/home/documentCenter?id=9)
+
+### 业务响应参数
+| 参数| 描述 | 类型  | 示例值 |
+|----------------|-----|-----|----- |
+|data|数据集| list ||
+|&emsp;auditAt|审核时间| string ||
+|&emsp;auditor| 审核人		 | string ||
+|&emsp;createdAt| 创建时间			 | string ||
+|&emsp;creator| 创建人				 | string ||
+|&emsp;id| 调拨单id					 | int ||
+|&emsp;inWareId| 调入仓库id						 | int ||
+|&emsp;inWareName| 调入仓库名称						 | string ||
+|&emsp;inWareNo| 调入仓库编码							 | string ||
+|&emsp;outWareId| 调出仓库id	 | int ||
+|&emsp;outWareName|调出仓库名称	| string ||
+|&emsp;outWareNo|调出仓库编码	| string ||
+|&emsp;outboundId|出库单id		| int ||
+|&emsp;priceAmount|金额，单位元|float ||
+|&emsp;productCateNum|物品种类	|int ||
+|&emsp;productNum|物品数量		|float ||
+|&emsp;remark|备注	|string||
+|&emsp;reverseFlag|是否为红冲单据：1-是 0-否	|int||
+|&emsp;reverseNo|红冲单号	|string||
+|&emsp;status|单据状态：1-待审核 2-待出库 3-已取消 4-已完成 5-已驳回|int||
+|&emsp;transferAt|调拨日期	|string||
+|&emsp;transferNo|调拨申请单号		|string||
+|&emsp;transferOrderProductList|调拨单物品列表	|list||
+|&emsp;&emsp;availableQuantity|可用量	| float ||
+|&emsp;&emsp;categoryName|物品类别		| string ||
+|&emsp;&emsp;costPrice|成本单价，单位元		| float ||
+|&emsp;&emsp;id|id| int ||
+|&emsp;&emsp;num|件数	| float ||
+|&emsp;&emsp;orderStep|订货规格		| float ||
+|&emsp;&emsp;partNum|零数			| float ||
+|&emsp;&emsp;productCode|物品编码				| string ||
+|&emsp;&emsp;productId|物品id					| int ||
+|&emsp;&emsp;productName|物品名称						| string ||
+|&emsp;&emsp;productSpec|物品规格	| string ||
+|&emsp;&emsp;quantity|库存量		| float ||
+|&emsp;&emsp;stockUnit|库存单位			| string ||
+|&emsp;&emsp;transferAmount|调拨金额，单位元			| float ||
+|&emsp;&emsp;transferId|调拨单id	| int ||
+|&emsp;&emsp;transferNo|调拨申请单号	| string ||
+|&emsp;&emsp;transferNum|调拨数量	| float ||
+|&emsp;&emsp;transferPrice|调拨单价，单位元	| float ||
+|&emsp;&emsp;transferUnit|导入物品中调拨单位：1-库存单位 2-订货单位	| int ||
+|&emsp;transferType|调拨类型：1-采购调拨 2-门店调拨	| int ||
+|&emsp;updatedAt|更新时间	| string ||
+|&emsp;validPeriod|单据有效期,单位天		| int ||
+|total|总数| int ||
+
+### 响应示例
+
+```javascript
+{
+    "data": [
+        {
+            "auditAt": "",
+            "auditor": "",
+            "createdAt": "",
+            "creator": "",
+            "id": 0,
+            "inWareId": 0,
+            "inWareName": "",
+            "inWareNo": "",
+            "outWareId": 0,
+            "outWareName": "",
+            "outWareNo": "",
+            "outboundId": 0,
+            "priceAmount": 0,
+            "productCateNum": 0,
+            "productNum": 0,
+            "remark": "",
+            "reverseFlag": 0,
+            "reverseNo": "",
+            "status": 0,
+            "transferAt": "",
+            "transferNo": "",
+            "transferOrderProductList": [
+                {
+                    "availableQuantity": 0,
+                    "categoryName": "",
+                    "costPrice": 0,
+                    "id": 0,
+                    "num": 0,
+                    "orderStep": 0,
+                    "partNum": 0,
+                    "productCode": "",
+                    "productId": 0,
+                    "productName": "",
+                    "productSpec": "",
+                    "quantity": 0,
+                    "stockUnit": "",
+                    "transferAmount": 0,
+                    "transferId": 0,
+                    "transferNo": "",
+                    "transferNum": 0,
+                    "transferPrice": 0,
+                    "transferUnit": 0
+                }
+            ],
+            "transferType": 0,
+            "updatedAt": "",
+            "validPeriod": 0
+        }
+    ],
+    "total": 0
+}
+```
+
+### 异常示例

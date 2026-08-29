@@ -1,0 +1,77 @@
+### 接口的说明/描述
+接口性能 QPS 10。<br>
+
+### 请求地址
+
+| 环境 | 请求地址 |
+| -------- | -------- |
+|沙箱环境|xxx|
+|正式环境|https://openapi.qmai.cn/v3/newPattern/goodsCenter/post/external/practice/value/create|
+
+### 公共请求参数
+[开发指南->接口调用约定【必读】](https://open.qmai.com/home/documentCenter?id=9)
+
+### 业务请求参数
+|参数|描述|是否必须|类型|示例值|
+|--------|-------|-------|--------|------|
+|outPracticeId|外部做法id(与 practiceId 二选一)|true|string||
+|practiceId|做法id(与 outPracticeId 二选一,同时存在时 practiceId 优先)|true|int||
+|valueList|做法值列表|true|list||
+|&emsp;&emsp;isPrint|打印标识 0-不打印 1-打印|true|int||
+|&emsp;&emsp;megaThermal|做法高温(temperatureAttribute=1 时必填)|false|int||
+|&emsp;&emsp;microTherm|做法低温(temperatureAttribute=1 时必填)|false|int||
+|&emsp;&emsp;outPracticeValueId|外部做法值id(三方对接,品牌内唯一)|true|string||
+|&emsp;&emsp;practiceCode|做法值编码|false|string||
+|&emsp;&emsp;practiceValue|做法值名称|true|string||
+|&emsp;&emsp;remark|备注|false|string||
+|&emsp;&emsp;warmTips|温馨提示|false|string||
+
+### 请求示例
+```javascript
+{
+    "outPracticeId": "",
+    "practiceId": 0,
+    "valueList": [
+        {
+            "isPrint": 0,
+            "megaThermal": 0,
+            "microTherm": 0,
+            "outPracticeValueId": "",
+            "practiceCode": "",
+            "practiceValue": "",
+            "remark": "",
+            "warmTips": ""
+        }
+    ]
+}
+```
+
+### 公共响应参数
+[开发指南->接口调用约定【必读】](https://open.qmai.com/home/documentCenter?id=9)
+
+### 业务响应参数
+| 参数| 描述 | 类型 | 示例值 |
+|----------------|----|----|----- |
+|&emsp;&emsp;outPracticeValueId|外部做法值id|string||
+|&emsp;&emsp;practiceValueId|企迈做法值id|int||
+
+### 响应示例
+
+```javascript
+[
+    {
+        "outPracticeValueId": "",
+        "practiceValueId": 0
+    }
+]
+```
+
+### 异常示例
+
+```javascript
+{
+  "code": 500,
+  "message": "系统异常",
+  "status": false
+}
+```

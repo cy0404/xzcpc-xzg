@@ -1,0 +1,3601 @@
+{
+  "code": 0,
+  "data": {
+    "list": [
+      {
+        "address": "云南省昆明市西山区滇池国家旅游度假区前卫西路海宏路",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "588484",
+        "contactName": "1903店长",
+        "contactPhone": "15398377129",
+        "contactTel": "",
+        "createdAt": "2026-08-07 17:10:47",
+        "districtId": 530112,
+        "districtName": "西山区",
+        "fullAddress": "云南省昆明市西山区",
+        "groupId": 42107,
+        "id": 588484,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.986425",
+        "lng": "102.675484",
+        "managerPhone": null,
+        "managerStatus": 1,
+        "name": "象子茶铺茶(昆明西山区公园1903店)",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市官渡区长水街道昆明长水国际机场到达厅",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "",
+        "contactName": "",
+        "contactPhone": "",
+        "contactTel": "",
+        "createdAt": "2026-07-30 15:39:57",
+        "districtId": 530111,
+        "districtName": "官渡区",
+        "fullAddress": "云南省昆明市官渡区",
+        "groupId": 42107,
+        "id": 587326,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.098273",
+        "lng": "102.930047",
+        "managerPhone": null,
+        "managerStatus": 1,
+        "name": "象子茶铺茶（长水到达厅）",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "21:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省玉溪市华宁县盘溪镇青年路33号附12号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [],
+        "cityId": 530400,
+        "cityName": "玉溪市",
+        "code": "",
+        "contactName": "店长",
+        "contactPhone": "19048686692",
+        "contactTel": "",
+        "createdAt": "2026-07-29 11:29:33",
+        "districtId": 530424,
+        "districtName": "华宁县",
+        "fullAddress": "云南省玉溪市华宁县",
+        "groupId": 42107,
+        "id": 586895,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.221514",
+        "lng": "103.101855",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(玉溪华宁盘溪镇店)",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "21:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "杨林里外里商业中心3a1-12.3a1-13",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "",
+        "contactName": "郭建波",
+        "contactPhone": "15308706103",
+        "contactTel": "",
+        "createdAt": "2026-07-28 10:41:17",
+        "districtId": 530127,
+        "districtName": "嵩明县",
+        "fullAddress": "云南省昆明市嵩明县",
+        "groupId": 42107,
+        "id": 586678,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.239411",
+        "lng": "102.997287",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶（嵩明里外里店）",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "21:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昭通市昭阳区凤凰街道二环西路乌蒙水乡公园",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530600,
+        "cityName": "昭通市",
+        "code": "585731",
+        "contactName": "",
+        "contactPhone": "",
+        "contactTel": "",
+        "createdAt": "2026-07-24 11:24:54",
+        "districtId": 530602,
+        "districtName": "昭阳区",
+        "fullAddress": "云南省昭通市昭阳区",
+        "groupId": 42107,
+        "id": 585731,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "27.324061",
+        "lng": "103.697467",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(昭通吾悦店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "23:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省文山州富宁县壮风水韵A1324",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [],
+        "cityId": 532600,
+        "cityName": "文山壮族苗族自治州",
+        "code": "",
+        "contactName": "向真承",
+        "contactPhone": "19387623658",
+        "contactTel": "",
+        "createdAt": "2026-07-18 09:55:52",
+        "districtId": 532628,
+        "districtName": "富宁县",
+        "fullAddress": "云南省文山壮族苗族自治州富宁县",
+        "groupId": 42107,
+        "id": 584849,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.623557",
+        "lng": "105.621943",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(文山富宁店)",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "00:00",
+                      "23:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市呈贡区彩云中路吾悦广场1号门-018号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "584178",
+        "contactName": "门店店机",
+        "contactPhone": "15368850298",
+        "contactTel": "",
+        "createdAt": "2026-07-14 16:58:27",
+        "districtId": 530114,
+        "districtName": "呈贡区",
+        "fullAddress": "云南省昆明市呈贡区",
+        "groupId": 42107,
+        "id": 584178,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.88782",
+        "lng": "102.82666",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶（呈贡吾悦店）",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市盘龙区南院路白龙π公园A23/A24号商铺",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "583760",
+        "contactName": "门店电话",
+        "contactPhone": "18087041195",
+        "contactTel": "",
+        "createdAt": "2026-07-11 15:23:57",
+        "districtId": 530103,
+        "districtName": "盘龙区",
+        "fullAddress": "云南省昆明市盘龙区",
+        "groupId": 42107,
+        "id": 583760,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.058022",
+        "lng": "102.74367",
+        "managerPhone": null,
+        "managerStatus": 1,
+        "name": "象子茶铺茶(白龙派公园店)",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "00:00",
+                      "23:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市盘龙区北京路与铂金大道交汇处北城天地",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "583756",
+        "contactName": "13888370370",
+        "contactPhone": "",
+        "contactTel": "",
+        "createdAt": "2026-07-11 14:59:34",
+        "districtId": 530103,
+        "districtName": "盘龙区",
+        "fullAddress": "云南省昆明市盘龙区",
+        "groupId": 42107,
+        "id": 583756,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.091536",
+        "lng": "102.745416",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(昆明盘龙北城天地店)",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "21:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "西山区前卫红星金科爱琴海财富中心旁边玫瑰天街3栋1-120号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "582790",
+        "contactName": "18388467079",
+        "contactPhone": "18187505783",
+        "contactTel": "",
+        "createdAt": "2026-07-06 10:48:42",
+        "districtId": 530112,
+        "districtName": "西山区",
+        "fullAddress": "云南省昆明市西山区",
+        "groupId": 42107,
+        "id": 582790,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.99326",
+        "lng": "102.684796",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(昆明西山广福路爱琴海店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市官渡区长水街道昆明长水国际机场卫星厅",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "",
+        "contactName": "18587309616",
+        "contactPhone": "18587309616",
+        "contactTel": "",
+        "createdAt": "2026-07-01 09:21:07",
+        "districtId": 530111,
+        "districtName": "官渡区",
+        "fullAddress": "云南省昆明市官渡区",
+        "groupId": 42107,
+        "id": 582116,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.098273",
+        "lng": "102.930047",
+        "managerPhone": null,
+        "managerStatus": 1,
+        "name": "象子茶铺茶(长水卫星厅)",
+        "notice": null,
+        "openStatus": 0,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "00:00",
+                      "23:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 0
+          }
+        ],
+        "operateStatus": "休息",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "香格里拉市独克宗古城月光印巷美食街1-10号商铺",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 533400,
+        "cityName": "迪庆藏族自治州",
+        "code": "581933",
+        "contactName": "肖腾",
+        "contactPhone": "19087217909",
+        "contactTel": "",
+        "createdAt": "2026-06-30 11:31:49",
+        "districtId": 533401,
+        "districtName": "香格里拉市",
+        "fullAddress": "云南省迪庆藏族自治州香格里拉市",
+        "groupId": 42107,
+        "id": 581933,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "27.810067",
+        "lng": "99.708297",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(迪庆香格里拉月光印巷店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省红河哈尼族彝族自治州建水县临安镇广慈湖曼金湾4期2栋2-1号商铺",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532500,
+        "cityName": "红河哈尼族彝族自治州",
+        "code": "581598",
+        "contactName": "杨文宣",
+        "contactPhone": "17787745402",
+        "contactTel": "",
+        "createdAt": "2026-06-29 10:08:31",
+        "districtId": 532524,
+        "districtName": "建水县",
+        "fullAddress": "云南省红河哈尼族彝族自治州建水县",
+        "groupId": 42107,
+        "id": 581598,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.628374",
+        "lng": "102.81493",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(建水紫陶街店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "23:50"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市安宁市连然街道办事处吾悦广场1号门GDSW-1AF-002号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "581513",
+        "contactName": "18788026558",
+        "contactPhone": "18313793136",
+        "contactTel": "",
+        "createdAt": "2026-06-28 10:58:22",
+        "districtId": 530181,
+        "districtName": "安宁市",
+        "fullAddress": "云南省昆明市安宁市",
+        "groupId": 42107,
+        "id": 581513,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.926348",
+        "lng": "102.484645",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(安宁吾悦店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [
+              {
+                "date": [
+                  "2026-08-07",
+                  "2026-08-07"
+                ],
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "23:59"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "昆明市官渡区广福路官渡古镇2期A-3-1-4号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "581509",
+        "contactName": "15198946661",
+        "contactPhone": "18087550996",
+        "contactTel": "",
+        "createdAt": "2026-06-28 09:42:40",
+        "districtId": 530111,
+        "districtName": "官渡区",
+        "fullAddress": "云南省昆明市官渡区",
+        "groupId": 42107,
+        "id": 581509,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.95349",
+        "lng": "102.753524",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(官渡古镇店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省红河哈尼族彝族自治州红河县迤萨镇跑马路社区跑马路39号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532500,
+        "cityName": "红河哈尼族彝族自治州",
+        "code": "580831",
+        "contactName": "15969431402",
+        "contactPhone": "15094141498",
+        "contactTel": "",
+        "createdAt": "2026-06-24 11:09:59",
+        "districtId": 532529,
+        "districtName": "红河县",
+        "fullAddress": "云南省红河哈尼族彝族自治州红河县",
+        "groupId": 42107,
+        "id": 580831,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.365963",
+        "lng": "102.415862",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(红河县店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省楚雄彝族自治州禄丰市金山镇商贸步行街三幢12-13号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532300,
+        "cityName": "楚雄彝族自治州",
+        "code": "580810",
+        "contactName": "13013330833",
+        "contactPhone": "19187193438",
+        "contactTel": "",
+        "createdAt": "2026-06-24 10:16:30",
+        "districtId": 532302,
+        "districtName": "禄丰市",
+        "fullAddress": "云南省楚雄彝族自治州禄丰市",
+        "groupId": 42107,
+        "id": 580810,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.141301",
+        "lng": "102.071606",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(楚雄禄丰店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "昭阳区金池购物中心(金池西路南)",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530600,
+        "cityName": "昭通市",
+        "code": "580635",
+        "contactName": "15673904295",
+        "contactPhone": "19116287048",
+        "contactTel": "",
+        "createdAt": "2026-06-23 09:48:38",
+        "districtId": 530602,
+        "districtName": "昭阳区",
+        "fullAddress": "云南省昭通市昭阳区",
+        "groupId": 42107,
+        "id": 580635,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "27.330607",
+        "lng": "103.711441",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(昭通金池购物中心店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "23:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "贵州省黔西南布依族苗族自治州兴义市桔山街道，中兴路与碧云中路（桔香路）交汇处-1楼8D1004",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 522300,
+        "cityName": "黔西南布依族苗族自治州",
+        "code": "580376",
+        "contactName": "",
+        "contactPhone": "19085317716",
+        "contactTel": "",
+        "createdAt": "2026-06-20 17:50:43",
+        "districtId": 522301,
+        "districtName": "兴义市 ",
+        "fullAddress": "贵州省黔西南布依族苗族自治州兴义市 ",
+        "groupId": 42107,
+        "id": 580376,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.106234",
+        "lng": "104.916498",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(贵州黔西南兴义欢乐橙店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "520000",
+        "provinceName": "贵州省"
+      },
+      {
+        "address": "蒙自市南湖南路9号南湖荟第壹城C栋1层C-F1-42号商铺",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532500,
+        "cityName": "红河哈尼族彝族自治州",
+        "code": "579883",
+        "contactName": "象子茶铺茶（蒙自南湖荟店）",
+        "contactPhone": "15334365963",
+        "contactTel": "",
+        "createdAt": "2026-06-17 10:41:52",
+        "districtId": 532503,
+        "districtName": "蒙自市",
+        "fullAddress": "云南省红河哈尼族彝族自治州蒙自市",
+        "groupId": 42107,
+        "id": 579883,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.358931",
+        "lng": "103.40054",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(蒙自南湖荟店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市五华区莲华街道办事处云大教工小区7幢7-1号商铺",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "578985",
+        "contactName": "王明星",
+        "contactPhone": "16687106450",
+        "contactTel": "",
+        "createdAt": "2026-06-12 10:43:58",
+        "districtId": 530102,
+        "districtName": "五华区",
+        "fullAddress": "云南省昆明市五华区",
+        "groupId": 42107,
+        "id": 578985,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.083505",
+        "lng": "102.718005",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(昆明财大龙泉路店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "大理古城(玉洱路)建设银行对面",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532900,
+        "cityName": "大理白族自治州",
+        "code": "578904",
+        "contactName": "13769218118",
+        "contactPhone": "13769218118",
+        "contactTel": "",
+        "createdAt": "2026-06-11 16:39:48",
+        "districtId": 532901,
+        "districtName": "大理市",
+        "fullAddress": "云南省大理白族自治州大理市",
+        "groupId": 42107,
+        "id": 578904,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.695264",
+        "lng": "100.159517",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(大理古城二店玉洱路)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "23:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "昆明世纪广场西南(端仕街)",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "576815",
+        "contactName": "朱鹏望",
+        "contactPhone": "17874103034",
+        "contactTel": "",
+        "createdAt": "2026-05-30 18:03:19",
+        "districtId": 530102,
+        "districtName": "五华区",
+        "fullAddress": "云南省昆明市五华区",
+        "groupId": 42107,
+        "id": 576815,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.037148",
+        "lng": "102.711655",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(南屏街世纪广场店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "建工新城生活广场(民旺路)",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "576814",
+        "contactName": "刘小林",
+        "contactPhone": "19988154784",
+        "contactTel": "",
+        "createdAt": "2026-05-30 17:59:19",
+        "districtId": 530114,
+        "districtName": "呈贡区",
+        "fullAddress": "云南省昆明市呈贡区",
+        "groupId": 42107,
+        "id": 576814,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.946089",
+        "lng": "102.831844",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(昆明建工新城店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省大理白族自治州漾濞彝族自治县苍山西镇仁民街社区苍山东路东侧天恒商业城2栋1楼2-1-3号铺面",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532900,
+        "cityName": "大理白族自治州",
+        "code": "575590",
+        "contactName": "19912829582",
+        "contactPhone": "19912829582",
+        "contactTel": "",
+        "createdAt": "2026-05-28 10:12:30",
+        "districtId": 532922,
+        "districtName": "漾濞彝族自治县",
+        "fullAddress": "云南省大理白族自治州漾濞彝族自治县",
+        "groupId": 42107,
+        "id": 575590,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.670079",
+        "lng": "99.964512",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(漾濞店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省大理白族自治州大理市建设路泰业国际广场一楼外围A130号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532900,
+        "cityName": "大理白族自治州",
+        "code": "575303",
+        "contactName": "大理泰业二店",
+        "contactPhone": "18187826073",
+        "contactTel": "",
+        "createdAt": "2026-05-27 09:26:57",
+        "districtId": 532901,
+        "districtName": "大理市",
+        "fullAddress": "云南省大理白族自治州大理市",
+        "groupId": 42107,
+        "id": 575303,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.585201",
+        "lng": "100.225142",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(大理泰业二店）",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": 1,
+                "worktime": [
+                  {
+                    "spanedDay": 1,
+                    "time": [
+                      "10:30",
+                      "00:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市官渡区太和街道办事处吴井路131号附2室",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "575210",
+        "contactName": "高跃月",
+        "contactPhone": "18308710536",
+        "contactTel": "",
+        "createdAt": "2026-05-26 15:08:39",
+        "districtId": 530111,
+        "districtName": "官渡区",
+        "fullAddress": "云南省昆明市官渡区",
+        "groupId": 42107,
+        "id": 575210,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.032188",
+        "lng": "102.720688",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(塘子巷店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "23:45"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省红河州泸西县中枢镇长安社区锦辉广场B2-2-26、27、28、29、30号商铺",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532500,
+        "cityName": "红河哈尼族彝族自治州",
+        "code": "574397",
+        "contactName": "杨进青",
+        "contactPhone": "15398575953",
+        "contactTel": "",
+        "createdAt": "2026-05-21 19:25:25",
+        "districtId": 532527,
+        "districtName": "泸西县",
+        "fullAddress": "云南省红河哈尼族彝族自治州泸西县",
+        "groupId": 42107,
+        "id": 574397,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.532204",
+        "lng": "103.763704",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(红河泸西店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省曲靖市宣威市文化路29号（承接团餐，优惠多多，联系电话18183892236，微信同号）",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530300,
+        "cityName": "曲靖市",
+        "code": "573950",
+        "contactName": "廖秀勇",
+        "contactPhone": "19325074869",
+        "contactTel": "",
+        "createdAt": "2026-05-20 16:27:38",
+        "districtId": 530381,
+        "districtName": "宣威市",
+        "fullAddress": "云南省曲靖市宣威市",
+        "groupId": 42107,
+        "id": 573950,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 1,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "26.226362",
+        "lng": "104.105206",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(宣威店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:45",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "临翔区中骏世界城1幢1层S08",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530900,
+        "cityName": "临沧市",
+        "code": "573949",
+        "contactName": "李新超",
+        "contactPhone": "18288387895",
+        "contactTel": "",
+        "createdAt": "2026-05-20 16:24:39",
+        "districtId": 530902,
+        "districtName": "临翔区",
+        "fullAddress": "云南省临沧市临翔区",
+        "groupId": 42107,
+        "id": 573949,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.880884",
+        "lng": "100.08953",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(临沧中骏世界城店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:20",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "耿马傣族瓦族自治县孟定镇下城社区中缅第一街D栋145号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530900,
+        "cityName": "临沧市",
+        "code": "573946",
+        "contactName": "刘婷",
+        "contactPhone": "19987916560",
+        "contactTel": "",
+        "createdAt": "2026-05-20 16:15:35",
+        "districtId": 530926,
+        "districtName": "耿马傣族佤族自治县",
+        "fullAddress": "云南省临沧市耿马傣族佤族自治县",
+        "groupId": 42107,
+        "id": 573946,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.553595",
+        "lng": "99.080227",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(孟定店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省曲靖市沾益区西平街道龙华北路48号永丰吉座",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530300,
+        "cityName": "曲靖市",
+        "code": "573864",
+        "contactName": "顾燕霞",
+        "contactPhone": "18087416013",
+        "contactTel": "",
+        "createdAt": "2026-05-20 10:44:26",
+        "districtId": 530303,
+        "districtName": "沾益区",
+        "fullAddress": "云南省曲靖市沾益区",
+        "groupId": 42107,
+        "id": 573864,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.602195",
+        "lng": "103.819202",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(曲靖沾益西正街店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "贵州省毕节市七星关区碧阳街道文博路招商购物广场W-14号门面",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 520500,
+        "cityName": "毕节市",
+        "code": "573845",
+        "contactName": "18744918839",
+        "contactPhone": "18744918839",
+        "contactTel": "",
+        "createdAt": "2026-05-20 10:12:08",
+        "districtId": 520502,
+        "districtName": "七星关区",
+        "fullAddress": "贵州省毕节市七星关区",
+        "groupId": 42107,
+        "id": 573845,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "27.278481",
+        "lng": "105.288232",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(毕节店）",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:00",
+                      "23:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "520000",
+        "provinceName": "贵州省"
+      },
+      {
+        "address": "云南省/昆明市/官渡区/阿拉街道 龙辉路206号富康城购物中心1F-47-1",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "572299",
+        "contactName": "张佑",
+        "contactPhone": "18908892832",
+        "contactTel": "",
+        "createdAt": "2026-05-12 09:06:34",
+        "districtId": 530111,
+        "districtName": "官渡区",
+        "fullAddress": "云南省昆明市官渡区",
+        "groupId": 42107,
+        "id": 572299,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.968206",
+        "lng": "102.792663",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(富康城店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省临沧市镇康县广善路与裕丰路交叉口北100米",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530900,
+        "cityName": "临沧市",
+        "code": "572298",
+        "contactName": "张元翠",
+        "contactPhone": "19717001764",
+        "contactTel": "",
+        "createdAt": "2026-05-12 09:02:28",
+        "districtId": 530924,
+        "districtName": "镇康县",
+        "fullAddress": "云南省临沧市镇康县",
+        "groupId": 42107,
+        "id": 572298,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 1,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.75583",
+        "lng": "98.820498",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(镇康店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市五华区园西路78号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "571984",
+        "contactName": "李珺",
+        "contactPhone": "18388203989",
+        "contactTel": "",
+        "createdAt": "2026-05-10 14:35:07",
+        "districtId": 530102,
+        "districtName": "五华区",
+        "fullAddress": "云南省昆明市五华区",
+        "groupId": 42107,
+        "id": 571984,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.055332",
+        "lng": "102.705603",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(园西路店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "贵州省/黔西南布依族苗族自治州/望谟县/王母街道新桥路金鼎御府八栋；位于第_一层的8-1-1、8-1-2、8-1-3号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 522300,
+        "cityName": "黔西南布依族苗族自治州",
+        "code": "571966",
+        "contactName": "尹亮",
+        "contactPhone": "17678902260",
+        "contactTel": "",
+        "createdAt": "2026-05-10 09:48:28",
+        "districtId": 522326,
+        "districtName": "望谟县",
+        "fullAddress": "贵州省黔西南布依族苗族自治州望谟县",
+        "groupId": 42107,
+        "id": 571966,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.165907",
+        "lng": "106.09123",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(贵州望谟店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "520000",
+        "provinceName": "贵州省"
+      },
+      {
+        "address": "云南省曲靖市师宗县漾月路与腾达商业步行街交叉口东北50米",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530300,
+        "cityName": "曲靖市",
+        "code": "571428",
+        "contactName": "尚莉",
+        "contactPhone": "18313500360",
+        "contactTel": "",
+        "createdAt": "2026-05-09 10:22:58",
+        "districtId": 530323,
+        "districtName": "师宗县",
+        "fullAddress": "云南省曲靖市师宗县",
+        "groupId": 42107,
+        "id": 571428,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.825303",
+        "lng": "103.992532",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(师宗店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "23:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省昆明市东川区世纪丽晶大酒店西门旁",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "570582",
+        "contactName": "殷智豪",
+        "contactPhone": "18183825812",
+        "contactTel": "",
+        "createdAt": "2026-05-05 14:42:01",
+        "districtId": 530113,
+        "districtName": "东川区",
+        "fullAddress": "云南省昆明市东川区",
+        "groupId": 42107,
+        "id": 570582,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 1,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "26.069743",
+        "lng": "103.188969",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(东川店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省/丽江市/古城区/束河街道 办事处古城区荣城2栋109",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530700,
+        "cityName": "丽江市",
+        "code": "570487",
+        "contactName": "曾雅茹",
+        "contactPhone": "13038612606",
+        "contactTel": "",
+        "createdAt": "2026-05-03 11:39:27",
+        "districtId": 530702,
+        "districtName": "古城区",
+        "fullAddress": "云南省丽江市古城区",
+        "groupId": 42107,
+        "id": 570487,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "26.908804",
+        "lng": "100.227389",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(丽江旅游学院店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "23:20"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              },
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省红河哈尼族彝族自治州开远市人民中路57号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532500,
+        "cityName": "红河哈尼族彝族自治州",
+        "code": "570088",
+        "contactName": "蒋沁志",
+        "contactPhone": "15187769629",
+        "contactTel": "",
+        "createdAt": "2026-04-30 10:46:35",
+        "districtId": 532502,
+        "districtName": "开远市",
+        "fullAddress": "云南省红河哈尼族彝族自治州开远市",
+        "groupId": 42107,
+        "id": 570088,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.710517",
+        "lng": "103.246949",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(开远店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "6",
+                  "7"
+                ]
+              },
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省曲靖市麒麟区益宁街道办事处花柯社区金和雅居小区三幢商铺S-20(1楼）",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530300,
+        "cityName": "曲靖市",
+        "code": "568917",
+        "contactName": "王斌斌",
+        "contactPhone": "18187439349",
+        "contactTel": "",
+        "createdAt": "2026-04-27 16:01:26",
+        "districtId": 530302,
+        "districtName": "麒麟区",
+        "fullAddress": "云南省曲靖市麒麟区",
+        "groupId": 42107,
+        "id": 568917,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.474921",
+        "lng": "103.810912",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(曲靖花柯店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省曲靖市陆良县图腾商业中心14-1-61铺面",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530300,
+        "cityName": "曲靖市",
+        "code": "568351",
+        "contactName": "杨琼",
+        "contactPhone": "19306935669",
+        "contactTel": "",
+        "createdAt": "2026-04-24 11:47:56",
+        "districtId": 530322,
+        "districtName": "陆良县",
+        "fullAddress": "云南省曲靖市陆良县",
+        "groupId": 42107,
+        "id": 568351,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.028018",
+        "lng": "103.665138",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(陆良店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "00:00",
+                      "01:00"
+                    ]
+                  },
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:00",
+                      "23:59"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省/昆明市/西山区/永昌街道螺蛳湾社区居委会好悦天地一层2-1-15B号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530100,
+        "cityName": "昆明市",
+        "code": "568284",
+        "contactName": "彭丽",
+        "contactPhone": "19987197919",
+        "contactTel": "",
+        "createdAt": "2026-04-24 09:00:01",
+        "districtId": 530112,
+        "districtName": "西山区",
+        "fullAddress": "云南省昆明市西山区",
+        "groupId": 42107,
+        "id": 568284,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.021928",
+        "lng": "102.71384",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(西山区好悦天地店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "22:30"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省文山州广南县莲城体育公园2期4栋一单元13号商铺",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532600,
+        "cityName": "文山壮族苗族自治州",
+        "code": "567439",
+        "contactName": "王新华",
+        "contactPhone": "19995863999",
+        "contactTel": "",
+        "createdAt": "2026-04-21 15:53:55",
+        "districtId": 532627,
+        "districtName": "广南县",
+        "fullAddress": "云南省文山壮族苗族自治州广南县",
+        "groupId": 42107,
+        "id": 567439,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "24.057012",
+        "lng": "105.05784",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(广南万象金街店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:31",
+                      "22:10"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省丽江市古城区新义街四方街密士巷72",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530700,
+        "cityName": "丽江市",
+        "code": "567218",
+        "contactName": "乔智杰",
+        "contactPhone": "18469600774",
+        "contactTel": "",
+        "createdAt": "2026-04-21 09:07:57",
+        "districtId": 530702,
+        "districtName": "古城区",
+        "fullAddress": "云南省丽江市古城区",
+        "groupId": 42107,
+        "id": 567218,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "26.873047",
+        "lng": "100.234573",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(丽江古城店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省红河哈尼族舞族自治州河口瑶族自治县河口镇黄兴路象子茶铺茶（红河河口口岸店)",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532500,
+        "cityName": "红河哈尼族彝族自治州",
+        "code": "566141",
+        "contactName": "张正玺",
+        "contactPhone": "19087637798",
+        "contactTel": "",
+        "createdAt": "2026-04-16 10:24:36",
+        "districtId": 532532,
+        "districtName": "河口瑶族自治县",
+        "fullAddress": "云南省红河哈尼族彝族自治州河口瑶族自治县",
+        "groupId": 42107,
+        "id": 566141,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "22.505829",
+        "lng": "103.963712",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(河口店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "09:30",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省普洱市思茅区南屏镇林源路666号创基尚城b区c栋一层49号",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 530800,
+        "cityName": "普洱市",
+        "code": "565957",
+        "contactName": "李雨涵",
+        "contactPhone": "16608792396",
+        "contactTel": "",
+        "createdAt": "2026-04-15 15:05:04",
+        "districtId": 530802,
+        "districtName": "思茅区",
+        "fullAddress": "云南省普洱市思茅区",
+        "groupId": 42107,
+        "id": 565957,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 1,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "22.768249",
+        "lng": "100.974056",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(普洱创基店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:00",
+                      "23:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省德宏州瑞丽市勐卯街道办事处瑞江路86号德龙珠宝城3栋10号铺面",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 533100,
+        "cityName": "德宏傣族景颇族自治州",
+        "code": "565756",
+        "contactName": "杨琼",
+        "contactPhone": "15334340585",
+        "contactTel": "",
+        "createdAt": "2026-04-14 16:00:08",
+        "districtId": 533102,
+        "districtName": "瑞丽市",
+        "fullAddress": "云南省德宏傣族景颇族自治州瑞丽市",
+        "groupId": 42107,
+        "id": 565756,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 0,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "23.992123",
+        "lng": "97.867466",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(瑞丽德龙珠宝城)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "08:00",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      },
+      {
+        "address": "云南省/大理白族自治州/云龙县/诺邓镇人民路",
+        "aliPayShopCode": null,
+        "brandId": 216708,
+        "busiQualCode": null,
+        "channelIds": [
+          1,
+          2
+        ],
+        "cityId": 532900,
+        "cityName": "大理白族自治州",
+        "code": "563517",
+        "contactName": "",
+        "contactPhone": "19811078395",
+        "contactTel": "",
+        "createdAt": "2026-04-03 18:37:25",
+        "districtId": 532929,
+        "districtName": "云龙县",
+        "fullAddress": "云南省大理白族自治州云龙县",
+        "groupId": 42107,
+        "id": 563517,
+        "images": [],
+        "isAlipay": null,
+        "isAppletShow": null,
+        "isAppoint": null,
+        "isEat": 1,
+        "isTakeout": 1,
+        "isTest": 0,
+        "isWechat": null,
+        "lableIds": [],
+        "lat": "25.88595",
+        "lng": "99.370698",
+        "managerPhone": null,
+        "managerStatus": 0,
+        "name": "象子茶铺茶(大理云龙店)",
+        "notice": null,
+        "openStatus": 1,
+        "opentimes": [
+          {
+            "channelId": 1,
+            "dateOpentime": [],
+            "opentime": [
+              {
+                "spanedDay": null,
+                "worktime": [
+                  {
+                    "spanedDay": null,
+                    "time": [
+                      "10:30",
+                      "22:00"
+                    ]
+                  }
+                ],
+                "workweek": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7"
+                ]
+              }
+            ],
+            "status": 1
+          }
+        ],
+        "operateStatus": "营业",
+        "provinceId": "530000",
+        "provinceName": "云南省"
+      }
+    ],
+    "pageNum": 1,
+    "pageSize": 50,
+    "total": 178
+  },
+  "message": "请求成功",
+  "status": true,
+  "traceId": "pdC08112u7Wsm9c980c8d8966410e",
+  "trace_id": "pdC08112u7Wsm9c980c8d8966410e"
+}

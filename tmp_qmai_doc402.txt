@@ -1,0 +1,208 @@
+### 消息场景说明
+商品出库单消息
+
+### 消息格式
+| 参数 | 描述 | 是否必须  | 类型 | 示例值 |
+| -------- | -------- | ----- | -------- | ------ |
+|openId|openId鉴权参数|true|string|d14c1559e87b747d577c834b275a4310|
+|grantCode|grantCode鉴权参数|true|string|ba67d4fa46|
+|nonce|随机正整数|true|long|11886|
+|timestamp|当前时间戳|true|long|1465185768|
+|token|token鉴权参数|true|string|cFw0t9IuvL9jVo9qAzk0qMcw5BM=|
+| params | 消息体，详细说明见下方入库单消息体说明 | true | jsonString | {} |
+
+### 消息推送示例
+```json
+{
+  "openId": "d14c1559e87b747d577c834b275a4310",
+  "grantCode": "ba67d4fa46",
+  "nonce": 11886,
+  "timestamp": 1465185768,
+  "token": "cFw0t9IuvL9jVo9qAzk0qMcw5BM=",
+  "params": {
+    "sellerId": 219416,
+    "requireId": 1253659596662267904,
+    "storeId": "505183",
+    "warehouseMark": null,
+    "warehouseName": "嘉仟华北（三河）中心仓",
+    "warehouseNo": "PSCK000001",
+    "outboundNo": "DH20260422000014",
+    "storeWarehouseNo": "MDCK000467",
+    "outboundType": 16,
+    "productList": [
+      {
+        "outboundNum": 15,
+        "requireNum": 3,
+        "productNum": 3,
+        "outboundPrice": 65000,
+        "productMark": "",
+        "productCode": "WP3122",
+        "productName": "小咖意式咖啡豆",
+        "productId": "1193155130924158977",
+        "stockUnit": "包",
+        "stockUnitId": "1041650072101519361",
+        "stockUnitCode": "DW0014",
+        "outboundAmount": 195000,
+        "productUnit": "箱",
+        "productUnitCode": "DW0001",
+        "isGift": null,
+        "weight": 0,
+        "volume": 0,
+        "isWeight": 0,
+        "diffNum": null,
+        "quantity": null,
+        "productSpec": "1kg*5包/箱"
+      },
+      {
+        "outboundNum": 3,
+        "requireNum": 3,
+        "productNum": 3,
+        "outboundPrice": 2470,
+        "productMark": "原料",
+        "productCode": "WP0293",
+        "productName": "生牛乳",
+        "productId": "1041652718086582292",
+        "stockUnit": "盒",
+        "stockUnitId": "1037316445670375424",
+        "stockUnitCode": "DW0003",
+        "outboundAmount": 7410,
+        "productUnit": "盒",
+        "productUnitCode": "DW0003",
+        "isGift": null,
+        "weight": 0,
+        "volume": 0,
+        "isWeight": 0,
+        "diffNum": null,
+        "quantity": null,
+        "productSpec": "1L*12/箱"
+      },
+      {
+        "outboundNum": 1,
+        "requireNum": 1,
+        "productNum": 1,
+        "outboundPrice": 6640,
+        "productMark": "",
+        "productCode": "WP3176",
+        "productName": "小咖一级茉莉绿茶400g",
+        "productId": "1204756858423058432",
+        "stockUnit": "袋",
+        "stockUnitId": "1041650221578125312",
+        "stockUnitCode": "DW0019",
+        "outboundAmount": 6640,
+        "productUnit": "袋",
+        "productUnitCode": "DW0019",
+        "isGift": null,
+        "weight": 0,
+        "volume": 0,
+        "isWeight": 0,
+        "diffNum": null,
+        "quantity": null,
+        "productSpec": "400g*40袋/箱"
+      }
+    ],
+    "receiptCode": null,
+    "receiptName": "高磊",
+    "address": "北京市海淀区上地街道数码科技广场一层大堂",
+    "contactPhone": "17301370020",
+    "remark": "",
+    "creator": null,
+    "bizNo": "DH20260422000014",
+    "attributeCode": null,
+    "deliveryType": 0,
+    "settleSubjectCode": null,
+    "settleSubjectName": null,
+    "extraMark": null,
+    "joinContract": null,
+    "auditor": "李宇",
+    "declareNo": "BH20260422000021",
+    "requireCreatedAt": 1776825339713,
+    "expArrivalDate": null,
+    "source": 1,
+    "storeWarehouseName": "北京数码科技广场店",
+    "supplierCode": null,
+    "createdAt": null,
+    "orgType": null
+  }
+}
+```
+
+### 消息体说明
+
+
+| 参数 | 描述 | 是否必须 | 类型 | 示例值 |
+| -------- | -------- | ----- | -------- | ------ |
+| sellerId | 店铺id | true | long | 10001 |
+| requireId | 订货单id | false | long | 30001 |
+| storeId | 门店id | true | string | 20001 |
+| warehouseMark | 仓库标识 | true | string | MAIN_WAREHOUSE |
+| warehouseName | 仓库名称 | true | string | 华东主仓 |
+| warehouseNo | 仓库编码 | true | string | WH001 |
+| outboundNo | 出库单号 | true | string | CK202604160001 |
+| storeWarehouseNo | 门店仓库编码 | true | string | SWH001 |
+| outboundType | 出库类型 [开发指南->枚举值说明->供应链相关枚举值说明](https://open.qmai.com/home/documentCenter?id=313) 的outboundType字段 | true | int | 1 |
+| productList | 出库商品明细列表 | true | list | [] |
+| receiptCode | 收货方编码 | true | string | RC001 |
+| receiptName | 收货方名称 | true | string | 上海浦东门店 |
+| address | 详细地址 | false | string | 上海市浦东新区XX路100号 |
+| contactPhone | 联系方式 | false | string | 13800000000 |
+| remark | 备注信息 | false | string | 正常出库 |
+| creator | 创建人 | false | string | system |
+| bizNo | 业务单号 | false | string | BIZ202604160002 |
+| attributeCode | 仓库属性 | false | string | STORE |
+| deliveryType | 配送方式，0-配送 1-自提 2-快递 | false | int | 0 |
+| settleSubjectCode | 结算主体编码 | false | string | SETTLE001 |
+| settleSubjectName | 结算主体名称 | false | string | 华东结算主体 |
+| extraMark | 拓展标识 | false | string | EXT002 |
+| joinContract | 加盟合同号 | false | string | JC001 |
+| auditor | 审核人 | false | string | auditorB |
+| declareNo | 报货单号 | false | string | DECL202604160001 |
+| requireCreatedAt | 订货单创建时间 | false | date | 2026-04-15T10:00:00.000+08:00 |
+| expArrivalDate | 期望到货时间 | false | date | 2026-04-16T18:00:00.000+08:00 |
+| source | 来源，1-app下单 2-代客下单 | false | int | 1 |
+| storeWarehouseName | 门店仓库名称 | false | string | 浦东门店仓 |
+| supplierCode | 供应商编码 | false | string | SUP001 |
+| createdAt | 创建时间 | false | date | 2026-04-16T10:00:00.000+08:00 |
+| orgType | 机构类型，1-配送中心 3-门店 | false | int | 3 |
+| traceId | 请求追踪标识 | true | string | trace-outbound-001 |
+
+## 出库单商品明细说明
+
+| 参数 | 描述 | 是否必须 | 类型 | 示例值 |
+| -------- | -------- | ----- | -------- | ------ |
+| outboundNum | 审核数量(库存单位) | true | decimal | 8 |
+| requireNum | 审核数量(订货单位) | true | decimal | 8 |
+| productNum | 订货数量(订货单位) | true | decimal | 8 |
+| outboundPrice | 出库单价，单位：分 | true | decimal | 12.50 |
+| productMark | 物品标识 | true | string | SKU_MARK_001 |
+| productCode | 物品编码 | true | string | P001 |
+| productName | 物品名称 | true | string | 可乐糖浆 |
+| productId | 物品标识id | true | string | 100001 |
+| stockUnit | 物品单位 | true | string | 瓶 |
+| stockUnitId | 物品单位Id | true | string | 1 |
+| stockUnitCode | 物品单位编码 | true | string | BOTTLE |
+| outboundAmount | 合计金额，单位：分 | false | decimal | 100.00 |
+| productUnit | 订货单位名称 | false | string | 瓶 |
+| productUnitCode | 订货单位编码 | false | string | BOTTLE |
+| isGift | 是否赠品，1-是 0-否 | false | int | 0 |
+| weight | 物品重量 | false | decimal | 1.20 |
+| volume | 物品体积 | false | decimal | 0.50 |
+| isWeight | 是否称重，1-是 0-否 | false | int | 0 |
+| diffNum | 盘点差异数量 | false | decimal | 0 |
+| quantity | 原始库存数量 | false | decimal | 100 |
+| productSpec | 品项规格 | false | string | 500ml |
+
+
+### 返回示例
+
+回调根据http响应码为200，且返回{"code":0}判断为成功，否则为失败。
+
+返回字符串的json格式，内容如下表
+
+#### 成功格式
+```javascript
+{
+    "status": true,
+    "code": 0,
+    "message": "ok"
+}
+```

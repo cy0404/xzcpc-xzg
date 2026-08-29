@@ -1,0 +1,29 @@
+<!doctype html><html lang="cmn-Hans-CN" style="font-size: 10vw"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,viewport-fit=cover,user-scalable=no"><title>企迈数店</title><link rel="icon" href="https://rscdn.qmai.cn/scm-operate-h5/favicon.ico"><link rel="stylesheet" href="https://at.alicdn.com/t/c/font_4707457_g9eit54y8ii.css"><meta name="format-detection" content="telephone=no"><link href="https://rscdn.qmai.cn/scm-operate-h5/css/app.a8193017.css" rel="preload" as="style"><link href="https://rscdn.qmai.cn/scm-operate-h5/css/chunk-vendors.6071e516.css" rel="preload" as="style"><link href="https://rscdn.qmai.cn/scm-operate-h5/js/app.fbe5f98e.js" rel="preload" as="script"><link href="https://rscdn.qmai.cn/scm-operate-h5/js/chunk-vendors.029150eb.js" rel="preload" as="script"><link href="https://rscdn.qmai.cn/scm-operate-h5/css/chunk-vendors.6071e516.css" rel="stylesheet"><link href="https://rscdn.qmai.cn/scm-operate-h5/css/app.a8193017.css" rel="stylesheet"></head><body><noscript>请启用浏览器对JavaScript的支持</noscript><script src="https://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script><div id="app"></div><script>// ios10以上禁止缩放页面
+      function disableScale() {
+        let lastTouchEnd = 0
+        document.addEventListener('touchstart', function (event) {
+          if (event.touches.length > 1) {
+            event.preventDefault()
+          }
+        })
+        document.addEventListener(
+          'touchend',
+          function (event) {
+            const now = new Date().getTime()
+            if (now - lastTouchEnd <= 300) {
+              event.preventDefault()
+            }
+            lastTouchEnd = now
+          },
+          false
+        )
+        document.addEventListener('gesturestart', function (event) {
+          event.preventDefault()
+        })
+        document.addEventListener('dblclick', function (event) {
+          event.preventDefault()
+        })
+      }
+      window.addEventListener('load', function () {
+        disableScale()
+      })</script><script src="https://rscdn.qmai.cn/scm-operate-h5/js/chunk-vendors.029150eb.js"></script><script src="https://rscdn.qmai.cn/scm-operate-h5/js/app.fbe5f98e.js"></script></body></html>

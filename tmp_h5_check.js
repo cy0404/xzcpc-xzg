@@ -1,0 +1,1369 @@
+
+var p = new URLSearchParams(location.search);
+// 测试模式（URL 带 test=1）：补发为前端模拟（展示出库单样式），不调用后端写接口与企迈
+var TEST_MODE = p.get('test') === '1';
+// 测试模式：在行内追加模拟出库单展示（绿=成功/红=失败），不写库
+// 注意插入位置：真实渲染时出库单行在 .sg-info 内部（flex 主信息区），
+// 直接 append 到 .sg-item 末尾会被 flex 布局挤到按钮后不可见
+function testSimulateOutbound(item, fail) {
+  var box = document.createElement('div');
+  box.className = 'sg-meta';
+  if (fail) {
+    box.style.color = '#E5484D';
+    box.textContent = '⚠ 出库失败（冷冻仓）：物料未配置采购单价（测试模拟）';
+  } else {
+    box.style.color = '#2F8F57';
+    box.textContent = '出库单号 TEST-' + Date.now().toString().slice(-6) + ' ✓ 冷冻仓（测试模拟）';
+  }
+  var info = item.querySelector('.sg-info');
+  if (info) info.appendChild(box);
+  else item.appendChild(box);
+}
+// 测试模式：把已模拟补发的行移动到「已补发」tab（同门店分组下），不 reload、不写库
+function testMoveItemToDone(cardKey, item, fail) {
+  var doneTab = 'resend_' + cardKey + '_done';
+  var db = document.getElementById(doneTab);
+  if (!db) return;
+  var storeName = item.getAttribute('data-sg-store') || '未知门店';
+  var target = null;
+  var groups = db.querySelectorAll('.store-group');
+  for (var i = 0; i < groups.length; i++) {
+    if (groups[i].getAttribute('data-sg-store') === storeName) {
+      target = groups[i].querySelector('.sg-body');
+      break;
+    }
+  }
+  if (!target) {
+    // 该门店在已补发 tab 没有分组时新建一个（测试模式专用）
+    var g = document.createElement('div');
+    g.className = 'store-group';
+    g.setAttribute('data-sg-store', storeName);
+    var sid = 'sg_test_' + cardKey + '_' + Date.now();
+    g.innerHTML = '<div class="sg-header"><span class="sg-name">' + esc(storeName) + ' <span style="font-size:12px;color:#98A19C">(1条)</span></span><span class="sg-arrow">&#9660;</span></div>';
+    g.innerHTML += '<div class="sg-body" id="' + sid + '"></div>';
+    db.appendChild(g);
+    target = document.getElementById(sid);
+  }
+  var clone = item.cloneNode(true);
+  var cb = clone.querySelector('.sg-check');
+  if (cb) cb.remove();
+  var b = clone.querySelector('.sg-item-btn');
+  if (b) b.remove();
+  clone.insertAdjacentHTML('beforeend', '<span class="sg-tag tag tag-wait">待收货</span>');
+  testSimulateOutbound(clone, fail);
+  target.appendChild(clone);
+  item.remove();
+}
+// 测试模式：前端切换到「已补发」tab（不 reload，保持模拟数据）
+function testShowDoneTab(cardKey) {
+  var pendingTab = 'resend_' + cardKey + '_pending';
+  var doneTab = 'resend_' + cardKey + '_done';
+  var pb = document.getElementById(pendingTab);
+  var db = document.getElementById(doneTab);
+  if (!pb || !db) return;
+  pb.classList.remove('active');
+  db.classList.add('active');
+  var btns = db.parentElement.querySelectorAll('.tab-btn');
+  if (btns.length >= 2) {
+    btns[0].classList.remove('active');
+    btns[1].classList.add('active');
+  }
+}
+var date = p.get('date') || '';
+var category = p.get('category') || '';
+var reason = p.get('reason') || '';
+var materialId = p.get('materialId') || '';
+var tab = p.get('tab') || '';
+var urgentId = p.get('urgentId') || '';
+var urgentOnly = p.get('urgent') || '';
+var reports = [];
+var modalCb = null;
+var otherModalCb = null;
+var searchKeyword = '';
+var attFiles = []; // 当前弹窗的附件 {url, isVideo}
+var attUploading = false;
+
+function isVideo(url) { return /\.(mp4|mov|avi|mkv|webm)($|\?)/i.test(url); }
+function showLightbox(src) {
+  if (isVideo(src)) {
+    playVideo(src);
+    return;
+  }
+  // 原图 5-6MB 走服务器 5Mbps 带宽约需 9 秒，直接显示会白屏等待；
+  // 先显示缩略图（tile 刚加载过、浏览器已缓存，秒出画面），
+  // 高清原图后台加载完成后自动替换。缩略图缺失（极老图）时 onerror 回退原图直载
+  var img = document.getElementById('lb-img');
+  var tip = document.getElementById('lb-tip');
+  document.getElementById('lb').classList.add('on');
+  var thumb = thumbOf(src);
+  img.onerror = function () { if (img.src !== src) { img.src = src; } else { img.onerror = null; } };
+  img.src = thumb;
+  tip.style.display = 'block';
+  var hq = new Image();
+  hq.onload = function () { img.src = src; tip.style.display = 'none'; };
+  hq.onerror = function () { tip.style.display = 'none'; if (img.src !== src) { img.src = src; } };
+  hq.src = src;
+}
+function playVideo(url) {
+  var v = document.getElementById('videoPlayer');
+  v.src = url;
+  document.getElementById('videoModal').classList.add('on');
+  v.play();
+}
+function closeVideo() {
+  var v = document.getElementById('videoPlayer');
+  v.pause(); v.src = '';
+  document.getElementById('videoModal').classList.remove('on');
+}
+
+function openModal(msg, cb, showQty) {
+  document.getElementById('modal-msg').textContent = msg;
+  // 牛油果泥确认报损登记时显示原始/确认数量行，其余弹窗默认隐藏
+  document.getElementById('modal-qty-row').style.display = showQty ? 'block' : 'none';
+  modalCb = cb;
+  attFiles = [];
+  renderAttPreview();
+  document.getElementById('modal').classList.add('on');
+}
+function closeModal() { document.getElementById('modal').classList.remove('on'); modalCb = null; attFiles = []; }
+document.getElementById('modal-confirm-btn').addEventListener('click', function() {
+  document.getElementById('modal').classList.remove('on');
+  if (modalCb) { var cb = modalCb; modalCb = null; cb(); }
+});
+
+async function onAttFilesChange(input) {
+  if (attUploading) return;
+  var files = input.files;
+  if (!files.length) return;
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    if (f.size > 50 * 1024 * 1024) { alert('文件不能超过50M'); continue; }
+    attUploading = true;
+    var formData = new FormData();
+    formData.append('file', f);
+    try {
+      var r = await fetch('/api/public/loss-report/upload-attachment', {method:'POST', body:formData});
+      var d = await r.json();
+      if (d.code === 200) {
+        attFiles.push({url: d.url, isVideo: isVideo(d.url) || f.type.startsWith('video/')});
+        renderAttPreview();
+      } else {
+        alert('上传失败: ' + (d.msg || '未知错误'));
+      }
+    } catch(e) { alert('上传失败: 网络错误'); }
+    attUploading = false;
+  }
+  input.value = '';
+}
+function renderAttPreview() {
+  var el = document.getElementById('attPreview');
+  var h = '';
+  for (var i = 0; i < attFiles.length; i++) {
+    var a = attFiles[i];
+    h += '<span class="att-thumb">';
+    if (a.isVideo) h += '<div style="width:48px;height:48px;border-radius:4px;background:linear-gradient(135deg,#3A3F3C,#1F2421);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">▶</div>';
+    else h += '<img src="' + a.url + '">';
+    h += '<span class="att-del" onclick="attRemove(' + i + ')">&times;</span></span>';
+  }
+  el.innerHTML = h;
+}
+function attRemove(idx) { attFiles.splice(idx, 1); renderAttPreview(); }
+
+// 其他类二选一弹窗
+function openOtherModal(cbResend, cbRegister) {
+  document.getElementById('modalOther').classList.add('on');
+  otherModalCb = { resend: cbResend, register: cbRegister };
+}
+function closeOtherModal() { document.getElementById('modalOther').classList.remove('on'); otherModalCb = null; }
+document.getElementById('modal-resend-btn').addEventListener('click', function() {
+  document.getElementById('modalOther').classList.remove('on');
+  if (otherModalCb) { var cb = otherModalCb.resend; otherModalCb = null; cb(); }
+});
+document.getElementById('modal-register-btn').addEventListener('click', function() {
+  document.getElementById('modalOther').classList.remove('on');
+  if (otherModalCb) { var cb = otherModalCb.register; otherModalCb = null; cb(); }
+});
+
+async function load() {
+  try {
+    var catParam = urgentId ? '' : ('&category=' + encodeURIComponent(category));
+    var tabParam = tab ? ('&tab=' + tab) : '';
+    var reasonParam = reason ? ('&reason=' + encodeURIComponent(reason)) : '';
+    var matParam = materialId ? ('&materialId=' + encodeURIComponent(materialId)) : '';
+    var r = await fetch('/api/public/loss-report/daily-summary?date=' + date + catParam + tabParam + reasonParam + matParam + '&_t=' + Date.now());
+    var d = await r.json();
+    reports = d.list;
+    render(d);
+  } catch(e) {
+    document.getElementById('app').innerHTML = '<div class="loading">加载失败</div>';
+  }
+}
+
+var MEDIA_BASE = 'https://www.xzcpc-9pd.top';
+function fixMediaUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return MEDIA_BASE + (url.startsWith('/') ? '' : '/') + url;
+}
+// 视频缩略图 URL：上传时服务端已生成 <原名>_thumb.jpg（服务端 thumbUrl() 同规则），
+// 页面用 <img> 展示小图；tile 内不含 <video>，任何 webview 都不会在进页面时拉视频数据
+function thumbOf(videoUrl) {
+  if (!videoUrl) return '';
+  var noQuery = videoUrl.split('?')[0];
+  var i = noQuery.lastIndexOf('.');
+  if (i <= 0) return '';
+  return noQuery.substring(0, i) + '_thumb.jpg';
+}
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function tag(label, cls) { return '<span class="tag tag-' + cls + '">' + esc(label) + '</span>'; }
+
+// 搜索词拆分：空格/逗号/顿号/分号分隔，支持一次搜多个门店（任一命中即显示）
+function searchKeywords() {
+  if (!searchKeyword) return [];
+  var kws = [];
+  var parts = searchKeyword.split(/[,，、;；\s]+/);
+  for (var i = 0; i < parts.length; i++) {
+    var s = parts[i].toLowerCase();
+    if (s) kws.push(s);
+  }
+  return kws;
+}
+function matchSearch(r) {
+  var kws = searchKeywords();
+  if (!kws.length) return true;
+  for (var i = 0; i < kws.length; i++) {
+    var kw = kws[i];
+    if (r.materialName && r.materialName.toLowerCase().indexOf(kw) !== -1) return true;
+    if (r.storeName && r.storeName.toLowerCase().indexOf(kw) !== -1) return true;
+    if (r.qimaiOrderNo && r.qimaiOrderNo.toLowerCase().indexOf(kw) !== -1) return true;
+  }
+  return false;
+}
+
+// 数量格式化：最多两位小数，去尾零（如 36.00 → 36）
+function fmtQty(n) {
+  var v = parseFloat(n);
+  if (isNaN(v)) return '0';
+  return String(Math.round(v * 100) / 100);
+}
+
+function buildStoreGroups(dList, resultFilter, prefix) {
+  // 按门店分组
+  var storeMap = {};
+  for (var i = 0; i < dList.length; i++) {
+    var r = dList[i];
+    if (r.result !== resultFilter) continue;
+    var sname = r.storeName || '未知门店';
+    if (!storeMap[sname]) storeMap[sname] = [];
+    storeMap[sname].push({id: r.id, materialName: r.materialName, qtyStr: r.qtyStr, qtyNum: r.qtyNum, reason: r.reason, occurredDate: r.occurredDate, resendStatus: r.resendStatus, feedback: r.feedback, storeName: r.storeName, qimaiOrderNo: r.qimaiOrderNo, urgent: r.urgent, qmCode: r.qmCode, matCategory: r.matCategory, supplier: r.supplier, isAvocado: r.isAvocado, outboundNo: r.outboundNo, outboundStatus: r.outboundStatus, outboundError: r.outboundError, outboundWarehouse: r.outboundWarehouse});
+  }
+  var storeNames = Object.keys(storeMap);
+  if (!storeNames.length) return '<div class="loading" style="padding:40px 0">暂无' + resultFilter + '</div>';
+
+  var out = '';
+  for (var s = 0; s < storeNames.length; s++) {
+    var name = storeNames[s];
+    var items = storeMap[name];
+    var sid = 'sg_' + prefix + '_' + resultFilter + '_' + s;
+    out += '<div class="store-group" data-sg-store="' + esc(name) + '"><div class="sg-header" onclick="toggleSG(\'' + sid + '\')"><span class="sg-name">' + esc(name) + ' <span style="font-size:12px;color:#98A19C">(' + items.length + '条)</span></span>';
+    if (resultFilter === '待补发') {
+      // 单门店批量补发按钮在门店名那一行右侧（全选和批量都只作用于本门店）
+      out += '<span style="display:flex;align-items:center;gap:8px" onclick="event.stopPropagation()">';
+      if (prefix === 'avo') {
+        // 牛油果泥卡片：只统计本门店勾选中的包数（随勾选实时变化，初始为0）
+        out += '<span id="sgPkg_' + sid + '" style="font-size:12px;color:#98A19C">共0包</span>';
+      }
+      out += '<label style="font-size:13px;color:#66706A"><input type="checkbox" class="sg-store-check-all" onchange="sgStoreToggleAll(\'' + sid + '\', this.checked)"> 全选</label>';
+      out += '<button class="sg-batch-btn" disabled onclick="sgStoreBatchResend(\'' + sid + '\')">批量补发</button><span class="sg-arrow">&#9660;</span></span>';
+    } else {
+      out += '<span class="sg-arrow">&#9660;</span>';
+    }
+    out += '</div>';
+    out += '<div class="sg-body" id="' + sid + '">';
+    for (var j = 0; j < items.length; j++) {
+      var r = items[j];
+      var isDone = (resultFilter === '已补发');
+      var stLabel = isDone ? (r.resendStatus === 'received' ? '已收货' : r.resendStatus === 'not_received' ? '未收到货' : '待收货') : '';
+      var stCls = stLabel === '未收到货' ? 'tag-no' : stLabel === '待收货' ? 'tag-wait' : 'tag-ok';
+      out += '<div class="sg-item" data-sg-mat="' + esc(r.materialName) + '" data-sg-store="' + esc(r.storeName) + '" data-sg-qm="' + esc(r.qimaiOrderNo||'') + '" data-sg-qty="' + (r.qtyNum != null ? r.qtyNum : 0) + '">';
+      if (!isDone) out += '<input type="checkbox" class="sg-check" onchange="sgItemCheck(\'' + sid + '\')" value="' + r.id + '">';
+      out += '<div class="sg-info"><div>';
+      if (r.qmCode) out += '<span style="color:#2F8F57;margin-right:4px">' + esc(r.qmCode) + '</span>';
+      out += esc(r.materialName) + '</div>';
+      out += '<div class="sg-meta">' + esc(r.reason || '') + ' · ' + (r.occurredDate || '') + '</div>';
+      // 出库单状态（补发联动 9.2.4）：成功=出库单号+仓库；失败=原因
+      if (isDone) {
+        if (r.outboundStatus === 'success' && r.outboundNo) {
+          out += '<div class="sg-meta" style="color:#2F8F57">出库单号 ' + esc(r.outboundNo) + ' ✓' + (r.outboundWarehouse ? ' ' + esc(r.outboundWarehouse) : '') + '</div>';
+        } else if (r.outboundStatus === 'failed') {
+          out += '<div class="sg-meta" style="color:#E5484D">⚠ 出库失败' + (r.outboundWarehouse ? '（' + esc(r.outboundWarehouse) + '）' : '') + '：' + esc((r.outboundError || '').substring(0, 30)) + '</div>';
+        }
+      }
+      out += '</div>';
+      if (stLabel) out += '<span class="sg-tag tag ' + stCls + '">' + stLabel + '</span>';
+      out += '<span style="font-size:13px;font-weight:600;color:#1F2421;margin-left:auto;margin-right:8px;white-space:nowrap">' + esc(r.qtyStr) + '</span>';
+      if (r.feedback) out += '<span class="sg-meta" style="margin-left:4px;color:#E05A47">' + esc(r.feedback) + '</span>';
+      if (resultFilter === '待补发') out += '<button class="sg-item-btn" onclick="sgSingleResend(' + r.id + ', this)">补发</button>';
+      if (isDone && r.outboundStatus === 'failed') out += '<button class="sg-item-btn sg-retry-btn" onclick="sgRetryOutbound(' + r.id + ', this)">重新补发</button>';
+      out += '</div>';
+    }
+    out += '</div></div>';
+  }
+  return out;
+}
+
+// ==================== 补发页：牛油果泥 + 其他类 两张卡片 ====================
+
+// 牛油果泥统计表：按门店统计，「24包及以上 / 24包以下」两档（1件=24包，按门店合计包数）
+// 与待补发列表联动：选档后待补发列表只展示该档门店，默认 24包及以上
+function buildAvoStatTable(stats, activeT) {
+  var big = [], small = [];
+  for (var i = 0; i < stats.length; i++) {
+    var q = parseFloat(stats[i].total_qty || 0);
+    if (q >= 24) big.push(stats[i]); else small.push(stats[i]);
+  }
+  var h = '<div class="card" style="margin:0 0 12px;padding:0 8px">';
+  h += '<p style="font-weight:600;font-size:15px;margin-bottom:8px">牛油果泥待补发统计（按门店）</p>';
+  h += '<div class="tab-sub" style="padding:4px 0">';
+  h += '<div class="tab-sub-btn' + (activeT === 'big' ? ' active' : '') + '" id="avoTabBigBtn" onclick="switchAvoStatTab(\'big\')">24包及以上 (' + big.length + '家)</div>';
+  h += '<div class="tab-sub-btn' + (activeT === 'small' ? ' active' : '') + '" id="avoTabSmallBtn" onclick="switchAvoStatTab(\'small\')">24包以下 (' + small.length + '家)</div>';
+  h += '</div>';
+  h += '<div id="avoStatBig"' + (activeT === 'big' ? '' : ' style="display:none"') + '>' + avoStatTableRows(big) + '</div>';
+  h += '<div id="avoStatSmall"' + (activeT === 'small' ? '' : ' style="display:none"') + '>' + avoStatTableRows(small) + '</div>';
+  h += '</div>';
+  return h;
+}
+function avoStatTableRows(rows) {
+  var h = '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr style="color:#66706A"><th style="text-align:left;padding:4px 0">门店</th><th style="text-align:right;padding:4px 0">次数</th><th style="text-align:right;padding:4px 0">数量</th></tr>';
+  var totalCnt = 0, totalQty = 0, unit = '';
+  for (var i = 0; i < rows.length; i++) {
+    var a = rows[i];
+    h += '<tr class="avo-stat-row" data-sg-store="' + esc(a.store_name) + '"><td style="padding:4px 0;border-top:1px solid #EEF1EF">' + esc(a.store_name) + '</td><td style="text-align:right;padding:4px 0;border-top:1px solid #EEF1EF">' + a.cnt + ' 次</td><td style="text-align:right;padding:4px 0;border-top:1px solid #EEF1EF">' + (a.total_qty||'') + (a.input_unit||'') + '</td></tr>';
+    totalCnt += (a.cnt || 0);
+    totalQty += parseFloat(a.total_qty || 0);
+    unit = a.input_unit || '';
+  }
+  if (!rows.length) h += '<tr><td colspan="3" style="padding:12px 0;color:#98A19C">暂无</td></tr>';
+  h += '<tr class="avo-total-row" style="font-weight:700;border-top:2px solid #E8ECE9"><td style="padding:4px 0">合计（' + rows.length + ' 家门店）</td><td style="text-align:right;padding:4px 0">' + totalCnt + ' 次</td><td style="text-align:right;padding:4px 0">' + totalQty + unit + '</td></tr>';
+  h += '</table>';
+  return h;
+}
+function switchAvoStatTab(mode) {
+  localStorage.setItem('avoStatTab', mode); // 'big' | 'small'
+  localStorage.setItem('activeTab_avo', 'resend_avo_pending'); // 切到待补发 tab
+  location.reload();
+}
+
+// 其他类统计表：门店 → 有哪些物料需要补发（可展开收起；门店名一行，物料绿色chips，数量加粗）
+function buildOtherStatTable(list) {
+  var map = {};
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    if (r.result !== '待补发') continue;
+    var sname = r.storeName || '未知门店';
+    if (!map[sname]) map[sname] = [];
+    map[sname].push(r);
+  }
+  var names = Object.keys(map);
+  if (!names.length) return '';
+  var itemCount = 0;
+  for (var s = 0; s < names.length; s++) itemCount += map[names[s]].length;
+  var h = '<div class="card" style="margin:0 0 12px;padding:0">';
+  h += '<div class="sg-header" style="border-radius:12px;padding:12px 8px" onclick="toggleStatBody(\'otherStatBody\', this)"><span class="sg-name" style="font-size:15px">其他类待补发统计（按门店） <span style="font-size:12px;font-weight:400;color:#98A19C">' + names.length + '家门店 · ' + itemCount + '条物料</span></span><span class="sg-arrow">&#9660;</span></div>';
+  h += '<div class="stat-body" id="otherStatBody">';
+  for (var s = 0; s < names.length; s++) {
+    var items = map[names[s]];
+    h += '<div class="stat-row"><div class="stat-store">' + esc(names[s]) + '</div><div class="stat-chips">';
+    for (var j = 0; j < items.length; j++) {
+      h += '<span class="stat-chip">' + esc(items[j].materialName) + '<b>×' + esc(items[j].qtyStr) + '</b></span>';
+    }
+    h += '</div></div>';
+  }
+  h += '</div></div>';
+  return h;
+}
+function toggleStatBody(id, headerEl) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  headerEl.classList.toggle('collapsed');
+}
+
+// 补发卡片：统计表 + 待补发/已补发两个 tab + 门店内批量补发（批量按钮在每个门店内部）
+// pendingList 可选：牛油果泥卡片传按 24包及以上/以下 过滤后的列表
+function renderResendCard(list, cardKey, statsHtml, pendingList) {
+  var pendingTab = 'resend_' + cardKey + '_pending';
+  var doneTab = 'resend_' + cardKey + '_done';
+  var activeTab = localStorage.getItem('activeTab_' + cardKey) || pendingTab;
+  localStorage.removeItem('activeTab_' + cardKey);
+  if (activeTab !== pendingTab && activeTab !== doneTab) activeTab = pendingTab;
+  var pendingSrc = pendingList || list;
+  var isAvoCard = (cardKey === 'avo');
+  var cardHasPending = false;
+  if (isAvoCard) {
+    for (var i = 0; i < pendingSrc.length; i++) { if (pendingSrc[i].result === '待补发') { cardHasPending = true; break; } }
+  }
+
+  var h = '<div style="margin:12px 0;padding:16px 4px">';
+  if (statsHtml) h += statsHtml;
+  h += '<div class="tabs" style="margin:8px 0 0">';
+  h += '<div class="tab-btn' + (activeTab===pendingTab?' active':'') + '" onclick="switchCardTab(\'' + cardKey + '\',\'pending\')">待补发</div>';
+  h += '<div class="tab-btn' + (activeTab===doneTab?' active':'') + '" onclick="switchCardTab(\'' + cardKey + '\',\'done\')">已补发</div>';
+  h += '</div>';
+  h += '<div class="tab-body' + (activeTab===pendingTab?' active':'') + '" id="' + pendingTab + '">';
+  if (isAvoCard && cardHasPending) {
+    // 牛油果泥卡片：卡片级全选批量补发，覆盖页面里所有门店；统计只计算勾选中的门店数与包数
+    h += '<div class="sg-batch-bar" style="margin:0 0 8px"><label><input type="checkbox" class="sg-card-check-all" onchange="sgCardToggleAll(\'' + pendingTab + '\', this.checked)"> 全选（所有门店）</label>';
+    h += '<span id="avoCardStat" style="font-size:12px;color:#98A19C">0家 · 共0包</span>';
+    h += '<button class="sg-batch-btn sg-card-batch-btn" disabled onclick="sgCardBatchResend(\'' + pendingTab + '\')">批量补发</button></div>';
+  }
+  h += buildStoreGroups(pendingSrc, '待补发', cardKey);
+  h += '</div>';
+  h += '<div class="tab-body' + (activeTab===doneTab?' active':'') + '" id="' + doneTab + '">';
+  h += buildStoreGroups(list, '已补发', cardKey);
+  h += '</div>';
+  h += '</div>';
+  return h;
+}
+function switchCardTab(cardKey, tab) {
+  // 测试模式：前端切 tab 不 reload —— reload 会丢失模拟补发的行（未写库），行会回到待补发列表
+  if (TEST_MODE) {
+    if (tab === 'done') { testShowDoneTab(cardKey); }
+    else { testShowPendingTab(cardKey); }
+    return;
+  }
+  localStorage.setItem('activeTab_' + cardKey, 'resend_' + cardKey + '_' + tab);
+  location.reload();
+}
+// 测试模式：前端切回「待补发」tab（不 reload，保留模拟数据）
+function testShowPendingTab(cardKey) {
+  var pendingTab = 'resend_' + cardKey + '_pending';
+  var doneTab = 'resend_' + cardKey + '_done';
+  var pb = document.getElementById(pendingTab);
+  var db = document.getElementById(doneTab);
+  if (!pb || !db) return;
+  db.classList.remove('active');
+  pb.classList.add('active');
+  var btns = db.parentElement.querySelectorAll('.tab-btn');
+  if (btns.length >= 2) {
+    btns[1].classList.remove('active');
+    btns[0].classList.add('active');
+  }
+}
+
+function toggleSG(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  el.parentElement.querySelector('.sg-header').classList.toggle('collapsed');
+}
+function sgItemCheck(sid) {
+  var body = document.getElementById(sid);
+  if (!body) return;
+  var group = body.closest('.store-group');
+  if (group) {
+    var checks = group.querySelectorAll('.sg-check:checked');
+    var all = group.querySelectorAll('.sg-check');
+    var btn = group.querySelector('.sg-batch-btn');
+    if (btn) btn.disabled = checks.length === 0;
+    var allCheck = group.querySelector('.sg-store-check-all');
+    if (allCheck) allCheck.checked = all.length > 0 && checks.length === all.length;
+  }
+  // 卡片级全选/批量按钮联动与勾选统计（牛油果泥卡片）
+  var tabBody = body.closest('.tab-body');
+  if (tabBody) {
+    var cardBtn = tabBody.querySelector('.sg-card-batch-btn');
+    var cardAll = tabBody.querySelector('.sg-card-check-all');
+    var tabChecks = tabBody.querySelectorAll('.sg-check');
+    var tabChecked = tabBody.querySelectorAll('.sg-check:checked');
+    if (cardBtn) cardBtn.disabled = tabChecked.length === 0;
+    if (cardAll) cardAll.checked = tabChecks.length > 0 && tabChecked.length === tabChecks.length;
+    updateCardStat(tabBody.id);
+  }
+  updateStorePkg(sid);
+}
+// 门店级全选：勾选该门店内所有待补发物料
+function sgStoreToggleAll(sid, on) {
+  var body = document.getElementById(sid);
+  if (!body) return;
+  var group = body.closest('.store-group');
+  if (!group) return;
+  var checks = group.querySelectorAll('.sg-check');
+  for (var i = 0; i < checks.length; i++) checks[i].checked = on;
+  var btn = group.querySelector('.sg-batch-btn');
+  if (btn) btn.disabled = !on;
+  updateStorePkg(sid);
+  var tabBody = body.closest('.tab-body');
+  if (tabBody) updateCardStat(tabBody.id);
+}
+// 门店勾选包数统计：只计算本门店勾选中的包数
+function updateStorePkg(sid) {
+  var body = document.getElementById(sid);
+  if (!body) return;
+  var span = document.getElementById('sgPkg_' + sid);
+  if (!span) return;
+  var checks = body.querySelectorAll('.sg-check:checked');
+  var total = 0;
+  for (var i = 0; i < checks.length; i++) {
+    var item = checks[i].closest('.sg-item');
+    total += (parseFloat(item && item.getAttribute('data-sg-qty')) || 0);
+  }
+  span.textContent = '共' + fmtQty(total) + '包';
+}
+// 卡片级勾选统计：只计算勾选中的门店数与包数
+function updateCardStat(tabId) {
+  var body = document.getElementById(tabId);
+  var span = document.getElementById('avoCardStat');
+  if (!body || !span) return;
+  var checks = body.querySelectorAll('.sg-check:checked');
+  var stores = {}, total = 0;
+  for (var i = 0; i < checks.length; i++) {
+    var item = checks[i].closest('.sg-item');
+    if (!item) continue;
+    stores[item.getAttribute('data-sg-store') || '未知门店'] = 1;
+    total += (parseFloat(item.getAttribute('data-sg-qty')) || 0);
+  }
+  span.textContent = Object.keys(stores).length + '家 · 共' + fmtQty(total) + '包';
+}
+// 刷新卡片内所有门店的包数统计
+function refreshTabStorePkg(tabId) {
+  var body = document.getElementById(tabId);
+  if (!body) return;
+  var storeBodies = body.querySelectorAll('.sg-body');
+  for (var i = 0; i < storeBodies.length; i++) updateStorePkg(storeBodies[i].id);
+}
+// 刷新卡片内各门店 全选 勾选状态（按可见物料）
+function refreshTabStoreChecks(tabId) {
+  var body = document.getElementById(tabId);
+  if (!body) return;
+  var storeBodies = body.querySelectorAll('.sg-body');
+  for (var i = 0; i < storeBodies.length; i++) {
+    var sb = storeBodies[i];
+    var gAll = sb.parentElement.querySelector('.sg-store-check-all');
+    if (!gAll) continue;
+    var gChecks = sb.querySelectorAll('.sg-check');
+    var gVisible = 0, gChecked = 0;
+    for (var k = 0; k < gChecks.length; k++) {
+      var gi = gChecks[k].closest('.sg-item');
+      if (gi && gi.style.display === 'none') continue;
+      gVisible++;
+      if (gChecks[k].checked) gChecked++;
+    }
+    gAll.checked = gVisible > 0 && gChecked === gVisible;
+  }
+}
+async function sgSingleResend(id, btn) {
+  // 测试模式（URL 带 test=1）：前端模拟补发，把行移到已补发 tab 展示样式，不调用后端/企迈
+  if (TEST_MODE) {
+    var item = btn.closest('.sg-item');
+    var bodyEl = item.closest('.tab-body');
+    var cardKey = bodyEl ? bodyEl.id.split('_')[1] : 'other';
+    testMoveItemToDone(cardKey, item, false);
+    testShowDoneTab(cardKey);
+    alert('测试模拟：补发成功，已切换到「已补发」tab（未调企迈建单）');
+    return;
+  }
+  btn.disabled = true; btn.textContent = '处理中...';
+  try {
+    await fetch('/api/public/loss-report/issue-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: String(id)})
+    });
+    var item = btn.closest('.sg-item');
+    var bodyEl = item.closest('.tab-body');
+    var cardKey = bodyEl ? bodyEl.id.split('_')[1] : 'other';
+    switchCardTab(cardKey, 'done'); // 补发成功 → 跳转已补发 tab 展示出库单
+  } catch(e) { btn.disabled = false; btn.textContent = '重试'; }
+}
+// 出库失败重试：已补发 tab 中 outboundStatus=failed 的行 → 重新调 9.2.4 建单（upsert 覆盖失败记录）
+async function sgRetryOutbound(id, btn) {
+  if (TEST_MODE) {
+    alert('测试模拟：重新补发已触发，将调企迈建单（测试模式未真正调用）');
+    return;
+  }
+  btn.disabled = true; btn.textContent = '处理中...';
+  try {
+    await fetch('/api/public/loss-report/retry-outbound', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: String(id)})
+    });
+    var bodyEl = btn.closest('.tab-body');
+    var cardKey = bodyEl ? bodyEl.id.split('_')[1] : 'other';
+    switchCardTab(cardKey, 'done'); // 刷新已补发 tab，展示重试结果（成功绿行 / 失败红行）
+  } catch(e) { btn.disabled = false; btn.textContent = '重新补发'; }
+}
+// 门店级批量补发：一次性确认本门店内勾选的物料
+async function sgStoreBatchResend(sid) {
+  // 测试模式（URL 带 test=1）：前端模拟批量补发，不调用后端/企迈
+  var body = document.getElementById(sid);
+  if (!body) return;
+  var group = body.closest('.store-group');
+  if (!group) return;
+  var checks = group.querySelectorAll('.sg-check:checked');
+  var ids = [];
+  for (var i = 0; i < checks.length; i++) ids.push(parseInt(checks[i].value));
+  if (!ids.length) return;
+  var btn = group.querySelector('.sg-batch-btn');
+  var cardKey = body.closest('.tab-body') ? body.closest('.tab-body').id.split('_')[1] : 'other';
+  if (TEST_MODE) {
+    for (var t = 0; t < checks.length; t++) {
+      var tItem = checks[t].closest('.sg-item');
+      if (tItem) testMoveItemToDone(cardKey, tItem, t === 0);
+    }
+    testShowDoneTab(cardKey);
+    alert('测试模拟：批量补发 ' + ids.length + ' 条，第 1 条模拟失败展示红样，已切到「已补发」tab（未调企迈建单）');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '处理中...'; }
+  try {
+    await fetch('/api/public/loss-report/batch-issue-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({items: ids.map(function(id) { return {id: String(id)}; })})
+    });
+    switchCardTab(cardKey, 'done'); // 补发成功 → 跳转已补发 tab 展示出库单
+  } catch(e) { alert('操作失败'); if (btn) { btn.disabled = false; btn.textContent = '批量补发'; } }
+}
+// 卡片级全选（牛油果泥卡片）：只勾选当前页面可见（未被搜索隐藏）的物料
+function sgCardToggleAll(tabId, on) {
+  var body = document.getElementById(tabId);
+  if (!body) return;
+  var checks = body.querySelectorAll('.sg-check');
+  var visible = 0;
+  for (var i = 0; i < checks.length; i++) {
+    var item = checks[i].closest('.sg-item');
+    if (item && item.style.display === 'none') continue;
+    visible++;
+    checks[i].checked = on;
+  }
+  var btn = body.querySelector('.sg-card-batch-btn');
+  if (btn) btn.disabled = visible === 0 || !on;
+  refreshTabStorePkg(tabId);
+  refreshTabStoreChecks(tabId);
+  updateCardStat(tabId);
+}
+// 卡片级批量补发（牛油果泥卡片）：一次性确认待补发 tab 内所有门店勾选的物料
+async function sgCardBatchResend(tabId) {
+  // 测试模式（URL 带 test=1）：前端模拟批量补发，不调用后端/企迈
+  var body = document.getElementById(tabId);
+  if (!body) return;
+  var checks = body.querySelectorAll('.sg-check:checked');
+  var ids = [];
+  for (var i = 0; i < checks.length; i++) {
+    var item = checks[i].closest('.sg-item');
+    if (item && item.style.display === 'none') continue; // 被搜索隐藏的不参与批量
+    ids.push(parseInt(checks[i].value));
+  }
+  if (!ids.length) return;
+  var btn = body.querySelector('.sg-card-batch-btn');
+  var cardKey = body.id.split('_')[1];
+  if (TEST_MODE) {
+    for (var t = 0; t < checks.length; t++) {
+      var tItem = checks[t].closest('.sg-item');
+      if (tItem) testMoveItemToDone(cardKey, tItem, t === 0);
+    }
+    testShowDoneTab(cardKey);
+    alert('测试模拟：批量补发 ' + ids.length + ' 条，第 1 条模拟失败展示红样，已切到「已补发」tab（未调企迈建单）');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '处理中...'; }
+  try {
+    await fetch('/api/public/loss-report/batch-issue-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({items: ids.map(function(id) { return {id: String(id)}; })})
+    });
+    switchCardTab(cardKey, 'done'); // 补发成功 → 跳转已补发 tab 展示出库单
+  } catch(e) { alert('操作失败'); if (btn) { btn.disabled = false; btn.textContent = '批量补发'; } }
+}
+
+function renderCard(r) {
+  var done = !!r.result;
+  var isAudit = (tab === 'audit'), isResend = (tab === 'resend');
+  var cls = matchSearch(r) ? 'rpt' : 'rpt hidden';
+  var h = '<div class="' + cls + '" id="card' + r.id + '"><div class="rpt-check-row"><label>选择下载</label><input type="checkbox" class="rpt-check" onchange="onCheckChange()" value="' + r.id + '"></div><div class="top">' + tag(r.storeName, 'store') + ' ';
+  if (isAudit) {
+    if (r.result === '已登记' || (r.isAvocado && r.result === '补发')) h += tag('已通过', 'ok');
+    else if (r.result === '拒绝') h += tag('已拒绝', 'no');
+    else h += tag('待审核', 'wait');
+  } else if (isResend) {
+    if (r.result === '已补发') h += tag('已补发', 'ok');
+    else h += tag('待补发', 'wait');
+  } else {
+    if (r.result === '已登记') h += tag('已确认', 'ok');
+    else if (r.result === '补发') h += tag('已确认', 'ok');
+    else if (r.result === '拒绝') h += tag('已拒绝', 'gray');
+    else h += tag('待确认', 'wait');
+  }
+  h += '</div><h3>' + esc(r.materialName) + ' ' + esc(r.qtyStr) + (r.origQtyStr && r.origQtyStr !== r.qtyStr ? ' <span style="color:#E5484D;font-size:12px;font-weight:600">（数量修改：原始' + esc(r.origQtyStr) + '）</span>' : '') + '</h3>';
+  if (r.qimaiOrderNo) h += '<p class="meta">企迈单号：' + esc(r.qimaiOrderNo) + '</p>';
+  if (r.supplier) h += '<p class="meta">厂家：' + tag(r.supplier, 'supplier') + '</p>';
+  h += '<p class="meta">原因：' + esc(r.reason) + '</p>';
+  if (r.handlerName || r.handlerPhone) {
+    if (r.handlerName) h += '<p class="meta">提交人：' + esc(r.handlerName) + '</p>';
+    if (r.handlerPhone) h += '<p class="meta">手机号：' + esc(r.handlerPhone) + '</p>';
+  }
+  if (r.remark) { var supMatch2 = r.remark.match(/^【(.+?)】/); if (supMatch2 && !r.isAvocado && !r.supplier) { h += '<p class="meta">厂家：' + tag(supMatch2[1], 'supplier') + '</p>'; var restRemark = r.remark.replace(/^【.+?】/, '').trim(); if (restRemark) h += '<p class="meta">备注：' + esc(restRemark) + '</p>'; } else { var r2 = r.remark; if (r.supplier) { if (r2.indexOf('厂家：' + r.supplier) === 0) r2 = r2.substring(('厂家：' + r.supplier).length); else if (r2.indexOf('厂家:' + r.supplier) === 0) r2 = r2.substring(('厂家:' + r.supplier).length); else if (r2.indexOf('【' + r.supplier + '】') === 0) r2 = r2.substring(('【' + r.supplier + '】').length); r2 = r2.replace(/^[\s，,]+/, ''); } if (r2.trim()) h += '<p class="meta">备注：' + esc(r2.trim()) + '</p>'; } }
+  if (r.occurredDate) h += '<p class="meta">报损时间：' + esc(r.occurredDate) + '</p>';
+  if (r.rejectReason) {
+    h += '<p class="meta">上次拒绝原因：' + esc(r.rejectReason) + '</p>';
+    if (!r.result) h += ' <span class="tag tag-wait" style="font-size:10px">重新提交</span>';
+  }
+  if (r.images && r.images.length) {
+    h += '<div class="photos">';
+    for (var j = 0; j < r.images.length; j++) {
+      var mediaUrl = fixMediaUrl(r.images[j]);
+      if (isVideo(r.images[j])) {
+        // 视频块不放 <video>（飞书/iOS 微信等 webview 会无视 preload=none，进页面就拉全部视频数据，
+        // 导致"把所有视频下载完才开始播"）；改用 <img> 显示缩略图，视频字节只在点击 playVideo 时加载。
+        // 老视频无 _thumb.jpg：onerror 移除 img，降级为黑块+播放键
+        h += '<div class="photo-video" onclick="playVideo(\'' + mediaUrl + '\')"><img src="' + thumbOf(mediaUrl) + '" alt="" loading="lazy" onerror="this.remove()"><div class="play-icon">&#9654;</div></div>';
+      } else {
+        // 图片用 _thumb.jpg 缩略图（宽320，上传时服务端异步生成 + 夜间批量补生成）展示，点击看原图；
+        // 老图片/缩略图尚未生成好时 onerror 一次性回退到原图 URL（data-orig），回退后再失败不再循环
+        h += '<img src="' + thumbOf(mediaUrl) + '" loading="lazy" data-orig="' + mediaUrl + '" onclick="showLightbox(\'' + mediaUrl + '\')" onerror="var o=this.getAttribute(\'data-orig\');if(this.src!==o){this.src=o;}">';
+      }
+    }
+    h += '</div>';
+  }
+  if (!done) {
+    if (isAudit) {
+      h += '<div class="btns" id="btns' + r.id + '"><button class="btn btn-no" onclick="onReject(' + r.id + ')">拒绝</button><button class="btn btn-ok" onclick="onRegister(' + r.id + ')">确认报损登记</button></div>';
+    } else if (!isResend) {
+      h += '<div class="btns" id="btns' + r.id + '"><button class="btn btn-no" onclick="onReject(' + r.id + ')">拒绝</button><button class="btn btn-ok" onclick="onRegister(' + r.id + ')">确认报损登记</button></div>';
+    }
+  }
+  // 其他类/加急-待发货：registered 状态显示"确认发货"按钮
+  if ((isOther || isUrgent) && r.result === '已登记' && !isAudit && !isResend) {
+    h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn btn-ok" onclick="onShip(' + r.id + ')">确认发货</button></div>';
+  }
+  if (r.feedback) {
+    var isRed = r.feedback.indexOf('未收到货') !== -1;
+    h += '<div class="feedback' + (isRed ? ' feedback-red' : '') + '">' + esc(r.feedback) + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+var isOther = false;
+var isUrgent = false;
+
+function render(d) {
+  // 加急卡片：只展示加急报损（排除水果蔬菜类），3tab
+  isUrgent = (urgentOnly == '1');
+  if (isUrgent) {
+    d.list = d.list.filter(function(r) { return r.urgent == 1 && !r.isFruitVeg; });
+    d.pending = d.list.filter(function(r) { return !r.result; }).length;
+    d.done = d.list.filter(function(r) { return !!r.result; }).length;
+    d.stores = new Set(d.list.map(function(r){return r.storeName})).size;
+    isOther = true; // 强制3tab
+  }
+  // 加急单条：只展示指定报损
+  if (urgentId) {
+    d.list = d.list.filter(function(r) { return r.id == urgentId; });
+    d.pending = d.list.filter(function(r) { return !r.result; }).length;
+    d.done = d.list.filter(function(r) { return !!r.result; }).length;
+    d.stores = 1;
+  }
+  var isFruitVeg = (category === '水果蔬菜');
+  isOther = (category === '其他类') || isUrgent;
+  var isAudit = (tab === 'audit');
+  var isResend = (tab === 'resend');
+  if (isResend) {
+    // 蔬菜水果走月度发券流程，不进补发页（顶部统计与卡片列表都不计）
+    d.list = d.list.filter(function(r){ return !r.isFruitVeg; });
+    if (materialId) {
+      // 牛油果泥补发页（卡片G进入）：顶部统计只算牛油果泥
+      var avoOnly = d.list.filter(function(r){ return r.isAvocado; });
+      d.resendPending = avoOnly.filter(function(r){ return r.result === '待补发' }).length;
+      d.resendDone = avoOnly.length - d.resendPending;
+      d.resendStores = new Set(avoOnly.map(function(r){ return r.storeName; })).size;
+    } else {
+      // 其他类补发页（卡片B2进入）：顶部统计只算其他类，不含牛油果泥
+      var resendOther = d.list.filter(function(r){ return !r.isAvocado; });
+      d.resendPending = resendOther.filter(function(r){ return r.result === '待补发' }).length;
+      d.resendDone = resendOther.filter(function(r){ return r.result === '已补发' }).length;
+      d.resendStores = new Set(resendOther.map(function(r){ return r.storeName; })).size;
+    }
+  }
+  var h = '';
+  h += '<div class="header"><h1>今日报损登记确认</h1></div>';
+  h += '<div class="banner" id="banner"><span style="font-size:24px">&#9989;</span><div><p style="font-weight:600">已提交确认结果</p><p style="font-size:13px;color:#66706A;margin-top:4px">结果将同步给门店和总部报损台账。</p></div></div>';
+  h += '<div class="card"><p style="font-weight:600">' + esc(category) + '</p><h2 style="font-size:18px;font-weight:600;margin-top:4px">' + date + ' 确认清单</h2>';
+  h += '<p style="font-size:13px;color:#66706A;margin-top:4px">' + (isFruitVeg ? '请逐条确认报损登记。确认后次月统一发券。' : isAudit ? '请逐条审核到货验收报损。' : isResend ? '请逐条确认补发结果。' : '请逐条确认报损登记，选择补发方式。') + '</p>';
+  var registeredCount = d.list.filter(function(x){return x.result==='已登记'}).length;
+  var shippedCount = d.list.filter(function(x){return x.result==='补发'}).length;
+  var auditedCount = d.list.filter(function(x){return x.result==='已登记'||x.result==='拒绝'}).length;
+
+  if (isAudit) {
+    var passedCount = d.list.filter(function(x){return x.result==='已登记' || (x.isAvocado && x.result==='补发')}).length;
+    var rejectedCount = d.list.filter(function(x){return x.result==='拒绝'}).length;
+    var dlCount = d.list.filter(function(x){return !x.result && x.downloaded}).length;
+    var undlCount = d.list.filter(function(x){return !x.result && !x.downloaded}).length;
+    if (isAvocado) {
+      h += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr">';
+      h += '<div><div class="stat-val" id="statPending">' + (undlCount+dlCount) + '</div><div class="stat-label">未审核</div></div>';
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statPassed">' + passedCount + '</div><div class="stat-label">已通过</div></div>';
+      h += '<div><div class="stat-val" style="color:#E05A47" id="statRejected">' + rejectedCount + '</div><div class="stat-label">已拒绝</div></div>';
+      h += '<div><div class="stat-val">' + d.stores + '</div><div class="stat-label">门店</div></div>';
+    } else {
+      h += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">';
+      h += '<div><div class="stat-val" id="statPending">' + d.pending + '</div><div class="stat-label">待审核</div></div>';
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statPassed">' + passedCount + '</div><div class="stat-label">已通过</div></div>';
+      h += '<div><div class="stat-val" style="color:#E05A47" id="statRejected">' + rejectedCount + '</div><div class="stat-label">已拒绝</div></div>';
+      h += '<div><div class="stat-val">' + d.stores + '</div><div class="stat-label">门店</div></div>';
+    }
+    h += '</div></div>';
+  } else if (isResend) {
+    h += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr">';
+    h += '<div><div class="stat-val" style="color:#E58A2D" id="statResendPending">' + d.resendPending + '</div><div class="stat-label">待补发</div></div>';
+    h += '<div><div class="stat-val" style="color:#2F8F57" id="statResendDone">' + d.resendDone + '</div><div class="stat-label">已补发</div></div>';
+    h += '<div><div class="stat-val">' + d.resendStores + '</div><div class="stat-label">门店</div></div>';
+  } else {
+    var statCols = isFruitVeg ? '1fr 1fr 1fr' : (isOther ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr');
+    h += '<div class="stat-grid" style="grid-template-columns:' + statCols + '">';
+    h += '<div><div class="stat-val" id="statPending">' + d.pending + '</div><div class="stat-label">待审核</div></div>';
+    if (isFruitVeg || isOther) {
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statRegistered">' + registeredCount + '</div><div class="stat-label">已登记</div></div>';
+    }
+    if (!isFruitVeg) {
+      h += '<div><div class="stat-val" style="color:#2F8F57" id="statShipped">' + shippedCount + '</div><div class="stat-label">已发货</div></div>';
+    }
+    h += '<div><div class="stat-val">' + d.stores + '</div><div class="stat-label">门店</div></div>';
+  }
+  h += '</div></div>';
+
+  // 搜索框
+  h += '<div class="search-box"><input type="text" id="searchInput" placeholder="搜索物料、门店名、企迈单号... 支持多门店（空格或逗号分隔）" oninput="onSearch(this.value)"></div>';
+  if (!isResend) {
+    h += '<div class="dl-bar"><label><input type="checkbox" id="checkAll" onchange="toggleAll(this.checked)"> 全选</label><button class="dl-btn" id="dlBtn" disabled onclick="doDownload()">下载视频(ZIP)</button><span id="dlCount" style="font-size:12px;color:#66706A"></span></div>';
+  }
+
+  // ===== 补发页：卡片G进入只展示牛油果泥，卡片B2进入只展示其他类 =====
+  if (isResend) {
+    var avoList = d.list.filter(function(r){ return r.isAvocado; });
+    var otherList = d.list.filter(function(r){ return !r.isAvocado; });
+    if (materialId) {
+      // 牛油果泥补发（卡片G）：24包及以上 / 24包以下 两档（默认 24包及以上），
+      // 统计表 tab 与待补发列表联动：选档后待补发列表只展示该档门店
+      var avoStatTab = (localStorage.getItem('avoStatTab') === 'small') ? 'small' : 'big';
+      localStorage.removeItem('avoStatTab');
+      var avoStats = d.avocadoStats || [];
+      if (!avoStats.length && avoList.length) {
+        // 后端未给统计时按列表自算（按门店合计包数，qtyNum 已折成包）
+        var tmpAvo = {};
+        for (var i = 0; i < avoList.length; i++) {
+          var ar = avoList[i];
+          if (ar.result !== '待补发') continue;
+          var asn2 = ar.storeName || '未知门店';
+          if (!tmpAvo[asn2]) tmpAvo[asn2] = {store_name: asn2, cnt: 0, total_qty: 0, input_unit: '包'};
+          tmpAvo[asn2].cnt += 1;
+          tmpAvo[asn2].total_qty += (parseFloat(ar.qtyNum) || 0);
+        }
+        avoStats = [];
+        for (var k in tmpAvo) avoStats.push(tmpAvo[k]);
+      }
+      var avoBigSet = {}, avoSmallSet = {};
+      for (var ai = 0; ai < avoStats.length; ai++) {
+        var as = avoStats[ai];
+        var aq = parseFloat(as.total_qty || 0);
+        var asn = as.store_name || '未知门店';
+        if (aq >= 24) avoBigSet[asn] = 1; else avoSmallSet[asn] = 1;
+      }
+      var avoBucket = null;
+      if (avoStatTab === 'big') avoBucket = avoBigSet;
+      else if (avoStatTab === 'small') avoBucket = avoSmallSet;
+      if (avoList.length || avoStats.length) {
+        var avoStatsHtml = avoStats.length ? buildAvoStatTable(avoStats, avoStatTab) : '';
+        var avoPending = avoList.filter(function(r){ return r.result === '待补发' && (!avoBucket || avoBucket[r.storeName || '未知门店']); });
+        h += renderResendCard(avoList, 'avo', avoStatsHtml, avoPending);
+      } else {
+        h += '<div class="loading" style="padding:40px 0">暂无牛油果泥补发数据</div>';
+      }
+    } else {
+      // 其他类补发（卡片B2）：不含牛油果泥与蔬菜水果
+      if (otherList.length) {
+        h += renderResendCard(otherList, 'other', buildOtherStatTable(otherList));
+      } else {
+        h += '<div class="loading" style="padding:40px 0">暂无补发数据</div>';
+      }
+    }
+    document.getElementById('app').innerHTML = h;
+    restoreSearch();
+    return;
+  }
+
+  var activeTab = localStorage.getItem('activeTab') || 'pending';
+  localStorage.removeItem('activeTab');
+
+  var tab1Label, tab2Label, tab3Label;
+  var isAvocado = !!materialId;
+  if (isAudit) {
+    if (isAvocado) {
+      tab1Label = '未审核'; tab2Label = '已审核';
+      if (activeTab !== 'pending' && activeTab !== 'passed' && activeTab !== 'rejected') activeTab = 'pending';
+    } else {
+      tab1Label = '待审核'; tab2Label = '已审核';
+      if (activeTab !== 'pending' && activeTab !== 'audited') activeTab = 'pending';
+    }
+  } else {
+    tab1Label = '待审核';
+    var hasRegistered = (isFruitVeg || isOther);
+    var hasShipped = !isFruitVeg;
+    if (activeTab === 'shipped' && !hasShipped) activeTab = 'pending';
+    if (activeTab === 'registered' && !hasRegistered) activeTab = 'pending';
+  }
+
+  // Tab 栏
+  h += '<div class="tabs">';
+  if (isAudit) {
+    if (isAvocado) {
+      h += '<div class="tab-btn' + (activeTab==='pending'?' active':'') + '" id="tabPendingBtn" onclick="switchTab(\'pending\')">未审核</div>';
+      h += '<div class="tab-btn' + (activeTab==='passed'?' active':'') + '" id="tabPassedBtn" onclick="switchTab(\'passed\')">已通过</div>';
+      h += '<div class="tab-btn' + (activeTab==='rejected'?' active':'') + '" id="tabRejectedBtn" onclick="switchTab(\'rejected\')">已拒绝</div>';
+    } else {
+      h += '<div class="tab-btn' + (activeTab==='pending'?' active':'') + '" id="tabPendingBtn" onclick="switchTab(\'pending\')">待审核</div>';
+      h += '<div class="tab-btn' + (activeTab==='audited'?' active':'') + '" id="tabAuditedBtn" onclick="switchTab(\'audited\')">已审核</div>';
+    }
+  } else {
+    h += '<div class="tab-btn' + (activeTab==='pending'?' active':'') + '" id="tabPendingBtn" onclick="switchTab(\'pending\')">待审核</div>';
+    if (isFruitVeg || isOther) {
+      h += '<div class="tab-btn' + (activeTab==='registered'?' active':'') + '" id="tabRegisteredBtn" onclick="switchTab(\'registered\')">' + (isFruitVeg ? '已登记' : '待发货') + '</div>';
+    }
+    if (!isFruitVeg) {
+      h += '<div class="tab-btn' + (activeTab==='shipped'?' active':'') + '" id="tabShippedBtn" onclick="switchTab(\'shipped\')">已发货</div>';
+    }
+  }
+  h += '</div>';
+
+  // Tab 内容
+  if (isAudit && isAvocado) {
+    // 三个主tab（未审核/已通过/已拒绝），每个主tab下都有 未下载/已下载 两个子tab
+    // 已通过 = 已登记 或 补发（confirmed_resend/received/not_received 都已过审核，只是走完了补发流程）
+    // 无视频的报损单（只有图片）算已下载：图片随 ZIP 一起打包，页面上也直接可见，无需下载动作
+    var avoMain = { pending: [], passed: [], rejected: [] };
+    for (var i = 0; i < d.list.length; i++) {
+      var r = d.list[i];
+      if (r.result === '拒绝') avoMain.rejected.push(r);
+      else if (r.result) avoMain.passed.push(r);
+      else avoMain.pending.push(r);
+    }
+    var avoSubKeys = { pending: 'avoSubPending', passed: 'avoSubPassed', rejected: 'avoSubRejected' };
+    var avoSub = localStorage.getItem(avoSubKeys[activeTab]) || 'undl';
+    localStorage.removeItem(avoSubKeys[activeTab]);
+    var avoTabDefs = [
+      { key: 'pending', label: '未审核', arr: avoMain.pending },
+      { key: 'passed', label: '已通过', arr: avoMain.passed },
+      { key: 'rejected', label: '已拒绝', arr: avoMain.rejected }
+    ];
+    for (var t = 0; t < avoTabDefs.length; t++) {
+      var td = avoTabDefs[t];
+      var subUndl = [], subDl = [];
+      for (var s2 = 0; s2 < td.arr.length; s2++) {
+        if (avoIsDl(td.arr[s2])) subDl.push(td.arr[s2]); else subUndl.push(td.arr[s2]);
+      }
+      var cur = (activeTab === td.key) ? avoSub : 'undl';
+      h += '<div class="tab-body' + (activeTab === td.key ? ' active' : '') + '" id="tab' + td.key.charAt(0).toUpperCase() + td.key.slice(1) + '">';
+      h += '<div class="tab-sub"><div class="tab-sub-btn' + (cur === 'undl' ? ' active' : '') + '" onclick="switchAvoSub(\'' + td.key + '\',\'undl\')">未下载 (' + subUndl.length + ')</div><div class="tab-sub-btn' + (cur === 'dl' ? ' active' : '') + '" onclick="switchAvoSub(\'' + td.key + '\',\'dl\')">已下载 (' + subDl.length + ')</div></div>';
+      var subList = cur === 'dl' ? subDl : subUndl;
+      if (subList.length) { for (var k = 0; k < subList.length; k++) h += renderCard(subList[k]); }
+      else h += '<div class="loading" style="padding:40px 0">暂无' + (cur === 'dl' ? '已下载' : '未下载') + '</div>';
+      h += '</div>';
+    }
+  } else if (isAudit) {
+    // 待审核 = 无 result
+    h += '<div class="tab-body' + (activeTab==='pending'?' active':'') + '" id="tabPending">';
+    var pc = 0;
+    for (var i = 0; i < d.list.length; i++) {
+      if (!d.list[i].result) { h += renderCard(d.list[i]); pc++; }
+    }
+    if (!pc) h += '<div class="loading" style="padding:40px 0">暂无待审核</div>';
+    h += '</div>';
+    // 已审核 = 有 result
+    h += '<div class="tab-body' + (activeTab==='audited'?' active':'') + '" id="tabAudited">';
+    var ac = 0;
+    for (var i = 0; i < d.list.length; i++) {
+      if (d.list[i].result) { h += renderCard(d.list[i]); ac++; }
+    }
+    if (!ac) h += '<div class="loading" style="padding:40px 0">暂无已审核</div>';
+    h += '</div>';
+  } else {
+    // 原有逻辑
+    h += '<div class="tab-body' + (activeTab==='pending'?' active':'') + '" id="tabPending">';
+    for (var i = 0; i < d.list.length; i++) {
+      var r = d.list[i];
+      if (r.result) continue;
+      h += renderCard(r);
+    }
+    if (!d.pending) h += '<div class="loading" style="padding:40px 0">暂无待审核</div>';
+    h += '</div>';
+
+    if (isFruitVeg || isOther) {
+      h += '<div class="tab-body' + (activeTab==='registered'?' active':'') + '" id="tabRegistered">';
+      var registeredCount2 = 0;
+      for (var i = 0; i < d.list.length; i++) {
+        var rr = d.list[i];
+        if (rr.result !== '已登记') continue;
+        registeredCount2++;
+        h += renderCard(rr);
+      }
+      if (!registeredCount2) h += '<div class="loading" style="padding:40px 0">暂无已登记</div>';
+      h += '</div>';
+    }
+
+    if (!isFruitVeg) {
+      h += '<div class="tab-body' + (activeTab==='shipped'?' active':'') + '" id="tabShipped">';
+      var shippedCount2 = 0;
+      for (var i = 0; i < d.list.length; i++) {
+        var rs = d.list[i];
+        if (rs.result !== '补发') continue;
+        shippedCount2++;
+        h += renderCard(rs);
+      }
+      if (!shippedCount2) h += '<div class="loading" style="padding:40px 0">暂无已发货</div>';
+      h += '</div>';
+    }
+  }
+
+  document.getElementById('app').innerHTML = h;
+  restoreSearch();
+}
+
+function switchTab(tab) {
+  localStorage.setItem('activeTab', tab);
+  location.reload();
+}
+
+// 牛油果泥审核页子tab：每个主tab（未审核/已通过/已拒绝）独立记住自己的 未下载/已下载 选择
+function switchAvoSub(tab, sub) {
+  var keys = { pending: 'avoSubPending', passed: 'avoSubPassed', rejected: 'avoSubRejected' };
+  localStorage.setItem(keys[tab], sub);
+  localStorage.setItem('activeTab', tab);
+  location.reload();
+}
+
+// 无视频（只有图片）的报损单算已下载：图片随 ZIP 一起打包、页面上直接可见，无需下载动作
+function avoIsDl(r) {
+  var hasVid = false;
+  if (r.images && r.images.length) {
+    for (var vi = 0; vi < r.images.length; vi++) {
+      if (isVideo(r.images[vi])) { hasVid = true; break; }
+    }
+  }
+  return !hasVid || !!r.downloaded;
+}
+
+// 牛油果泥审核页审核后即时刷新：三个主tab的子tab数量、顶部统计、下载栏勾选状态（数据源为本地 reports）
+function refreshAvoTabCounts() {
+  var counts = { pending: { undl: 0, dl: 0 }, passed: { undl: 0, dl: 0 }, rejected: { undl: 0, dl: 0 } };
+  for (var i = 0; i < reports.length; i++) {
+    var r = reports[i];
+    var key = r.result === '拒绝' ? 'rejected' : (r.result ? 'passed' : 'pending');
+    if (avoIsDl(r)) counts[key].dl++; else counts[key].undl++;
+  }
+  var defs = ['pending', 'passed', 'rejected'];
+  for (var t = 0; t < defs.length; t++) {
+    var body = document.getElementById('tab' + defs[t].charAt(0).toUpperCase() + defs[t].slice(1));
+    if (!body) continue;
+    var btns = body.querySelectorAll('.tab-sub-btn');
+    if (btns.length >= 2) {
+      btns[0].textContent = '未下载 (' + counts[defs[t]].undl + ')';
+      btns[1].textContent = '已下载 (' + counts[defs[t]].dl + ')';
+    }
+  }
+  var sp = document.getElementById('statPending');
+  if (sp) sp.textContent = counts.pending.undl + counts.pending.dl;
+  var spa = document.getElementById('statPassed');
+  if (spa) spa.textContent = counts.passed.undl + counts.passed.dl;
+  var sre = document.getElementById('statRejected');
+  if (sre) sre.textContent = counts.rejected.undl + counts.rejected.dl;
+  onCheckChange();
+}
+
+function onSearch(val) {
+  searchKeyword = val.trim();
+  // 记住搜索词：切换待补发/已补发 tab（页面刷新）后自动恢复过滤
+  try {
+    var sk = 'sgSearch_' + date;
+    if (searchKeyword) sessionStorage.setItem(sk, searchKeyword);
+    else sessionStorage.removeItem(sk);
+  } catch (e) {}
+  var kws = searchKeywords();
+  var cards = document.querySelectorAll('.rpt');
+  for (var i = 0; i < cards.length; i++) {
+    cards[i].classList.toggle('hidden', !matchSearch(reports.find(function(r) { return 'card' + r.id === cards[i].id; })));
+  }
+  // 补发门店分组搜索（多关键词：任一命中即显示）
+  var groups = document.querySelectorAll('.store-group');
+  for (var i = 0; i < groups.length; i++) {
+    var g = groups[i];
+    if (!kws.length) {
+      g.style.display = '';
+      // 恢复分组内被搜索隐藏的物料条目（否则清空搜索后物料不显示）
+      var allItems = g.querySelectorAll('.sg-item');
+      for (var j = 0; j < allItems.length; j++) allItems[j].style.display = '';
+      continue;
+    }
+    var storeName = (g.getAttribute('data-sg-store') || '').toLowerCase();
+    var storeMatch = false;
+    for (var k = 0; k < kws.length; k++) {
+      if (storeName.indexOf(kws[k]) !== -1) { storeMatch = true; break; }
+    }
+    var anyItemMatch = false;
+    var items = g.querySelectorAll('.sg-item');
+    for (var j = 0; j < items.length; j++) {
+      var matName = (items[j].getAttribute('data-sg-mat') || '').toLowerCase();
+      var qm = (items[j].getAttribute('data-sg-qm') || '').toLowerCase();
+      var itemMatch = false;
+      for (var k = 0; k < kws.length; k++) {
+        if (matName.indexOf(kws[k]) !== -1 || qm.indexOf(kws[k]) !== -1) { itemMatch = true; break; }
+      }
+      if (itemMatch) {
+        items[j].style.display = '';
+        anyItemMatch = true;
+      } else {
+        items[j].style.display = 'none';
+      }
+    }
+    if (storeMatch) {
+      // 搜门店名：展开该门店全部物料
+      for (var j = 0; j < items.length; j++) items[j].style.display = '';
+    }
+    g.style.display = (storeMatch || anyItemMatch) ? '' : 'none';
+  }
+  // 统计表搜索（多门店：任一命中即显示）
+  var avoRows = document.querySelectorAll('.avo-stat-row');
+  for (var i = 0; i < avoRows.length; i++) {
+    var rname = (avoRows[i].getAttribute('data-sg-store') || '').toLowerCase();
+    var m = false;
+    for (var k = 0; k < kws.length; k++) {
+      if (rname.indexOf(kws[k]) !== -1) { m = true; break; }
+    }
+    avoRows[i].style.display = !kws.length || m ? '' : 'none';
+  }
+  var avoTotals = document.querySelectorAll('.avo-total-row');
+  for (var i = 0; i < avoTotals.length; i++) {
+    avoTotals[i].style.display = !kws.length ? '' : 'none';
+  }
+}
+
+// 恢复搜索词并重新过滤：搜索框对"待补发/已补发"两个 tab 都生效（tab 切换会刷新页面）
+function restoreSearch() {
+  var savedSearch = '';
+  try { savedSearch = sessionStorage.getItem('sgSearch_' + date) || ''; } catch (e) {}
+  if (savedSearch) {
+    var si = document.getElementById('searchInput');
+    if (si) si.value = savedSearch;
+    onSearch(savedSearch);
+  }
+}
+
+function onConfirm(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '备注说明（选填）'; ta.value = '';
+  openModal('确定补发？', function() { doMark(id, '补发', null, ta.value); });
+}
+function onRegister(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '备注说明（选填）'; ta.value = '';
+  var r = reports.find(function(x) { return x.id === id; });
+  if (r && r.isAvocado) {
+    // 牛油果泥：确认时可修改数量，原始数量保留展示
+    document.getElementById('modal-orig-qty').textContent = r.origQtyStr || r.qtyStr || '--';
+    document.getElementById('modal-qty-unit').textContent = r.displayUnit || '包';
+    document.getElementById('modal-qty').value = r.qtyNum != null ? fmtQty(r.qtyNum) : '';
+    openModal('确定确认报损登记？', function() {
+      var qi = document.getElementById('modal-qty').value;
+      if (qi === '' || qi === null) { alert('请填写确认数量'); return; }
+      var qn = parseFloat(qi);
+      if (isNaN(qn) || qn < 0) { alert('确认数量无效'); return; }
+      // 与原始数量一致时不传 confirmQty，避免无意义修改
+      var confirmQty = (r.qtyNum == null || Math.abs(qn - r.qtyNum) > 0.001) ? qn : null;
+      doMark(id, '确认报损登记', null, ta.value, confirmQty);
+    }, true);
+  } else {
+    openModal('确定确认报损登记？', function() { doMark(id, '确认报损登记', null, ta.value); });
+  }
+}
+function onShip(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '备注说明（选填）'; ta.value = '';
+  openModal('确定确认发货？', function() { doShip(id); });
+}
+function onReject(id) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = '拒绝原因（必填）'; ta.value = '';
+  openModal('确定拒绝？', function() {
+    if (!ta.value.trim()) { alert('请填写拒绝原因'); return; }
+    doMark(id, '拒绝', ta.value, null);
+  });
+}
+
+async function doShip(id) {
+  try {
+    await fetch('/api/public/loss-report/issue-voucher', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: id})
+    });
+    var btns = document.getElementById('btns' + id);
+    if (btns) btns.innerHTML = '<button class="btn btn-done" disabled>已确认发货</button>';
+  } catch(e) { alert('操作失败'); }
+}
+
+async function doMark(id, result, rejectReason, note, confirmQty) {
+  try {
+    var body = {id: String(id), action: result};
+    if (rejectReason) body.reason = rejectReason;
+    if (note) body.remark = note;
+    if (confirmQty != null) body.confirmQty = String(confirmQty);
+    if (attFiles.length > 0) {
+      body.attachmentUrl = attFiles.map(function(a){return a.url;}).join(',');
+      attFiles = [];
+    }
+    await fetch('/api/public/loss-report/confirm-single', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    var r = reports.find(function(x) { return x.id === id; });
+    r.result = result;
+    // 确认登记修改过数量：本地同步数量展示，原始数量保留
+    if (confirmQty != null && r.qtyNum != null) {
+      if (!r.origQtyStr) r.origQtyStr = r.qtyStr;
+      r.qtyStr = fmtQty(confirmQty) + ' ' + (r.displayUnit || '包');
+      r.qtyNum = confirmQty;
+    }
+    var card = document.getElementById('card' + id);
+    if (card) {
+      var badge = card.querySelector('.top');
+      var isReject = (result === '拒绝');
+      var resultTag = isReject ? tag('已拒绝', 'no') : tag('已确认', 'ok');
+      badge.innerHTML = tag(r.storeName, 'store') + ' ' + resultTag;
+      var btns = document.getElementById('btns' + id);
+      if (btns) {
+        var btnText = isReject ? '已拒绝' : (result === '确认报损登记' ? '已确认报损登记' : '已补发');
+        btns.innerHTML = '<button class="btn btn-done" disabled>' + btnText + '</button>';
+      }
+      var h3 = card.querySelector('h3');
+      if (h3) h3.innerHTML = esc(r.materialName) + ' ' + esc(r.qtyStr) + (r.origQtyStr && r.origQtyStr !== r.qtyStr ? ' <span style="color:#E5484D;font-size:12px;font-weight:600">（数量修改：原始' + esc(r.origQtyStr) + '）</span>' : '');
+    }
+    document.getElementById('banner').classList.add('on');
+    // 牛油果泥审核页：审核完成后把卡片即时移出「未审核」列表并刷新各tab数量与统计
+    // （切换主tab会刷新页面，卡片会在已通过/已拒绝中正确归位）
+    if (tab === 'audit' && materialId) {
+      if (card) card.remove();
+      refreshAvoTabCounts();
+    }
+    // update stats
+    var pend = reports.filter(function(x) { return !x.result; }).length;
+    var reg = reports.filter(function(x) { return x.result === '已登记'; }).length;
+    var ship = reports.filter(function(x) { return x.result === '补发'; }).length;
+    var sp = document.getElementById('statPending'), sr = document.getElementById('statRegistered'), ss = document.getElementById('statShipped');
+    if (sp) sp.textContent = pend;
+    if (sr) sr.textContent = reg;
+    if (ss) ss.textContent = ship;
+  } catch(e) { alert('操作失败'); }
+}
+
+function onCheckChange() {
+  var checks = document.querySelectorAll('.rpt-check:checked');
+  var btn = document.getElementById('dlBtn');
+  // 全选框状态按「当前tab下未被搜索隐藏」的卡片判断：
+  // 其他tab的checkbox本来就不会被全选勾中，若按全页总数比较，
+  // 全选后会立刻弹回未勾选，导致第二次点击永远走不到取消分支
+  var vis = 0, visChecked = 0;
+  var allChecks = document.querySelectorAll('.rpt-check');
+  for (var i = 0; i < allChecks.length; i++) {
+    var card = allChecks[i].closest('.rpt');
+    var tabBody = allChecks[i].closest('.tab-body');
+    var hidden = (card && card.classList.contains('hidden')) || (tabBody && !tabBody.classList.contains('active'));
+    if (hidden) continue;
+    vis++;
+    if (allChecks[i].checked) visChecked++;
+  }
+  document.getElementById('checkAll').checked = vis > 0 && visChecked === vis;
+  btn.disabled = checks.length === 0;
+  btn.textContent = checks.length ? '下载视频(ZIP)(' + checks.length + ')' : '下载视频(ZIP)';
+}
+function toggleAll(on) {
+  var checks = document.querySelectorAll('.rpt-check');
+  for (var i = 0; i < checks.length; i++) {
+    var card = checks[i].closest('.rpt');
+    var tabBody = checks[i].closest('.tab-body');
+    var hidden = (card && card.classList.contains('hidden')) || (tabBody && !tabBody.classList.contains('active'));
+    if (on && !hidden) {
+      checks[i].checked = true;
+    } else {
+      checks[i].checked = false;
+    }
+  }
+  onCheckChange();
+}
+function exportAvocado(downloaded) {
+  var mid = p.get('materialId') || '';
+  if (!mid) return;
+  var a = document.createElement('a');
+  a.href = '/api/public/loss-report/export-avocado?materialId=' + mid + '&downloaded=' + downloaded;
+  a.download = 'avocado-' + (downloaded ? '已下载' : '未下载') + '.xls';
+  a.click();
+}
+function doDownload() {
+  var uid = p.get('uid') || '';
+  // 按供应商分组
+  var groups = {};
+  var checks = document.querySelectorAll('.rpt-check:checked');
+  for (var i = 0; i < checks.length; i++) {
+    var card = checks[i].closest('.rpt');
+    var r = reports.find(function(x) { return 'card' + x.id === card.id; });
+    var sup = (r && r.supplier) ? r.supplier : '无厂家';
+    if (!groups[sup]) groups[sup] = [];
+    groups[sup].push(checks[i].value);
+  }
+  var supplierNames = Object.keys(groups);
+  if (!supplierNames.length) { alert('请勾选要下载的物料'); return; }
+
+  for (var s = 0; s < supplierNames.length; s++) {
+    (function(sup, ids, delay) {
+      setTimeout(function() {
+        // 先规划：ZIP 超过 990M 时后端自动拆分为多个分包，依次下载
+        fetch('/api/public/loss-report/download-videos-plan?ids=' + ids.join(',') + '&markDownloaded=1&uid=' + encodeURIComponent(uid) + '&supplier=' + encodeURIComponent(sup))
+          .then(function(r) { return r.json(); })
+          .then(function(plan) {
+            if (plan.code !== 200) { alert('下载失败：' + (plan.msg || '请重试')); return; }
+            var names = plan.names || [];
+            for (var n = 1; n <= plan.parts; n++) {
+              (function(no) {
+                setTimeout(function() {
+                  var a = document.createElement('a');
+                  a.href = plan.base + '&part=' + no;
+                  a.download = names[no - 1] || 'loss-videos-' + sup + '-part' + no + '.zip';
+                  a.click();
+                }, (no - 1) * 3000);
+              })(n);
+            }
+          })
+          .catch(function() { alert('下载失败，请重试'); });
+        // 同时下载Excel
+        fetch('/api/public/loss-report/download-videos-excel?ids=' + ids.join(',') + '&supplier=' + encodeURIComponent(sup))
+          .then(function(r) {
+            var fname = r.headers.get('X-Filename') || 'detail.xls';
+            return r.blob().then(function(blob) { return {blob: blob, name: decodeURIComponent(fname)}; });
+          })
+          .then(function(data) {
+            var url = URL.createObjectURL(data.blob);
+            var b = document.createElement('a');
+            b.href = url; b.download = data.name; b.click();
+            setTimeout(function() { URL.revokeObjectURL(url); }, 100);
+          });
+      }, delay);
+    })(supplierNames[s], groups[supplierNames[s]], s * 1500);
+  }
+}
+
+load();
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) load();
+});
