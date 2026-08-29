@@ -2,13 +2,17 @@ package com.xzcpc.mp.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.xzcpc.common.annotation.OpLog;
 import com.xzcpc.common.response.R;
+import com.xzcpc.mp.client.QmaiClient;
 import com.xzcpc.mp.context.UserContextHolder;
 import com.xzcpc.mp.dto.DailyLossCreateReq;
 import com.xzcpc.mp.entity.LossReport;
 import com.xzcpc.mp.service.LossReportService;
 import com.xzcpc.mp.service.LossStandardService;
+import com.xzcpc.task.entity.Store;
+import com.xzcpc.task.mapper.StoreMapper;
 import com.xzcpc.template.entity.Material;
 import com.xzcpc.template.entity.MaterialConversionRule;
 import com.xzcpc.template.entity.MaterialInventoryRule;
@@ -17,14 +21,18 @@ import com.xzcpc.template.mapper.MaterialInventoryRuleMapper;
 import com.xzcpc.template.mapper.MaterialMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/mp/loss-report")
 @RequiredArgsConstructor
@@ -35,6 +43,8 @@ public class MpLossReportController {
     private final MaterialMapper materialMapper;
     private final MaterialInventoryRuleMapper ruleMapper;
     private final MaterialConversionRuleMapper conversionRuleMapper;
+    private final QmaiClient qmaiClient;
+    private final StoreMapper storeMapper;
 
     @org.springframework.beans.factory.annotation.Value("${app.public-url:}")
     private String publicUrl;
@@ -341,6 +351,299 @@ public class MpLossReportController {
         r.setUpdatedAt(java.time.LocalDateTime.now());
         lossReportService.updateById(r);
         return R.ok();
+    }
+
+    /**
+     * 查询当前门店的企迈报货单，供到货验收报损 H5 选择订单号。
+     * - 不传 declareNo：返回报货单列表（近 30 天摘要，不含商品明细）
+     * - 传 declareNo：返回该报货单详情（含完整商品明细）
+     */
+    @GetMapping("/qmai-declare-orders")
+    public R<?> qmaiDeclareOrders(@RequestParam(required = false) String declareNo) {
+        String storeId = UserContextHolder.get().getStoreId();
+
+        // 查本地 store_info 获取企迈门店 ID
+        Store store = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
+                .eq(Store::getStoreId, storeId));
+        if (store == null || store.getQmaiStoreId() == null) {
+            return R.fail(400, "当前门店未绑定企迈门店，请联系管理员");
+        }
+
+        try {
+            if (declareNo != null && !declareNo.isBlank()) {
+                // 查询详情（含商品明细）
+                return R.ok(buildDetailResult(qmaiClient.getDeclareOrderDetail(declareNo)));
+            } else {
+                // 查询列表（含入库单商品明细，按 bizNo 分组）
+                return R.ok(buildListResult(store.getQmaiStoreId()));
+            }
+        } catch (Exception e) {
+            log.error("Failed to query Qmai declare orders for storeId={}, qmaiStoreId={}",
+                    storeId, store.getQmaiStoreId(), e);
+            return R.fail(500, "查询企迈报货单失败：" + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> buildListResult(long qmaiStoreId) {
+        LocalDate end = LocalDate.now();
+        LocalDate start = end.minusDays(30);
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        String startStr = start.atStartOfDay().format(dtf);
+        String endStr = end.atTime(23, 59, 59).format(dtf);
+
+        QmaiClient.DeclareOrderListResult result = qmaiClient.getDeclareOrderList(
+                qmaiStoreId, startStr, endStr, 1, 50);
+
+        // 已完成(4)的订单过滤逻辑：
+        // - 非采购单（无 purchaseApplyNoList）：updatedAt 超过 48h 不展示
+        // - 采购单（有 purchaseApplyNoList）：先调控制台入库单 API 拿 inboundAt
+        //   成功 → 用 inboundAt 判断 48h
+        //   失败 → 用 updatedAt + 6 天判断
+        java.time.LocalDateTime cutoff48h = java.time.LocalDateTime.now().minusHours(48);
+        java.time.LocalDateTime cutoff6d = java.time.LocalDateTime.now().minusDays(6);
+
+        // 收集采购订单的 warehouseNo，查控制台入库单
+        Set<String> warehouseNos = new LinkedHashSet<>();
+        boolean hasPurchaseOrder = false;
+        for (QmaiClient.DeclareOrderSummary order : result.getRecords()) {
+            if (order.getPurchaseApplyNoList() != null && !order.getPurchaseApplyNoList().isEmpty()) {
+                hasPurchaseOrder = true;
+                if (order.getStoreWarehouseNo() != null && !order.getStoreWarehouseNo().isBlank()) {
+                    warehouseNos.add(order.getStoreWarehouseNo());
+                }
+            }
+        }
+
+        // 控制台入库单查询（方案 B）
+        Map<String, String> consoleTimeMap = new LinkedHashMap<>();
+        Map<String, List<Map<String, Object>>> consoleProductMap = new LinkedHashMap<>();
+        boolean consoleOk = false;
+        if (hasPurchaseOrder && !warehouseNos.isEmpty()) {
+            for (String whNo : warehouseNos) {
+                try {
+                    QmaiClient.ConsoleInboundResult cir = qmaiClient.getConsoleInboundOrders(
+                            startStr, endStr, whNo);
+                    if (!cir.getInboundTimeMap().isEmpty()) {
+                        consoleTimeMap.putAll(cir.getInboundTimeMap());
+                        consoleOk = true;
+                    }
+                    if (!cir.getProductMap().isEmpty()) {
+                        consoleProductMap.putAll(cir.getProductMap());
+                    }
+                } catch (Exception e) {
+                    log.warn("Console inbound API failed for warehouseNo={}: {}", whNo, e.getMessage());
+                }
+            }
+        }
+
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (QmaiClient.DeclareOrderSummary order : result.getRecords()) {
+            // 已完成(4)：过滤逻辑
+            if (order.getOrderStatus() == 4) {
+                boolean isPurchase = order.getPurchaseApplyNoList() != null
+                        && !order.getPurchaseApplyNoList().isEmpty();
+                if (isPurchase && consoleOk) {
+                    // 方案 B 成功：用 inboundAt 判断 48h
+                    String inboundAt = null;
+                    for (String bizNo : order.getBizNoList() != null ? order.getBizNoList() : List.<String>of()) {
+                        inboundAt = consoleTimeMap.get(bizNo);
+                        if (inboundAt != null) break;
+                    }
+                    if (inboundAt == null) {
+                        for (String pa : order.getPurchaseApplyNoList()) {
+                            inboundAt = consoleTimeMap.get(pa);
+                            if (inboundAt != null) break;
+                        }
+                    }
+                    if (inboundAt != null && !inboundAt.isBlank()) {
+                        try {
+                            java.time.LocalDateTime ref = java.time.LocalDateTime.parse(inboundAt, dtf);
+                            if (ref.isBefore(cutoff48h)) continue;
+                        } catch (Exception ignored) {}
+                    }
+                } else if (isPurchase) {
+                    // 方案 B 失败：用 updatedAt + 6 天
+                    String updatedAt = order.getUpdatedAt();
+                    if (updatedAt != null && !updatedAt.isBlank()) {
+                        try {
+                            java.time.LocalDateTime ref = java.time.LocalDateTime.parse(updatedAt, dtf);
+                            if (ref.isBefore(cutoff6d)) continue;
+                        } catch (Exception ignored) {}
+                    }
+                } else {
+                    // 非采购单：用 updatedAt 判断 48h
+                    String updatedAt = order.getUpdatedAt();
+                    if (updatedAt != null && !updatedAt.isBlank()) {
+                        try {
+                            java.time.LocalDateTime ref = java.time.LocalDateTime.parse(updatedAt, dtf);
+                            if (ref.isBefore(cutoff48h)) continue;
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("declareNo", order.getDeclareNo());
+            item.put("requireNo", order.getRequireNo());
+            item.put("requireNoList", order.getRequireNoList());
+            item.put("purchaseApplyNoList", order.getPurchaseApplyNoList());
+            item.put("bizNoList", order.getBizNoList());
+            item.put("bizNo", order.getBizNo());
+            item.put("storeWarehouseNo", order.getStoreWarehouseNo());
+            item.put("createdAt", order.getCreatedAt());
+            item.put("amount", order.getAmount());
+            item.put("freight", order.getFreight());
+            item.put("orderStatus", order.getOrderStatus());
+            item.put("payStatus", order.getPayStatus());
+            item.put("productNum", order.getProductNum());
+            item.put("productCateNum", order.getProductCateNum());
+            item.put("updatedAt", order.getUpdatedAt());
+            item.put("statusText", statusText(order.getOrderStatus()));
+            list.add(item);
+        }
+        // DEBUG: 打印第一单的字段
+        if (!list.isEmpty()) {
+            Map<String, Object> first = list.get(0);
+            log.info("QMAI_LIST_DEBUG qmaiStoreId={} declareNo={} requireNoList={} purchaseApplyNoList={} bizNoList={} bizNo={} requireNo={}",
+                    qmaiStoreId,
+                    first.get("declareNo"), first.get("requireNoList"), first.get("purchaseApplyNoList"),
+                    first.get("bizNoList"), first.get("bizNo"), first.get("requireNo"));
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("orders", list);
+        response.put("instoreProductMap", consoleProductMap);
+        return response;
+    }
+
+    private Map<String, Object> buildDetailResult(QmaiClient.DeclareOrderDetail detail) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("declareNo", detail.getDeclareNo());
+        result.put("requireNo", detail.getRequireNo());
+        result.put("requireNoList", detail.getRequireNoList());
+        result.put("purchaseApplyNoList", detail.getPurchaseApplyNoList());
+        result.put("bizNoList", detail.getBizNoList());
+        result.put("bizNo", detail.getBizNo());
+        result.put("storeName", detail.getStoreName());
+        result.put("createdAt", detail.getCreatedAt());
+        result.put("amount", detail.getAmount());
+        result.put("actualAmount", detail.getActualAmount());
+        result.put("freight", detail.getFreight());
+        result.put("orderStatus", detail.getOrderStatus());
+        result.put("payStatus", detail.getPayStatus());
+        result.put("productNum", detail.getProductNum());
+        result.put("productCateNum", detail.getProductCateNum());
+        result.put("statusText", statusText(detail.getOrderStatus()));
+        result.put("remark", detail.getRemark() != null ? detail.getRemark() : "");
+
+        // 批量收集 productCode，一次性查本地物料
+        List<String> codes = detail.getProducts().stream()
+                .map(QmaiClient.DeclareProduct::getProductCode)
+                .filter(Objects::nonNull)
+                .distinct().toList();
+        Map<String, Material> matByCode = codes.isEmpty() ? Map.of()
+                : materialMapper.selectList(new LambdaQueryWrapper<Material>()
+                        .in(Material::getQmCode, codes)
+                        .eq(Material::getDelFlag, 0))
+                .stream().collect(Collectors.toMap(Material::getQmCode, m -> m, (a, b) -> a));
+        Map<String, MaterialInventoryRule> ruleByMatId = matByCode.isEmpty() ? Map.of()
+                : ruleMapper.selectList(new LambdaQueryWrapper<MaterialInventoryRule>()
+                        .in(MaterialInventoryRule::getMaterialId, matByCode.values().stream().map(Material::getMaterialId).toList())
+                        .eq(MaterialInventoryRule::getDelFlag, 0))
+                .stream().collect(Collectors.toMap(MaterialInventoryRule::getMaterialId, r -> r, (a, b) -> a));
+        Map<String, List<MaterialConversionRule>> convByRuleId = ruleByMatId.isEmpty() ? Map.of()
+                : conversionRuleMapper.selectList(new LambdaQueryWrapper<MaterialConversionRule>()
+                        .in(MaterialConversionRule::getRuleId, ruleByMatId.values().stream().map(MaterialInventoryRule::getRuleId).toList())
+                        .eq(MaterialConversionRule::getDelFlag, 0))
+                .stream().collect(Collectors.groupingBy(MaterialConversionRule::getRuleId));
+
+        List<Map<String, Object>> prods = new ArrayList<>();
+        for (QmaiClient.DeclareProduct p : detail.getProducts()) {
+            Map<String, Object> pd = new LinkedHashMap<>();
+            pd.put("productCode", p.getProductCode());
+            pd.put("productId", p.getProductId());
+            pd.put("productName", p.getProductName());
+            pd.put("productNum", p.getProductNum());
+            pd.put("productSpec", p.getProductSpec() != null ? p.getProductSpec() : "");
+            pd.put("productUnit", p.getProductUnit() != null ? p.getProductUnit() : "");
+            pd.put("price", p.getPrice());
+            pd.put("amount", p.getAmount());
+            pd.put("examineNum", p.getExamineNum());
+            pd.put("isGift", p.getIsGift());
+            pd.put("tagName", p.getTagName() != null ? p.getTagName() : "");
+            // 匹配本地物料（通过 productCode ↔ qm_code）
+            Map<String, Object> matched = buildMatchedMaterial(p.getProductCode(), matByCode, ruleByMatId, convByRuleId);
+            if (matched != null) pd.put("matchedMaterial", matched);
+            prods.add(pd);
+        }
+        result.put("products", prods);
+        return result;
+    }
+
+    /** 通过企迈 productCode 匹配本地物料，返回单位/换算/价格信息 */
+    private Map<String, Object> buildMatchedMaterial(String productCode,
+                                                      Map<String, Material> matByCode,
+                                                      Map<String, MaterialInventoryRule> ruleByMatId,
+                                                      Map<String, List<MaterialConversionRule>> convByRuleId) {
+        if (productCode == null || productCode.isBlank()) return null;
+        Material m = matByCode.get(productCode);
+        if (m == null) return null;
+        MaterialInventoryRule rule = ruleByMatId.get(m.getMaterialId());
+        String baseUnit = rule != null && rule.getBaseUnit() != null ? rule.getBaseUnit() : "";
+        String stockUnit = rule != null && rule.getStockUnit() != null ? rule.getStockUnit() : "";
+        // 收集单位
+        Set<String> unitSet = new LinkedHashSet<>();
+        if (!baseUnit.isEmpty()) unitSet.add(baseUnit);
+        List<MaterialConversionRule> convs = convByRuleId.getOrDefault(rule != null ? rule.getRuleId() : "", List.of());
+        for (MaterialConversionRule cr : convs) {
+            if ("unit".equals(cr.getConversionType())) {
+                if (cr.getFromUnit() != null) unitSet.add(cr.getFromUnit());
+                if (cr.getToUnit() != null) unitSet.add(cr.getToUnit());
+            }
+        }
+        List<String> units = new ArrayList<>(unitSet);
+        // 换算提示
+        List<Map<String, String>> unitInfos = new ArrayList<>();
+        for (String u : units) {
+            Map<String, String> info = new LinkedHashMap<>();
+            info.put("unit", u);
+            if (u.equals(baseUnit)) {
+                info.put("hint", "1" + baseUnit);
+            } else {
+                BigDecimal factor = computeConversionFactor(u, baseUnit, convs);
+                if (factor != null) {
+                    info.put("hint", "1" + u + "=" + fmtFactor(factor) + baseUnit);
+                } else {
+                    info.put("hint", "1" + u);
+                }
+            }
+            unitInfos.add(info);
+        }
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("materialId", m.getMaterialId());
+        item.put("materialName", m.getMaterialName());
+        item.put("spec", m.getSpec() != null ? m.getSpec() : "");
+        item.put("category", m.getCategory() != null ? m.getCategory() : "");
+        item.put("baseUnit", baseUnit);
+        item.put("stockUnit", stockUnit);
+        item.put("units", units);
+        item.put("unitInfos", unitInfos);
+        item.put("unitPrice", rule != null ? rule.getUnitPrice() : null);
+        return item;
+    }
+
+    /** 报货单状态文本映射 */
+    private static String statusText(int status) {
+        return switch (status) {
+            case 0 -> "待支付";
+            case 1 -> "待接单";
+            case 2 -> "已接单";
+            case 3 -> "履约中";
+            case 4 -> "已完成";
+            case 5 -> "已取消";
+            case 6 -> "已驳回";
+            default -> "未知(" + status + ")";
+        };
     }
 
     /** 根据物料ID查询验收标准 */

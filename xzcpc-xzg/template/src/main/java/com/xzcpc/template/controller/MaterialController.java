@@ -64,13 +64,6 @@ public class MaterialController {
         return R.ok(Map.of("count", count, "message", "同步完成，共 " + count + " 条"));
     }
 
-    @OpLog(module = "物料", operation = "迁移盘点单位")
-    @PostMapping("/migrate-inventory-units")
-    public R<Map<String, Object>> migrateInventoryUnits() {
-        int count = materialService.migrateInventoryUnits();
-        return R.ok(Map.of("count", count, "message", "迁移完成，共 " + count + " 条"));
-    }
-
     @OpLog(module = "物料", operation = "查询全部分类")
     @GetMapping("/categories")
     public R<List<String>> categories() {

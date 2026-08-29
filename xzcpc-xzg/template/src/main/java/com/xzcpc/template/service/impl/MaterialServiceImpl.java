@@ -12,21 +12,16 @@ import com.xzcpc.template.mapper.MaterialInventoryRuleMapper;
 import com.xzcpc.template.mapper.MaterialMapper;
 import com.xzcpc.template.mapper.TemplateZoneMaterialMapper;
 import com.xzcpc.template.service.MaterialService;
+import com.xzcpc.template.service.MaterialSyncService;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -36,17 +31,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MaterialServiceImpl implements MaterialService {
 
-    private final RestTemplate restTemplate;
     private final MaterialMapper materialMapper;
     private final MaterialInventoryRuleMapper ruleMapper;
     private final TemplateZoneMaterialMapper templateZoneMaterialMapper;
     private final ApplicationEventPublisher eventPublisher;
-
-    @Value("${material.api.url}")
-    private String apiUrl;
-
-    @Value("${material.api.key}")
-    private String apiKey;
+    private final MaterialSyncService materialSyncService;
 
     @Value("${app.upload.path:./upload}")
     private String uploadPath;
@@ -194,17 +183,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     // ==================== 外部 API → 本地 DB 同步 ====================
 
-    /**
-     * 每天凌晨 3 点全量同步 + 首次查询时懒加载。
-     * 从外部 API 翻页拉取物料主数据，upsert 到本地 material 表。
-     */
-    // @Scheduled(cron = "0 0 3 * * *")  // 已关闭定时同步
-    public void scheduledSync() {
-        if (!syncEnabled()) return;
-        syncFromApi();
-    }
-
-    /** 可通过配置 app.sync.enabled=false 关闭所有外部API同步 */
+    /** 可通过配置 app.sync.enabled=false 关闭同步（懒加载兜底与定时任务共用） */
     @org.springframework.beans.factory.annotation.Value("${app.sync.enabled:false}")
     private boolean syncEnabled;
 
@@ -212,130 +191,8 @@ public class MaterialServiceImpl implements MaterialService {
 
     @Override
     public int syncFromApi() {
-        log.info("开始从外部 API 同步物料到本地数据库...");
-        try {
-            List<MaterialInfo> materials = fetchAllFromApi();
-            upsertMaterials(materials);
-            log.info("物料同步完成，共 {} 条记录", materials.size());
-            return materials.size();
-        } catch (Exception e) {
-            log.error("物料同步失败", e);
-            throw new RuntimeException("物料同步失败: " + e.getMessage(), e);
-        }
-    }
-
-    private List<MaterialInfo> fetchAllFromApi() {
-        List<MaterialInfo> allMaterials = new ArrayList<>();
-        int page = 1;
-        int pageSize = 100;
-        boolean hasMore = true;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Publish-Api-Key", apiKey);
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-
-        while (hasMore) {
-            String url = apiUrl + "?page=" + page + "&pageSize=" + pageSize;
-            try {
-                ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                        url, HttpMethod.GET, entity,
-                        new ParameterizedTypeReference<Map<String, Object>>() {});
-
-                Map<String, Object> body = response.getBody();
-                if (body == null) break;
-
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> records = (List<Map<String, Object>>) body.get("records");
-                if (records == null || records.isEmpty()) break;
-
-                for (Map<String, Object> record : records) {
-                    MaterialInfo material = new MaterialInfo();
-                    material.setId(toString(record.get("id")));
-                    material.setPinxiangbianma((String) record.get("pinxiangbianma"));
-                    material.setLeibie((String) record.get("leibie"));
-                    material.setLeibie2((String) record.get("leibie2"));
-                    material.setYuancailiaomingcheng((String) record.get("yuancailiaomingcheng"));
-                    material.setGuige((String) record.get("guige"));
-                    material.setPandiandanwei((String) record.get("pandiandanwei"));
-                    allMaterials.add(material);
-                }
-
-                Object totalObj = body.get("total");
-                int total = totalObj instanceof Number ? ((Number) totalObj).intValue() : 0;
-                hasMore = page * pageSize < total;
-                page++;
-            } catch (Exception e) {
-                log.error("获取物料信息失败，page={}", page, e);
-                break;
-            }
-        }
-
-        log.info("从外部 API 获取物料完成，共 {} 条记录，请求 {} 页", allMaterials.size(), page - 1);
-        return allMaterials;
-    }
-
-    private void upsertMaterials(List<MaterialInfo> items) {
-        for (MaterialInfo item : items) {
-            if (!StringUtils.hasText(item.getId()) || !StringUtils.hasText(item.getYuancailiaomingcheng())) {
-                continue;
-            }
-            Material material = materialMapper.selectOne(
-                    new LambdaQueryWrapper<Material>().eq(Material::getMaterialId, item.getId()));
-            if (material == null) {
-                material = new Material();
-                material.setMaterialId(item.getId());
-            }
-            material.setQmCode(item.getPinxiangbianma());
-            material.setParentCategory(item.getLeibie());
-            material.setCategory(item.getLeibie2());
-            material.setMaterialName(item.getYuancailiaomingcheng());
-            material.setSpec(item.getGuige());
-            if (material.getId() == null) {
-                materialMapper.insert(material);
-            } else {
-                materialMapper.updateById(material);
-            }
-        }
-    }
-
-    // ==================== 盘点单位迁移 ====================
-
-    /**
-     * 一次性脚本：从外部 API 拉取盘点单位，写入 material_inventory_rule。
-     * 只处理尚未维护规则的物料（rule 不存在时才创建）。
-     * @return 迁移成功的条数
-     */
-    @Override
-    @Transactional
-    public int migrateInventoryUnits() {
-        log.info("开始迁移外部 API 盘点单位到 material_inventory_rule...");
-        List<MaterialInfo> apiMaterials = fetchAllFromApi();
-        int count = 0;
-        for (MaterialInfo item : apiMaterials) {
-            String pandiandanwei = item.getPandiandanwei();
-            if (!StringUtils.hasText(pandiandanwei)) {
-                continue;
-            }
-            String materialId = item.getId();
-            // 已有规则则跳过
-            Long exists = ruleMapper.selectCount(
-                    new LambdaQueryWrapper<MaterialInventoryRule>().eq(MaterialInventoryRule::getMaterialId, materialId));
-            if (exists > 0) {
-                continue;
-            }
-            MaterialInventoryRule rule = new MaterialInventoryRule();
-            rule.setRuleId("TMP");
-            rule.setMaterialId(materialId);
-            rule.setBaseUnit(pandiandanwei.trim());
-            rule.setInventoryUnits(pandiandanwei.trim());
-            rule.setUnitPrice(java.math.BigDecimal.ZERO);
-            ruleMapper.insert(rule);
-            rule.setRuleId("MR" + String.format("%08d", rule.getId()));
-            ruleMapper.updateById(rule);
-            count++;
-        }
-        log.info("盘点单位迁移完成，共创建 {} 条规则", count);
-        return count;
+        log.info("开始从 xinfo API 同步物料到本地数据库...");
+        return materialSyncService.sync();
     }
 
     // ==================== 总部端 CRUD ====================
@@ -352,6 +209,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     @Override
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "materials", allEntries = true)
     public Material create(Material material) {
         if (!StringUtils.hasText(material.getMaterialName())) {
             throw new BusinessException(400, "物料名称不能为空");
@@ -373,6 +231,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     @Override
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "materials", allEntries = true)
     public Material update(String materialId, Material req) {
         Material material = getByMaterialId(materialId);
         if (StringUtils.hasText(req.getMaterialName())) {
@@ -396,6 +255,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     @Override
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "materials", allEntries = true)
     public void deleteByMaterialId(String materialId) {
         Material material = getByMaterialId(materialId);
         Long refCount = templateZoneMaterialMapper.selectCount(new LambdaQueryWrapper<TemplateZoneMaterial>()
@@ -408,6 +268,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     @Override
     @Transactional
+    @org.springframework.cache.annotation.CacheEvict(value = "materials", allEntries = true)
     public void toggleStatus(String materialId) {
         Material material = getByMaterialId(materialId);
         material.setDelFlag(material.getDelFlag() == 1 ? 0 : 1);
@@ -458,9 +319,5 @@ public class MaterialServiceImpl implements MaterialService {
 
     private String trimToNull(String val) {
         return StringUtils.hasText(val) ? val.trim() : null;
-    }
-
-    private static String toString(Object value) {
-        return value == null ? null : value.toString();
     }
 }

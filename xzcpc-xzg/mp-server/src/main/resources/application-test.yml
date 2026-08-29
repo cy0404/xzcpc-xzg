@@ -2,9 +2,9 @@ store:
   api:
     key: ${STORE_API_KEY}
 
-material:
+xinfo:
   api:
-    key: ${STORE_API_KEY}
+    key: ${XINFO_API_KEY}
 
 wx:
   miniapp:

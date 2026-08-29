@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.common.model.StoreInfo;
 import com.xzcpc.task.entity.Store;
+import com.xzcpc.task.entity.StoreOrderCycle;
 import com.xzcpc.task.mapper.StoreMapper;
+import com.xzcpc.task.mapper.StoreOrderCycleMapper;
 import com.xzcpc.task.service.StoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,7 @@ public class StoreServiceImpl implements StoreService {
 
     private final RestTemplate restTemplate;
     private final StoreMapper storeMapper;
+    private final StoreOrderCycleMapper storeOrderCycleMapper;
 
     @Value("${store.api.url}")
     private String apiUrl;
@@ -56,7 +59,15 @@ public class StoreServiceImpl implements StoreService {
             stores = storeMapper.selectList(
                     new LambdaQueryWrapper<Store>().orderByDesc(Store::getUpdatedAt));
         }
-        return stores.stream().map(this::toStoreInfo).collect(Collectors.toList());
+        // 批量附带订货周期配置（store_order_cycle），避免逐门店查询
+        Map<String, StoreOrderCycle> cycleByStore = storeOrderCycleMapper.selectList(
+                        new LambdaQueryWrapper<StoreOrderCycle>())
+                .stream().collect(Collectors.toMap(StoreOrderCycle::getStoreId, Function.identity()));
+        return stores.stream().map(s -> {
+            StoreInfo info = toStoreInfo(s);
+            attachOrderCycle(info, cycleByStore.get(info.getId()));
+            return info;
+        }).collect(Collectors.toList());
     }
 
     @Override
@@ -64,7 +75,11 @@ public class StoreServiceImpl implements StoreService {
         Store store = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
                 .eq(Store::getStoreId, id));
         if (store != null) {
-            return toStoreInfo(store);
+            StoreInfo info = toStoreInfo(store);
+            attachOrderCycle(info, storeOrderCycleMapper.selectOne(
+                    new LambdaQueryWrapper<StoreOrderCycle>()
+                            .eq(StoreOrderCycle::getStoreId, id)));
+            return info;
         }
         // 缓存未命中时尝试验证 API 是否存在该门店
         List<StoreInfo> all = getAllStores();
@@ -161,6 +176,67 @@ public class StoreServiceImpl implements StoreService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updateOrderCycle(Map<String, Map<String, Object>> storeIdToConfig) {
+        if (storeIdToConfig == null || storeIdToConfig.isEmpty()) return;
+        for (Map.Entry<String, Map<String, Object>> e : storeIdToConfig.entrySet()) {
+            Map<String, Object> cfg = e.getValue();
+            if (cfg == null) continue;
+            String storeId = e.getKey();
+            String orderDays = normalizeOrderDays(cfg.get("orderDays"));
+            Integer paused = cfg.get("paused") == null ? null : ((Number) cfg.get("paused")).intValue();
+            if (paused != null && paused != 0 && paused != 1) {
+                throw new BusinessException("周盘暂停取值需为 0或1，门店=" + storeId);
+            }
+            Store store = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
+                    .eq(Store::getStoreId, storeId));
+            if (store == null) {
+                throw new BusinessException("门店不存在: " + storeId);
+            }
+            StoreOrderCycle existing = storeOrderCycleMapper.selectOne(
+                    new LambdaQueryWrapper<StoreOrderCycle>()
+                            .eq(StoreOrderCycle::getStoreId, storeId));
+            if (orderDays == null) {
+                // orderDays 为空 → 清空配置（不参与周盘），删除行
+                if (existing != null) {
+                    storeOrderCycleMapper.deleteById(existing.getId());
+                }
+                continue;
+            }
+            if (existing != null) {
+                existing.setOrderDays(orderDays);
+                if (paused != null) existing.setPaused(paused);
+                storeOrderCycleMapper.updateById(existing);
+            } else {
+                StoreOrderCycle cycle = new StoreOrderCycle();
+                cycle.setStoreId(storeId);
+                cycle.setOrderDays(orderDays);
+                cycle.setPaused(paused != null ? paused : 0);
+                storeOrderCycleMapper.insert(cycle);
+            }
+        }
+    }
+
+    /** 规范化订货日："1,4" → "1,4"（校验 1-7、去重、升序）；null/空 → null；全非法 → 报错 */
+    private String normalizeOrderDays(Object raw) {
+        if (raw == null) return null;
+        String s = raw.toString().trim();
+        if (s.isEmpty()) return null;
+        java.util.Set<Integer> set = new java.util.TreeSet<>();
+        for (String part : s.split(",")) {
+            try {
+                int d = Integer.parseInt(part.trim());
+                if (d >= 1 && d <= 7) set.add(d);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (set.isEmpty()) {
+            throw new BusinessException("订货日取值需在1(周一)-7(周日)之间，逗号分隔");
+        }
+        return set.stream().map(String::valueOf).collect(Collectors.joining(","));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateOwnerInfo(String storeId, String openid, String name, String phone) {
         Store store = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
                 .eq(Store::getStoreId, storeId));
@@ -230,6 +306,11 @@ public class StoreServiceImpl implements StoreService {
         info.setId(s.getStoreId());
         info.setMendianmingcheng(s.getStoreName());
         info.setBianma(s.getStoreCode());
+        info.setXinfoStoreName(s.getXinfoStoreName());
+        info.setProvince(s.getProvince());
+        info.setCity(s.getCity());
+        info.setDistrict(s.getDistrict());
+        info.setAddress(s.getAddress());
         info.setXiaochengxuid(s.getXiaochengxuid());
         info.setCangkuid(s.getCangkuid());
         info.setQrCode(s.getQrCode());
@@ -237,7 +318,16 @@ public class StoreServiceImpl implements StoreService {
         info.setOwnerPhone(s.getOwnerPhone());
         info.setOwnerOpenid(s.getOwnerOpenid());
         info.setSupervisorName(s.getSupervisorName());
+        info.setQmaiStoreId(s.getQmaiStoreId());
+        info.setWeeklyInventoryDay(s.getWeeklyInventoryDay());
         return info;
+    }
+
+    /** 组装订货周期配置到门店信息（无配置则为 null） */
+    private void attachOrderCycle(StoreInfo info, StoreOrderCycle cycle) {
+        if (cycle == null) return;
+        info.setOrderDays(cycle.getOrderDays());
+        info.setWeeklyPaused(cycle.getPaused());
     }
 
     private static String toString(Object value) {

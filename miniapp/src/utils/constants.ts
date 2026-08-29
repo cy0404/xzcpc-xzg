@@ -37,3 +37,13 @@ export const TASK_STATUS_COLOR: Record<string, string> = {
   in_progress: '#1989fa',
   submitted: '#07c160',
 }
+
+export const TASK_TYPE_MAP: Record<string, string> = {
+  monthly: '月盘',
+  weekly: '周盘',
+}
+
+export const TASK_TYPE_COLOR: Record<string, string> = {
+  monthly: '#909399',
+  weekly: '#d48806',
+}

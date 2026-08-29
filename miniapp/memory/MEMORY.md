@@ -985,3 +985,60 @@ npm run build:mp-weixin
 - 存量日常报损 item_count=0 走原路径，编辑时自动迁移至明细表
 - 旧版小程序仍可调 POST / 单物料接口
 - resolveFruitVeg 对 null materialId 安全跳过
+
+---
+
+## 二十九、后端改动（2026-08-11，无前端代码变更）
+
+今天改动全在后端，小程序无变更，仅供参考：
+
+- **牛油果泥单位换算修复**：仅 unit="件" 时 ×24→"包"，"包"不变
+- **自动收货**：`LossReportAutoReceiveJob`，补发4天后自动收货
+- 详见 [dateMemory/2026-08-11.md](dateMemory/2026-08-11.md)
+
+---
+
+## 三十、H5 牛油果报损更新（2026-08-13，无小程序端代码变更）
+
+改动全部在 H5 页面（xzcpc-xzg/upload/h5/），小程序 src 无变更：
+
+- **厂家选择**：牛油果泥必选厂家（hass/蓝蛙，图片卡片），拼接进 `remark`（格式 `厂家：XXX\n备注`），无新字段
+- **隐藏加急**：牛油果泥不显示加急选项，自动重置为否
+- **上传 4→10**：提示/校验/按钮显隐三处；`voucher_url` VARCHAR(4000) 够用
+- **指引模块**：新增水印（image12）+喷码（image13）示例图，当天剪开拍销毁视频、每天报损勿积压
+- **修复页面跳动**：搜索抽屉关闭后恢复滚动位置
+- **数据库**：生产库缺 `qmai_store_id` 列需执行 `database/migration-add-qmai-store-id.sql`
+- 详见 [dateMemory/2026-08-13.md](dateMemory/2026-08-13.md) 及 [docs/牛油果到货报损更新说明.md](../../docs/牛油果到货报损更新说明.md)
+
+---
+
+## 三十一、智能订货模块（2026-08-14，P1 上线）
+
+> ⚠️ **页面形式（用户指令）**：不做原生 uni-app 页，改用 **H5 + web-view**（参考入库管理 inbound-list/inbound-detail 模式）。原生页面已删除，此节 2026-08-14 晚重写。
+
+### 页面 = H5（`xzcpc-xzg/upload/h5/`，改后传服务器无需打包；static/h5 有 jar 副本）
+| 页面 | 文件 | 说明 |
+|------|------|------|
+| 订货单列表 | `smart-order-list.html` | 概览面板**不可点击**（范围在首页/工具页进入前已切好）：`?token=&all=1&storeName=`；all 模式卡片带门店名+绿色门店 chip（GET /list?all=true + /overview-total），单店模式全部单据+状态 chip（/list + /overview）；`2026-W34`→`2026 年第 34 周`；去确认/重新确认/查看详情› 相对链接跳 detail；pageshow 刷新 + 下拉刷新（复用 inbound 阻尼模式） |
+| 订货单明细 | `smart-order-detail.html` | 顶部返回头（history.back）→ 周概览 3 指标（建议数量实时联动步进器）→ 状态卡 4 态（pending 橙⏳含 deadline HH:mm / syncing 橙🔄 / success 绿✅含企迈单号 / submit_failed 红⚠️含 submitError+尝试次数）→ 明细表手写步进器（仅 pending/submit_failed 可编辑，锁定态显示确认数量）→ 底部固定栏（合计数量 + 确认订货/重新提交）→ 自定义确认弹窗 → PUT /{id}/confirm **提交全部明细**（后端语义：未提交明细视为 0 不订）→ toast「已提交，等待企迈同步结果」→ 刷新 |
+
+- H5 自包含原生 JS（无外部依赖）：`API=origin+path.split('/upload/')[0]+'/api/mp'`、token 走 URL 参数、`Authorization: Bearer`、xhr 封装（code 401 登录过期 / code!==200 toast message）、showToast/confirm 弹窗、esc 转义
+
+### miniapp 侧改动
+- `pages/common/webview/index.vue`：支持 `title` 参数动态 setNavigationBarTitle（不传保持默认「入库管理」）
+- **工具页查看类首项**「智能订货」📋（desc 动态 `每周建议订货单 · N 张待确认`，onShow 拉 overview-total，staff 不请求）：卡片 `h5: true` → `goSmartOrder()`——all 模式 H5 带 `&all=1`；单店模式先 `await switchStore(scope)` 保证 token 已切门店再打开
+- **首页待处理事项**：all 模式按门店循环 🛒（storeId 携带，goPendingItem 先切门店再跳转）；单店模式 pending+submitFailed>0 单条；条目 `h5: true` → goPendingItem 末尾 `buildSmartOrderUrl()`（切换后用最新 token 构建 webview URL + title 参数）；数据请求按 `isManagerOrOwner` 门控（request 层会 toast，员工调会被 403 弹错）
+- 删除原生 `pages/smart-order/` 两页 + pages.json 两条目；`api/smart-order.ts` 保留（工具/首页待确认数仍用 overview 接口）
+
+### 状态卡 4 态
+- pending 橙「订货单待确认」+生成时间/截止时间；syncing 橙「正在同步企迈」；success 绿「已生成企迈订货单」+企迈单号（全 0 确认则「确认完成·已跳过企迈下单」）；submit_failed 红「提交失败」+错误信息+尝试次数+「重新提交」按钮
+
+### 后端要点（详见 xzcpc-xzg/memory）
+- 每周一 6:00 定时生成建议单（也可 POST /generate 手动）；库存差法算日均消耗；**真实对接企迈创建报货单**；确认两阶段状态机 pending→syncing→success/submit_failed
+- ⚠️ 数据源偏差：`store_zone_material` 是空表，物料池+库存取最近已提交任务的 task_material_summary
+- **warehouseNo = `store_info.cangkuid`**（既有列，外部同步自动填，用户纠错"企迈仓库id是cangkuid"，不加新列）；为空时自愈——最近 60 天报货单 storeWarehouseNo 回写 cangkuid
+- DB V17（smart_order/smart_order_item/5 条 sys_config，**无 store_info 改列**）；⚠️ 线上已执行过旧版 V17（含 ALTER 加 qmai_warehouse_no），表/配置一致无需处理，仅需跑 `database/migration-drop-qmai-warehouse-no.sql` 删多余列；仓库编码一般无需运维操作
+
+### 范围规则
+- 工具页查看类入口按当前 scope 决定 all 模式/单店模式；首页待办携带 storeId 先切换再跳转；H5 列表页进入后不可再切范围（概览面板非点击）
+- 详见 [dateMemory/2026-08-14.md](dateMemory/2026-08-14.md)

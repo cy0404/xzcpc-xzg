@@ -66,6 +66,10 @@ function formatUnitInputs(mat: any) {
           <text class="meta-icon">&#128100;</text>
           <text class="meta-text">提交人：{{ result.submittedBy || '--' }}</text>
         </view>
+        <view v-if="result.totalAmount > 0" class="meta-row">
+          <text class="meta-icon">&#128176;</text>
+          <text class="meta-text amount-highlight">盘点金额：¥{{ result.totalAmount.toFixed(2) }}</text>
+        </view>
       </view>
 
       <!-- 物料汇总 -->
@@ -148,6 +152,11 @@ function formatUnitInputs(mat: any) {
 .meta-text {
   font-size: 26rpx;
   color: #4A4A4A;
+}
+.amount-highlight {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #E65C2E;
 }
 
 .danger-text { color: #E84B61; }

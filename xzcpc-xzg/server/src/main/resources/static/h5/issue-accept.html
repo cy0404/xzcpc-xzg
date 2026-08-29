@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>验收 · 问题处理</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f6f8; color: #333; }
+  .page { max-width: 640px; margin: 0 auto; padding: 16px; }
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .head h1 { font-size: 17px; font-weight: 600; }
+  .head a { font-size: 13px; color: #e05a47; text-decoration: none; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card-title .t { flex: 1; word-break: break-all; }
+  .row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+  .row .k { color: #999; flex-shrink: 0; }
+  .row .v { color: #333; text-align: right; word-break: break-all; }
+  .status-tag { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; flex-shrink: 0; }
+  .tag-wait { background: #fff3e0; color: #e6a23c; }
+  .btn-row { display: flex; gap: 24px; margin-top: 12px; justify-content: center; }
+  .btn-mini { width: 180px; padding: 9px 0; border: 1.5px solid; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; background: #fff; }
+  .btn-mini:disabled { background: #f0f1f3; border-color: #d8dbe0; color: #b8bcc3; }
+  .btn-unresolve { background: #e05a47; border-color: #e05a47; color: #fff; }
+  .btn-accept { background: #43a047; border-color: #43a047; color: #fff; }
+  .empty { text-align: center; color: #999; font-size: 14px; padding: 60px 0; }
+  .empty .icon { font-size: 40px; display: block; margin-bottom: 12px; }
+  .empty a { color: #e05a47; text-decoration: none; font-size: 13px; }
+  .banner { background: #fff3e0; color: #b26a00; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; display: none; }
+  /* ---------- 未解决弹窗 ---------- */
+  .mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 10; padding: 20px; }
+  .mask.show { display: flex; }
+  .modal { width: 100%; max-width: 440px; max-height: 85vh; overflow-y: auto; background: #fff; border-radius: 16px; padding: 18px 18px 16px; animation: pop .18s ease; }
+  @keyframes pop { from { transform: scale(.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal-title { font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; }
+  .modal-title .tt { display: flex; align-items: center; }
+  .modal-title .bar { width: 4px; height: 16px; border-radius: 2px; background: #e05a47; margin-right: 8px; }
+  .modal-title .x { cursor: pointer; color: #bbb; font-size: 17px; padding: 0 2px; }
+  .modal-title .x:active { color: #666; }
+  .modal-issue { background: #f7f8fa; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #666; margin: 12px 0 14px; line-height: 1.55; word-break: break-all; }
+  .field-label { font-size: 13px; color: #333; font-weight: 600; margin-bottom: 8px; }
+  .field-label i { color: #e05a47; font-style: normal; margin-left: 2px; }
+  textarea { width: 100%; height: 88px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.6; resize: none; outline: none; background: #fafbfc; transition: border-color .15s, background .15s; }
+  textarea:focus { border-color: #e05a47; background: #fff; }
+  textarea::placeholder { color: #c0c4cc; }
+  .hint { font-size: 12px; color: #aaa; margin-top: 6px; }
+  .upload-btn { display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px; border: 1px dashed #d8dbe0; border-radius: 8px; font-size: 13px; color: #888; cursor: pointer; background: #fafbfc; margin-top: 12px; }
+  .upload-btn:active { background: #f0f1f3; }
+  .upload-btn .plus { color: #e05a47; font-weight: 700; margin-right: 2px; }
+  .files { margin-top: 8px; }
+  .file-item { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 7px 0; border-bottom: 1px dashed #f0f1f3; }
+  .file-item .f-name { flex: 1; color: #333; word-break: break-all; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .file-item .f-state { color: #999; font-size: 12px; }
+  .file-item .f-del { color: #e05a47; cursor: pointer; padding: 2px 6px; font-size: 12px; }
+  .modal-foot { display: flex; gap: 10px; margin-top: 14px; }
+  .modal-cancel { flex: 1; padding: 10px 0; border: none; border-radius: 10px; background: #f2f3f5; color: #666; font-size: 14px; cursor: pointer; }
+  .modal-cancel:active { background: #e8eaed; }
+  .modal-submit { flex: 1.5; padding: 10px 0; border: none; border-radius: 10px; background: #e05a47; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .modal-submit:active:not(:disabled) { background: #c94e3e; }
+  .modal-submit:disabled { background: #e8e9ec; color: #b8bcc3; }
+  /* 已解决确认弹窗：绿色确认按钮 */
+  .modal-submit.accept { background: #43a047; }
+  .modal-submit.accept:active:not(:disabled) { background: #36873a; }
+  .modal-submit.accept:disabled { background: #c8e6c9; color: #fff; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <h1>未验收问题</h1>
+    <a id="back-link" href="issue-accept.html" style="display:none">← 返回全部</a>
+  </div>
+  <div class="banner" id="banner"></div>
+  <div id="list"><div style="font-size:13px;color:#999">加载中…</div></div>
+</div>
+
+<!-- 未解决弹窗 -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <div class="modal-title">
+      <span class="tt"><span class="bar"></span>未解决 · 补充说明</span>
+      <span class="x" onclick="closeModal()">✕</span>
+    </div>
+    <div class="modal-issue" id="modal-issue"></div>
+    <div class="field-label">未解决原因<i>*</i></div>
+    <textarea id="reason" maxlength="500" placeholder="请填写问题未解决的原因，如：厂家还未补发、数量对不上等"></textarea>
+    <div class="hint">提交后问题将回到处理中</div>
+    <label class="upload-btn" id="pick-btn"><span class="plus">＋</span>添加图片或视频</label>
+    <input type="file" id="file-input" accept="image/*,video/*" multiple style="display:none">
+    <div class="files" id="files"></div>
+    <div class="modal-foot">
+      <button class="modal-cancel" onclick="closeModal()">取消</button>
+      <button class="modal-submit" id="submit-btn" disabled>提交</button>
+    </div>
+  </div>
+</div>
+
+<!-- 已解决确认弹窗 -->
+<div class="mask" id="accept-mask">
+  <div class="modal">
+    <div class="modal-title">
+      <span class="tt"><span class="bar" style="background:#43a047"></span>验收确认</span>
+      <span class="x" onclick="closeAcceptModal()">✕</span>
+    </div>
+    <div class="modal-issue" id="accept-modal-issue"></div>
+    <div class="hint" style="margin-top:2px">验收后问题将变为已解决，不可撤销。</div>
+    <div class="modal-foot">
+      <button class="modal-cancel" onclick="closeAcceptModal()">取消</button>
+      <button class="modal-submit accept" id="accept-submit-btn">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var ISSUE_ID = new URLSearchParams(location.search).get('id') || '';
+var CHAT_ID = new URLSearchParams(location.search).get('chatId') || '';   // 门店群标识：有值=只展示该群门店的问题，空=展示全部
+var TITLES = {};         // id -> 标题（避免内嵌 onclick 属性被引号破坏）
+var CUR_ID = 0;          // 当前弹窗的问题 id
+var FILES = [];          // {key, name, url, state}
+var STASH = {};          // key -> File
+var FILE_SEQ = 0;
+var uploading = 0;
+var $ = function(id) { return document.getElementById(id); };
+
+function toast(msg) {
+  var b = $('banner');
+  b.textContent = msg;
+  b.style.display = 'block';
+  setTimeout(function() { b.style.display = 'none'; }, 3500);
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function fmt(t) {
+  return String(t || '').replace('T', ' ').substring(0, 16);
+}
+
+// ---------- 渲染 ----------
+function renderList(items) {
+  var box = $('list');
+  if (!items.length) {
+    box.innerHTML = '<div class="empty"><span class="icon">🎉</span>暂无待验收问题</div>';
+    return;
+  }
+  var h = '';
+  items.forEach(function(it, i) {
+    TITLES[it.id] = it.title || '';
+    h += '<div class="card" id="c-' + it.id + '">' +
+      '<div class="card-title"><span class="t">' + (ISSUE_ID ? '' : (i + 1) + '. ') + esc(it.title || '-') + '</span>' +
+      '<span class="status-tag tag-wait">待验收</span></div>' +
+      '<div class="row"><span class="k">问题类型</span><span class="v">' + esc(it.issueType || '-') + '</span></div>' +
+      '<div class="row"><span class="k">门店</span><span class="v">' + esc(it.storeName || '-') + '</span></div>' +
+      '<div class="row"><span class="k">处理人</span><span class="v">' + esc(it.processedBy || '-') + '</span></div>' +
+      '<div class="row"><span class="k">完成时间</span><span class="v">' + esc(fmt(it.updatedAt)) + '</span></div>' +
+      '<div class="btn-row">' +
+      '<button class="btn-mini btn-unresolve" onclick="openModal(' + it.id + ')">未解决</button>' +
+      '<button class="btn-mini btn-accept" onclick="openAcceptModal(' + it.id + ')">已解决</button>' +
+      '</div>' +
+      '</div>';
+  });
+  box.innerHTML = h;
+}
+
+// ---------- 加载待验收列表（20 秒自动刷新，新问题自动出现，无需手动刷新） ----------
+var lastFp = null;   // 上次渲染的问题 id 集合指纹：无变化不重渲染（避免干扰正在操作的用户）
+function loadList() {
+  return fetch('/api/public/issue/pending-list' + (CHAT_ID ? '?chatId=' + encodeURIComponent(CHAT_ID) : '')).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.code !== 200 || !d.data) {
+      if (lastFp === null) $('list').innerHTML = '<div class="empty">加载失败，请稍后重试</div>';
+      return;
+    }
+    var all = d.data;
+    var fp = all.map(function(x) { return x.id; }).join(',');
+    if (lastFp === fp) return;   // 列表无变化（含未解决后问题仍在列表），保持当前渲染
+    lastFp = fp;
+    if (ISSUE_ID) {
+      $('back-link').style.display = '';
+      var it = all.filter(function(x) { return String(x.id) === ISSUE_ID; })[0];
+      if (!it) {
+        $('list').innerHTML = '<div class="empty">该问题不存在或已处理，等待同步中…<br><a href="issue-accept.html">← 查看全部待验收问题</a></div>';
+        return;
+      }
+      renderList([it]);
+    } else {
+      renderList(all);
+    }
+  }).catch(function() {
+    if (lastFp === null) $('list').innerHTML = '<div class="empty">网络异常，加载失败</div>';
+  });
+}
+loadList();
+setInterval(loadList, 20000);   // 每 20 秒自动刷新
+
+// ---------- ✅ 已解决：确认弹窗 → 验收 ----------
+var ACCEPT_ID = 0;
+function openAcceptModal(id) {
+  ACCEPT_ID = id;
+  var btn = $('accept-submit-btn');
+  btn.disabled = false;
+  btn.textContent = '确认';
+  $('accept-modal-issue').textContent = TITLES[id] || '';
+  $('accept-mask').classList.add('show');
+}
+function closeAcceptModal() {
+  $('accept-mask').classList.remove('show');
+}
+$('accept-mask').addEventListener('click', function(e) { if (e.target === this) closeAcceptModal(); });
+
+$('accept-submit-btn').addEventListener('click', function() {
+  var btn = this;
+  var id = ACCEPT_ID;
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  fetch('/api/public/issue/accept', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issueId: id })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.code === 200) {
+      btn.disabled = false;
+      btn.textContent = '确认';
+      closeAcceptModal();
+      toast('✓ 验收成功，问题已关闭');
+      var card = document.getElementById('c-' + id);
+      if (card) card.remove();
+      loadList();
+      var left = document.querySelectorAll('.card').length;
+      if (left === 0) {
+        $('list').innerHTML = '<div class="empty"><span class="icon">🎉</span>全部问题已验收完毕</div>';
+      }
+      if (ISSUE_ID) setTimeout(function() { window.close(); }, 1500);
+    } else {
+      btn.disabled = false;
+      btn.textContent = '确认';
+      toast(d.msg || '验收失败，请重试');
+    }
+  }).catch(function() {
+    btn.disabled = false;
+    btn.textContent = '确认';
+    toast('网络异常，验收失败');
+  });
+});
+
+// ---------- ❌ 未解决：弹窗表单 ----------
+function openModal(id) {
+  CUR_ID = id;
+  $('modal-issue').textContent = TITLES[id] || '';
+  $('reason').value = '';
+  FILES = [];
+  STASH = {};
+  FILE_SEQ = 0;
+  uploading = 0;
+  renderFiles();
+  checkForm();
+  $('submit-btn').textContent = '提交';
+  $('mask').classList.add('show');
+}
+function closeModal() {
+  if (uploading > 0) { toast('附件还在上传中，请稍候'); return; }
+  $('mask').classList.remove('show');
+}
+$('mask').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+
+// 文件选择与上传
+$('pick-btn').addEventListener('click', function(e) { e.preventDefault(); $('file-input').click(); });
+$('file-input').addEventListener('change', function() {
+  var fs = Array.prototype.slice.call(this.files);
+  this.value = '';
+  var cur = FILE_SEQ;
+  fs.forEach(function(f, i) {
+    STASH[cur + i] = f;
+    FILES.push({ key: cur + i, name: f.name, url: '', state: 'uploading' });
+  });
+  FILE_SEQ += fs.length;
+  renderFiles();
+  uploadNext();
+});
+
+function uploadNext() {
+  FILES.forEach(function(it) {
+    if (it.state === 'uploading' && !it.busy) {
+      it.busy = 1;
+      uploading++;
+      doUpload(it);
+    }
+  });
+}
+
+function doUpload(it) {
+  var file = STASH[it.key];
+  if (!file) { it.state = 'failed'; uploading--; renderFiles(); return; }
+  // 与门店小程序回复图片同一通道：代理到外部系统 /api/store-issue/upload（chatId 服务端按 issueId 查 store_id）
+  var fd = new FormData();
+  fd.append('files', file);
+  fd.append('issueId', CUR_ID);
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/public/issue/upload-media');
+  xhr.onload = function() {
+    uploading--;
+    try {
+      var d = JSON.parse(xhr.responseText);
+      if (d.code === 200) {
+        var data = d.data || {};
+        var list = data.urls || (data.url ? [data.url] : []);
+        if (list.length) {
+          it.url = list[0];
+          it.state = 'done';
+        } else {
+          it.state = 'failed';
+        }
+      } else {
+        it.state = 'failed';
+      }
+    } catch (e) { it.state = 'failed'; }
+    renderFiles(); checkForm();
+  };
+  xhr.onerror = function() { uploading--; it.state = 'failed'; renderFiles(); checkForm(); };
+  xhr.send(fd);
+}
+
+function renderFiles() {
+  var h = '';
+  FILES.forEach(function(it, i) {
+    var st = it.state === 'done' ? '✓ 已上传'
+           : it.state === 'failed' ? '上传失败'
+           : '上传中…';
+    h += '<div class="file-item"><span class="f-name">' + esc(it.name) + '</span>' +
+         '<span class="f-state">' + st + '</span>' +
+         (it.state !== 'uploading' ? '<span class="f-del" onclick="delFile(' + i + ')">删除</span>' : '') +
+         '</div>';
+  });
+  $('files').innerHTML = h;
+}
+function delFile(i) {
+  FILES.splice(i, 1);
+  renderFiles(); checkForm();
+}
+
+$('reason').addEventListener('input', checkForm);
+
+function checkForm() {
+  var ok = $('reason').value.trim() && FILES.every(function(f) { return f.state === 'done'; });
+  $('submit-btn').disabled = !ok;
+}
+
+$('submit-btn').addEventListener('click', function() {
+  var reason = $('reason').value.trim();
+  if (!reason) { toast('请填写未解决原因'); return; }
+  if (uploading > 0) { toast('图片/视频还在上传中，请稍候'); return; }
+  var urls = FILES.filter(function(f) { return f.url; }).map(function(f) { return f.url; }).join(',');
+  $('submit-btn').disabled = true;
+  $('submit-btn').textContent = '提交中…';
+  fetch('/api/public/issue/unresolve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issueId: CUR_ID, reason: reason, mediaUrls: urls })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.code === 200) {
+      $('submit-btn').disabled = false;
+      $('submit-btn').textContent = '提交';
+      toast('已提交，问题将继续处理');
+      $('mask').classList.remove('show');
+      var card = document.getElementById('c-' + CUR_ID);
+      if (card) card.remove();
+      loadList();
+      var left = document.querySelectorAll('.card').length;
+      if (left === 0) {
+        $('list').innerHTML = '<div class="empty"><span class="icon">🎉</span>全部问题已处理完毕</div>';
+      }
+      if (ISSUE_ID) setTimeout(function() { window.close(); }, 1500);
+    } else {
+      $('submit-btn').disabled = false;
+      $('submit-btn').textContent = '提交';
+      toast(d.msg || '提交失败，请重试');
+    }
+  }).catch(function() {
+    $('submit-btn').disabled = false;
+    $('submit-btn').textContent = '提交';
+    toast('网络异常，提交失败');
+  });
+});
+</script>
+</body>
+</html>

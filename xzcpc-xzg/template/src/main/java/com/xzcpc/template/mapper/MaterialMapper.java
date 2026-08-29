@@ -3,7 +3,41 @@ package com.xzcpc.template.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xzcpc.template.entity.Material;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface MaterialMapper extends BaseMapper<Material> {
+
+    /**
+     * 按业务 materialId 查任意状态记录（含 del_flag=1），供同步"复活"使用。
+     * 不走 MyBatis-Plus 逻辑删除过滤。
+     */
+    @Select("SELECT * FROM material WHERE material_id = #{materialId} LIMIT 1")
+    Material selectAnyByMaterialId(String materialId);
+
+    /**
+     * 同步专用更新：覆盖基本信息并显式写 del_flag（复活 DISABLED→ENABLED）。
+     * 自定义 SQL 不受 MyBatis-Plus 逻辑删除对 updateById 的 WHERE 拼接影响。
+     */
+    @Update("UPDATE material SET qm_code = #{qmCode}, parent_category = #{parentCategory}, "
+            + "category = #{category}, material_name = #{materialName}, spec = #{spec}, "
+            + "del_flag = #{delFlag}, updated_at = NOW() "
+            + "WHERE material_id = #{materialId}")
+    int upsertSyncFields(Material material);
+
+    /**
+     * 同步专用更新（存量物料）：仅刷新一级分类（成本科目映射用），其他字段不动。
+     * 显式 AND del_flag = 0，防止把已停用物料意外刷新。
+     */
+    @Update("UPDATE material SET parent_category = #{parentCategory}, updated_at = NOW() "
+            + "WHERE material_id = #{materialId} AND del_flag = 0")
+    int updateParentCategoryFields(Material material);
+
+    /**
+     * 按 qm_code 查存量启用物料（del_flag=0），供同步按编码匹配存量补录采购字段。
+     * 存量物料 material_id 是旧 id 体系（如 WP0917），但 qm_code 与接口 code 同编码，可对上。
+     */
+    @Select("SELECT * FROM material WHERE qm_code = #{qmCode} AND del_flag = 0 LIMIT 1")
+    Material selectAnyByQmCode(String qmCode);
 }

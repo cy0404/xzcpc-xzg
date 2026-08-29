@@ -29,9 +29,10 @@ public class TemplateController {
     @OpLog(module = "模板", operation = "查询列表")
     @GetMapping
     public R<Page<Template>> list(@RequestParam(defaultValue = "") String keyword,
+                                   @RequestParam(defaultValue = "") String templateType,
                                    @RequestParam(defaultValue = "1") int pageNum,
                                    @RequestParam(defaultValue = "10") int pageSize) {
-        return R.ok(templateService.page(keyword, pageNum, pageSize));
+        return R.ok(templateService.page(keyword, templateType, pageNum, pageSize));
     }
 
     @OpLog(module = "模板", operation = "新增")

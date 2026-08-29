@@ -23,6 +23,13 @@ public interface StoreService {
     void updateQrCode(String storeId, String qrCode);
 
     /**
+     * 批量更新门店订货周期配置（store_order_cycle 表）：
+     * body = {storeId: {orderDays: "1,4"|null, paused: 0|1}}。
+     * orderDays 为 null/空表示清空配置（不参与周盘）；orderDays 非空则 upsert 并保存 paused。
+     */
+    void updateOrderCycle(Map<String, Map<String, Object>> storeIdToConfig);
+
+    /**
      * 更新门店老板绑定信息（openid/姓名/手机号）。
      */
     void updateOwnerInfo(String storeId, String openid, String name, String phone);

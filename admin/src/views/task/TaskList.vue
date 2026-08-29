@@ -50,6 +50,14 @@
             <a-select-option value="submitted">已提交</a-select-option>
           </a-select>
         </a-col>
+        <a-col :xs="24" :sm="12" :md="6">
+          <div class="filter-label">任务类型</div>
+          <a-select v-model:value="filters.taskType" placeholder="全部类型" style="width:100%" allow-clear>
+            <a-select-option value="">全部类型</a-select-option>
+            <a-select-option value="monthly">月盘</a-select-option>
+            <a-select-option value="weekly">周盘</a-select-option>
+          </a-select>
+        </a-col>
       </a-row>
       <div class="filter-actions" v-if="tabKey === 'list'">
         <a-button @click="handleReset">重置</a-button>
@@ -64,12 +72,20 @@
         :pagination="tablePagination"
         :loading="loading"
         row-key="id"
-        :scroll="{ x: 1050 }"
+        :scroll="{ x: 1150 }"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'taskName'">
             <a class="task-name-link" @click="goResult(record)">{{ record.taskName }}</a>
+          </template>
+          <template v-else-if="column.key === 'taskType'">
+            <span class="type-tag" :class="'type-tag--' + (record.taskType || 'monthly')">
+              {{ record.taskType === 'weekly' ? '周盘' : '月盘' }}
+            </span>
+          </template>
+          <template v-else-if="column.key === 'period'">
+            {{ periodText(record) }}
           </template>
           <template v-else-if="column.key === 'store'">
             {{ record.storeName || record.storeId || '-' }}
@@ -196,6 +212,7 @@ const filters = reactive({
   storeIds: [] as string[],
   supervisorName: '' as string,
   status: '' as string,
+  taskType: '' as string,
 })
 const supervisorOptions = ref<{ label: string; value: string }[]>([])
 const stats = reactive({ notStarted: 0, inProgress: 0, submitted: 0 })
@@ -231,7 +248,8 @@ const columns = [
   { title: '门店', key: 'store', width: 180, ellipsis: true, fixed: 'left' as const },
   { title: '督导', dataIndex: 'supervisorName', key: 'supervisorName', width: 140, ellipsis: true },
   { title: '任务名称', dataIndex: 'taskName', key: 'taskName', width: 140, ellipsis: true },
-  { title: '月份', dataIndex: 'taskMonth', key: 'taskMonth', width: 100 },
+  { title: '类型', key: 'taskType', width: 80, align: 'center' as const },
+  { title: '盘点周期', key: 'period', width: 110 },
   { title: '截止时间', key: 'deadline', width: 160 },
   { title: '状态', key: 'status', width: 110 },
   { title: '物料数', dataIndex: 'materialCount', key: 'materialCount', width: 80, align: 'center' as const },
@@ -242,6 +260,17 @@ const columns = [
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-'
   return dateStr.substring(0, 16).replace('T', ' ')
+}
+
+/** 盘点周期展示：周盘显示 2026年第34周，月盘显示 2026-08 */
+function periodText(record: any): string {
+  if (record.taskType === 'weekly') {
+    if (!record.taskWeek) return '-'
+    const m = /^(\d{4})-W(\d{2})$/.exec(record.taskWeek)
+    if (!m) return record.taskWeek
+    return `${m[1]}年第${Number(m[2])}周`
+  }
+  return record.taskMonth || '-'
 }
 
 function goResult(record: any) {
@@ -305,6 +334,7 @@ async function fetchData() {
     if (filters.storeIds.length) params.storeIds = filters.storeIds.join(',')
     if (filters.supervisorName) params.supervisorName = filters.supervisorName
     if (filters.status) params.status = filters.status
+    if (filters.taskType) params.taskType = filters.taskType
     const res = (await getTasks(params)) as any
     dataSource.value = res.data?.records || []
     pagination.total = res.data?.total || 0
@@ -317,9 +347,9 @@ async function fetchStats() {
   try {
     const m = filters.month.format('YYYY-MM')
     const [ns, ip, sb] = await Promise.all([
-      getTasks({ taskMonth: m, status: 'not_started', pageNum: 1, pageSize: 1 }),
-      getTasks({ taskMonth: m, status: 'in_progress', pageNum: 1, pageSize: 1 }),
-      getTasks({ taskMonth: m, status: 'submitted', pageNum: 1, pageSize: 1 }),
+      getTasks({ taskMonth: m, status: 'not_started', pageNum: 1, pageSize: 1, taskType: 'monthly' }),
+      getTasks({ taskMonth: m, status: 'in_progress', pageNum: 1, pageSize: 1, taskType: 'monthly' }),
+      getTasks({ taskMonth: m, status: 'submitted', pageNum: 1, pageSize: 1, taskType: 'monthly' }),
     ])
     stats.notStarted = (ns as any).data?.total || 0
     stats.inProgress = (ip as any).data?.total || 0
@@ -337,6 +367,7 @@ function handleReset() {
   filters.storeIds = []
   filters.supervisorName = ''
   filters.status = ''
+  filters.taskType = ''
   pagination.current = 1
   fetchData()
 }
@@ -367,7 +398,8 @@ function showStoreDetail(item: any) {
 async function fetchReport() {
   reportLoading.value = true
   try {
-    const params: any = {}
+    // 督导完成度统计默认只看月盘，跟随任务类型筛选（未选时按 monthly）
+    const params: any = { taskType: filters.taskType || 'monthly' }
     if (filters.month) params.taskMonth = filters.month.format('YYYY-MM')
     const res: any = await getTasks({ ...params, pageNum: 1, pageSize: 10000 })
     const records = res.data?.records || []
@@ -490,6 +522,25 @@ onMounted(async () => {
 
 .status-check {
   font-size: 11px;
+}
+
+.type-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.type-tag--monthly {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.type-tag--weekly {
+  background: #fff7e6;
+  color: #d48806;
+  border: 1px solid #ffe7ba;
 }
 
 .action-cell {

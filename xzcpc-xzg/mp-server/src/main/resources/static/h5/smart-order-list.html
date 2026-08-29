@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>智能订货待确认</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;color:#1F2421;font-size:14px}
+.page{max-width:500px;margin:0 auto;padding:16px;padding-bottom:100px}
+
+/* 下拉刷新指示 */
+.pull-indicator{height:50px;margin-top:-50px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:10px;pointer-events:none;opacity:0;transition:opacity .15s}
+.pull-indicator.show{opacity:1}
+.pull-indicator .pill{display:flex;align-items:center;gap:8px;padding:8px 18px;border-radius:999px;background:rgba(31,36,33,.85);color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.pi-spinner{display:inline-block;font-size:15px;color:#7BE0A5}
+.pi-spinner.spin{animation:pi-spin 1s linear infinite}
+@keyframes pi-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+/* 概览面板（灰色，非点击） */
+.overview{background:#EDEFED;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #E2E5E2}
+.ov-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.ov-kicker{font-size:12px;color:#98A19C;line-height:18px}
+.ov-label{display:block;margin-top:2px;font-size:18px;font-weight:700;line-height:26px;color:#1F2421}
+.ov-sub{display:block;margin-top:2px;font-size:13px;color:#66706A;line-height:20px}
+.ov-chip{flex-shrink:0;padding:4px 12px;border-radius:999px;background:#E7F4EB;color:#2F8F57;font-size:12px;font-weight:600;white-space:nowrap}
+
+/* 卡片 */
+.card{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid #E8ECE9;cursor:pointer;box-shadow:0 4px 16px rgba(31,36,33,.04)}
+.card:active{transform:scale(.98)}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.card-title{font-size:16px;font-weight:600;line-height:24px;color:#1F2421;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
+.card-tags{display:flex;align-items:center;gap:8px;margin-top:8px}
+.card-sub{display:block;margin-top:2px;font-size:13px;color:#66706A;line-height:20px}
+.chip{flex-shrink:0;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.chip.store{background:#E7F4EB;color:#2F8F57}
+.status{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;flex-shrink:0}
+.status.pending{background:#FFF8EE;color:#E58A2D}
+.status.syncing{background:#FFF8EE;color:#E58A2D}
+.status.success{background:#F1F8F3;color:#2F8F57}
+.status.submit_failed{background:#FFF4F2;color:#E05A47}
+.card-link{display:flex;justify-content:flex-end;align-items:center;gap:2px;margin-top:12px;font-size:14px;font-weight:600;color:#2F8F57}
+.card-link .arrow{font-size:18px}
+
+/* 空状态 / 加载中 */
+.empty{text-align:center;padding:60px 20px;color:#98A19C;background:#fff;border-radius:16px;border:1px solid #E8ECE9}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-text{font-size:14px}
+.loading{display:flex;justify-content:center;padding:40px;color:#98A19C;font-size:13px}
+
+/* 门店/状态胶囊筛选 */
+.filter-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.filter-bar::-webkit-scrollbar{display:none}
+.filter-pill{flex-shrink:0;padding:6px 14px;border-radius:999px;background:#fff;border:1px solid #E8ECE9;font-size:13px;color:#66706A;cursor:pointer;white-space:nowrap}
+.filter-pill.active{background:#2F8F57;border-color:#2F8F57;color:#fff;font-weight:600}
+/* 门店切换底部弹窗（参考调货管理） */
+.sheet{width:100%;align-self:flex-end;background:#fff;border-radius:16px 16px 0 0;padding:10px 20px 24px;max-height:70vh;display:flex;flex-direction:column;animation:shUp .25s ease}
+@keyframes shUp{from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
+.sh-handle{width:36px;height:4px;border-radius:2px;background:#E8ECE9;margin:0 auto 14px;flex-shrink:0}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-shrink:0}
+.sh-title{font-size:17px;font-weight:700;color:#1F2421}
+.sh-close{font-size:18px;color:#98A19C;padding:2px 6px;cursor:pointer}
+.store-list{max-height:55vh;overflow-y:auto;margin-top:12px;-webkit-overflow-scrolling:touch}
+.store-row{display:flex;justify-content:space-between;align-items:center;padding:14px 2px;border-top:1px solid #F5F6F4;font-size:14px;color:#1F2421;cursor:pointer}
+.store-row:first-of-type{border-top:0}
+.store-row:active{background:#F7F8F6}
+.store-row .sr-check{color:#2F8F57;font-weight:700}
+.store-row.active{color:#2F8F57;font-weight:600}
+
+/* 未付款状态 + 未付款弹窗 */
+.status.unpaid{background:#FFF4F2;color:#E05A47}
+.status.waiting{background:#EDF2FF;color:#2E6BE6}
+.modal-mask{position:fixed;inset:0;background:rgba(31,36,33,.45);z-index:99;display:flex;align-items:center;justify-content:center}
+.dlg{width:86%;max-width:340px;background:#fff;border-radius:16px;padding:20px}
+.dlg-title{font-size:17px;font-weight:700;color:#1F2421;text-align:center}
+.dlg-body{font-size:13px;color:#66706A;text-align:center;margin-top:10px;line-height:20px}
+.dlg-actions{display:flex;gap:10px;margin-top:18px}
+.dlg-btn{flex:1;height:44px;border-radius:999px;font-size:15px;font-weight:600;border:none;cursor:pointer}
+.dlg-btn.primary{background:#2F8F57;color:#fff}
+.dlg-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #F5F6F4;text-align:left}
+.dlg-row:first-of-type{border-top:0}
+.dlg-row .d-store{font-size:12px;color:#66706A;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlg-row .d-no{font-weight:600;color:#E05A47;font-size:13px;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="page" id="wrap">
+  <div class="pull-indicator" id="pull-indicator"><div class="pill"><span class="pi-spinner" id="pi-spinner">↻</span><span id="pi-text">下拉刷新</span></div></div>
+  <div id="overview"></div>
+  <div id="status-bar" class="filter-bar"></div>
+  <div id="list"></div>
+</div>
+
+<!-- 门店切换底部弹窗（参考调货管理） -->
+<div class="modal-mask" id="store-sheet-mask" style="display:none" onclick="if(event.target===this)closeStoreDlg()">
+  <div class="sheet">
+    <div class="sh-handle"></div>
+    <div class="sheet-head">
+      <span class="sh-title">切换门店</span>
+      <span class="sh-close" onclick="closeStoreDlg()">✕</span>
+    </div>
+    <div class="store-list" id="store-list"></div>
+  </div>
+</div>
+
+<!-- 未付款提示弹窗 -->
+<div class="modal-mask" id="unpaid-dlg" style="display:none">
+  <div class="dlg">
+    <div class="dlg-title">有订单未付款</div>
+    <div class="dlg-body" id="unpaid-list"></div>
+    <div class="dlg-actions"><button class="dlg-btn primary" onclick="closeUnpaidDlg()">知道了</button></div>
+  </div>
+</div>
+
+<script>
+var API=window.location.origin+window.location.pathname.split('/upload/')[0]+'/api/mp'
+var qs=new URLSearchParams(location.search)
+var TOKEN=qs.get('token')||''
+
+function H(){var h={'Content-Type':'application/json'};if(TOKEN)h['Authorization']='Bearer '+TOKEN;return h}
+
+var records=[],reqSeq=0,acting=false
+var curStore='all',curGroup='all'
+
+var GROUP_FILTERS=[
+  {key:'all',label:'全部'},
+  {key:'pending',label:'待确认'},
+  {key:'unpaid',label:'待支付'},
+  {key:'waiting',label:'待接单'},
+  {key:'accepted',label:'已接单'},
+  {key:'shipping',label:'待收货'},
+  {key:'done',label:'已完成'},
+  {key:'cancelled',label:'已取消'},
+  {key:'rejected',label:'已驳回'},
+  {key:'overdue',label:'已逾期'}
+]
+
+/** 状态分组：与企迈订单状态一致（0待支付 1待接单 2已接单 3履约中 4已完成 5已取消 6已驳回）+ 待确认/已逾期 */
+function groupOf(r){
+  if(r.status==='pending'||r.status==='submit_failed'){
+    // 逾期 = 订货周已结束仍未确认（本周一之前）；deadline 仅展示不强制，不能用于判逾期
+    if(r.weekStartDate){
+      var ws=new Date(String(r.weekStartDate).substring(0,10)+'T00:00:00')
+      var now=new Date(),thisMon=new Date(now.getFullYear(),now.getMonth(),now.getDate())
+      thisMon.setDate(thisMon.getDate()-(thisMon.getDay()+6)%7)
+      if(ws.getTime()<thisMon.getTime())return 'overdue'
+    }
+    return 'pending'
+  }
+  if(r.status==='success'){
+    if(r.qmOrderStatus===0)return 'unpaid'
+    if(r.qmOrderStatus===1)return 'waiting'
+    if(r.qmOrderStatus===2)return 'accepted'
+    if(r.qmOrderStatus===3)return 'shipping'
+    if(r.qmOrderStatus===4)return 'done'
+    if(r.qmOrderStatus===5)return 'cancelled'
+    if(r.qmOrderStatus===6)return 'rejected'
+    return '' // 企迈查询失败兜底，仅"全部"可见
+  }
+  return '' // syncing 等中间态，仅"全部"可见
+}
+
+var STATUS_LABEL={pending:'待确认',syncing:'同步中',success:'已下单',submit_failed:'提交失败'}
+var STATUS_CLASS={pending:'pending',syncing:'syncing',success:'success',submit_failed:'submit_failed'}
+
+/* 已订货单状态 = 企迈订单状态直译：0待支付 1待接单 2已接单 3履约中 4已完成 5已取消 6已驳回；查询失败→已下单兜底 */
+function orderStatusLabel(r){
+  if(r.status!=='success')return STATUS_LABEL[r.status]||r.status
+  if(r.qmOrderStatus===0)return '未付款'
+  if(r.qmOrderStatus===1)return '待接单'
+  if(r.qmOrderStatus===2)return '已接单'
+  if(r.qmOrderStatus===3)return '待收货'
+  if(r.qmOrderStatus===4)return '已完成'
+  if(r.qmOrderStatus===5)return '已取消'
+  if(r.qmOrderStatus===6)return '已驳回'
+  return '已下单'
+}
+function orderStatusClass(r){
+  if(r.status!=='success')return STATUS_CLASS[r.status]||'pending'
+  if(r.qmOrderStatus===1)return 'waiting'
+  if(r.qmOrderStatus===0||r.qmOrderStatus===5||r.qmOrderStatus===6)return 'unpaid'
+  return 'success'
+}
+function isUnpaidOrder(r){return r.status==='success'&&r.qmOrderStatus===0}
+
+function showToast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:999;background:rgba(0,0,0,.85);color:#fff;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;max-width:80%;text-align:center';document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){document.body.contains(t)&&document.body.removeChild(t)},300)},2200)}
+
+function xhr(method,url,body,cb,onErr){
+  var x=new XMLHttpRequest();x.open(method,url);x.setRequestHeader('Content-Type','application/json')
+  if(TOKEN)x.setRequestHeader('Authorization','Bearer '+TOKEN)
+  x.onload=function(){
+    try{var d=JSON.parse(x.responseText)
+      if(d.code===401){if(onErr)onErr();else showToast('登录已过期，请重新进入小程序');return}
+      if(d.code!==200){if(onErr)onErr();else showToast(d.message||d.msg||'操作失败');return}
+      cb&&cb(d.data)
+    }catch(e){if(onErr)onErr();else showToast('网络异常，请重试')}
+  }
+  x.onerror=function(){if(onErr)onErr();else showToast('网络异常，请重试')}
+  x.send(body?JSON.stringify(body):null)
+}
+
+function load(){
+  var seq=++reqSeq
+  document.getElementById('list').innerHTML='<div class="loading">加载中...</div>'
+  // 统一拉全量（含企迈支付状态），门店切换与状态筛选本地完成
+  var listUrl=API+'/smart-order/list?all=true&pageNum=1&pageSize=100&_t='+Date.now()
+  xhr('GET',listUrl,null,function(data){
+    records=data.records||[]
+    if(seq!==reqSeq)return
+    render()
+    // 刷新企迈支付状态后：存在未付款订单 → 弹窗提示门店 + 单号
+    var unpaid=records.filter(isUnpaidOrder)
+    if(unpaid.length)showUnpaidDlg(unpaid)
+  },function(){
+    if(seq!==reqSeq)return
+    records=[]
+    render()
+  })
+}
+
+function weekLabelOf(wl){
+  var m=String(wl||'').match(/^(\d+)-W(\d+)$/)
+  return m?(m[1]+' 年第 '+Number(m[2])+' 周'):(wl||'')
+}
+
+function fmtMoney(n){return '¥'+(Number(n)||0).toLocaleString('zh-CN')}
+function fmtTime(t){if(!t)return '--';return String(t).replace('T',' ').substring(0,16)}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+/** 门店胶囊（从列表数据提取有订单的门店） */
+function buildStorePills(){
+  var seen={},pills=[{id:'all',name:'全部门店'}]
+  records.forEach(function(r){
+    if(r.storeId&&!seen[r.storeId]){
+      seen[r.storeId]=1
+      pills.push({id:r.storeId,name:r.storeName||r.storeId})
+    }
+  })
+  if(curStore!=='all'&&!seen[curStore])curStore='all'
+  return pills
+}
+function storeNameOf(id){
+  for(var i=0;i<records.length;i++)if(records[i].storeId===id)return records[i].storeName
+  return ''
+}
+function setGroup(k){curGroup=k;render()}
+
+/* 门店切换底部弹窗（参考调货管理）：优先调 /auth/stores，失败回退列表数据 */
+function openStoreDlg(){
+  renderStoreDlg(buildStorePills()) // 先渲染本地回退（含"全部门店"）
+  document.getElementById('store-sheet-mask').style.display='flex'
+  xhr('GET',API+'/auth/stores',null,function(data){
+    var list=[{id:'all',name:'全部门店'}]
+    ;(data||[]).forEach(function(s){
+      if(s&&s.storeId)list.push({id:s.storeId,name:s.storeName||s.storeId})
+    })
+    renderStoreDlg(list)
+  },function(){ /* 接口失败，保持本地回退列表 */ })
+}
+function renderStoreDlg(list){
+  document.getElementById('store-list').innerHTML=list.map(function(p){
+    return '<div class="store-row'+(curStore===p.id?' active':'')+'" onclick="pickStore(\''+p.id+'\')">'
+      +'<span>'+esc(p.name)+'</span>'+(curStore===p.id?'<span class="sr-check">✓</span>':'')+'</div>'
+  }).join('')
+}
+function pickStore(id){curStore=id;closeStoreDlg();render()}
+function closeStoreDlg(){document.getElementById('store-sheet-mask').style.display='none'}
+
+function render(){
+  buildStorePills() // 处理 curStore 失效
+  // 当前筛选下的可见订单
+  var filtered=records.filter(function(r){
+    if(curStore!=='all'&&r.storeId!==curStore)return false
+    if(curGroup==='all')return true
+    return groupOf(r)===curGroup
+  })
+  // 概览面板（本地统计当前门店的待确认数）
+  var pend=records.filter(function(r){
+    if(curStore!=='all'&&r.storeId!==curStore)return false
+    return r.status==='pending'||r.status==='submit_failed'
+  }).length
+  var ov='<div class="overview"><div class="ov-top"><div class="ov-info">'
+    +'<span class="ov-kicker">当前范围</span>'
+    +'<span class="ov-label" style="cursor:pointer" onclick="openStoreDlg()">'+esc(curStore==='all'?'全部门店':(storeNameOf(curStore)||'门店'))+' <span style="font-size:14px;color:#98A19C">⇄</span></span>'
+    +'<span class="ov-sub">展示各门店的待确认与已订货单。</span>'
+    +'</div><span class="ov-chip">'+pend+' 张待确认</span></div></div>'
+  document.getElementById('overview').innerHTML=ov
+
+  // 状态胶囊栏
+  document.getElementById('status-bar').innerHTML=GROUP_FILTERS.map(function(g){
+    return '<span class="filter-pill'+(curGroup===g.key?' active':'')+'" onclick="setGroup(\''+g.key+'\')">'+g.label+'</span>'
+  }).join('')
+
+  var box=document.getElementById('list')
+  if(!filtered.length){
+    box.innerHTML='<div class="empty"><div class="empty-icon">🛒</div><div class="empty-text">暂无订货单</div></div>'
+    return
+  }
+  var showStoreChip=curStore==='all'
+  box.innerHTML=filtered.map(function(r){
+    var actionable=r.status==='pending'||r.status==='submit_failed'
+    var linkText=!actionable?'查看详情':(r.status==='submit_failed'?'重新确认':'去确认')
+    var stLabel=orderStatusLabel(r),stCls=orderStatusClass(r)
+    // 第一行：标题 + 状态（右上）；第二行：店名
+    var title=weekLabelOf(r.weekLabel)+'建议订货单'
+    var storeChip=(showStoreChip?'<span class="chip store">'+esc(r.storeName||'')+'</span>':'')
+    var stChip=(r.status==='submit_failed'?'<span class="status submit_failed">提交失败</span>':'<span class="status '+stCls+'">'+stLabel+'</span>')
+    var sub='建议订货 '+fmtMoney(r.suggestAmount)+' · '+(r.itemCount||0)+' 个 SKU'
+    if(r.status==='success'&&r.qmaiDeclareNo){
+      sub+='<br><span style="'+(isUnpaidOrder(r)?'color:#E05A47;font-weight:600':'color:#98A19C;font-size:12px')+'">报货单号：'+esc(r.qmaiDeclareNo)+'</span>'
+    }
+    return '<div class="card" onclick="goDetail('+r.id+')">'
+      +'<div class="card-head"><span class="card-title">'+esc(title)+'</span>'+stChip+'</div>'
+      +(storeChip?'<div class="card-tags">'+storeChip+'</div>':'')
+      +'<span class="card-sub">'+sub+'</span>'
+      +'<span class="card-link">'+linkText+' <span class="arrow">›</span></span>'
+      +'</div>'
+  }).join('')
+}
+
+function goDetail(id){
+  // 带企迈支付状态进详情页：列表刚批量查询过（实时），详情单查失败时兜底用
+  // v 用时间戳：每次进入详情 URL 不同，避免 WebView 缓存旧页面
+  var r=null
+  for(var i=0;i<records.length;i++)if(records[i].id===id){r=records[i];break}
+  var qs=r&&r.qmOrderStatus!=null?'&qs='+r.qmOrderStatus:''
+  var ps=r&&r.qmPayStatus!=null?'&ps='+r.qmPayStatus:''
+  location.href='smart-order-detail.html?v='+Date.now()+'&id='+id+'&token='+encodeURIComponent(TOKEN)+qs+ps
+}
+
+/** 未付款弹窗：列出门店 + 单号 */
+function showUnpaidDlg(list){
+  var html=list.map(function(r){
+    return '<div class="dlg-row"><span class="d-store">'+esc(r.storeName||'')+'</span><span class="d-no">'+esc(r.qmaiDeclareNo)+'</span></div>'
+  }).join('')
+  document.getElementById('unpaid-list').innerHTML=html
+  document.getElementById('unpaid-dlg').style.display='flex'
+}
+function closeUnpaidDlg(){
+  document.getElementById('unpaid-dlg').style.display='none'
+}
+
+// 从详情页返回时刷新
+window.addEventListener('pageshow',function(e){if(e.persisted)load()})
+
+// 下拉刷新
+var pi=document.getElementById('pull-indicator'),piText=document.getElementById('pi-text'),piSpin=document.getElementById('pi-spinner')
+var wrap=document.getElementById('wrap')
+var pullStartY=0,pulling=false,pullDist=0,PULL_THRESHOLD=50
+
+window.addEventListener('touchstart',function(e){
+  if(window.scrollY<=0&&!acting){pullStartY=e.touches[0].clientY;pulling=true}
+},{passive:true})
+
+window.addEventListener('touchmove',function(e){
+  if(!pulling)return
+  var d=e.touches[0].clientY-pullStartY
+  if(d<=0){pullDist=0;resetPull();return}
+  if(window.scrollY>0)return
+  if(d>8)e.preventDefault()
+  pullDist=Math.min(d*0.6,80)
+  wrap.style.transition=''
+  wrap.style.transform='translateY('+pullDist+'px)'
+  piText.textContent=pullDist>PULL_THRESHOLD?'松开刷新':'下拉刷新'
+  pi.classList.add('show')
+},{passive:false})
+
+window.addEventListener('touchend',function(){
+  if(!pulling)return
+  pulling=false
+  var trigger=pullDist>=PULL_THRESHOLD
+  pullDist=0
+  if(trigger){
+    acting=true
+    piSpin.classList.add('spin');piText.textContent='刷新中...'
+    wrap.style.transition='transform .25s'
+    wrap.style.transform='translateY(50px)'
+    load()
+    setTimeout(function(){acting=false;resetPull()},600)
+  }else{
+    resetPull()
+  }
+})
+
+function resetPull(){
+  wrap.style.transition='transform .25s'
+  wrap.style.transform=''
+  pi.classList.remove('show')
+  piSpin.classList.remove('spin')
+  piText.textContent='下拉刷新'
+}
+
+load()
+</script>
+</body>
+</html>

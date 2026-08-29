@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Profile;
 
 @Configuration
 @RequiredArgsConstructor
-@Profile("!dev")
+@Profile("!dev & !local")
 public class WxMaConfiguration {
 
     private final WxMaProperties properties;

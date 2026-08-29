@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>入库单详情</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;color:#1F2421;font-size:14px}
+.page{max-width:500px;margin:0 auto;padding:16px;padding-bottom:100px}
+
+/* 摘要卡片 */
+.summary{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #E8ECE9}
+.s-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.s-title{font-size:18px;font-weight:700;color:#1F2421;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;flex-shrink:0;margin-left:8px}
+.status.pending{background:#FFF8EE;color:#E58A2D}
+.status.done{background:#F1F8F3;color:#2F8F57}
+.status.cancelled{background:#FAFBF9;color:#66706A}
+
+.fields{display:flex;flex-direction:column;gap:8px}
+.field{display:flex;justify-content:space-between;align-items:center}
+.f-label{font-size:13px;color:#98A19C;flex-shrink:0}
+.f-value{font-size:13px;color:#1F2421;text-align:right;word-break:break-all}
+.f-amount{font-weight:700}
+
+/* 物料清单 */
+.section-title{display:flex;justify-content:space-between;align-items:center;margin:2px 0 10px;font-size:15px;font-weight:700;color:#1F2421}
+.sec-right{display:flex;align-items:center;gap:10px}
+.section-sub{font-size:12px;color:#98A19C;font-weight:400}
+.sel-all{padding:4px 14px;border-radius:999px;border:1.5px solid #2F8F57;color:#2F8F57;font-size:12px;font-weight:600;cursor:pointer;background:#fff}
+.sel-all.on{background:#2F8F57;color:#fff}
+
+.item-card{background:#fff;border-radius:16px;border:1px solid #E8ECE9;overflow:hidden}
+.item-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #F5F6F4}
+.item-row:last-child{border-bottom:0}
+.item-row.received{background:#F9FBF9}
+.ir-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.ir-check{width:24px;height:24px;border-radius:50%;border:2px solid #E8ECE9;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:#fff}
+.ir-check.sel,.ir-check.done{background:#2F8F57;border-color:#2F8F57}
+.ir-info{flex:1;min-width:0;display:flex;align-items:center;gap:6px}
+.ir-name{font-size:14px;font-weight:600;color:#1F2421;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.ir-gift{font-size:12px;color:#E58A2D;font-weight:400}
+.ir-spec{font-size:12px;color:#98A19C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.ir-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.ir-qty{font-size:12px;color:#66706A;white-space:nowrap}
+.ir-received{font-weight:700;color:#2F8F57}
+.ir-done{font-size:13px;color:#98A19C;white-space:nowrap}
+.ir-btn{padding:6px 16px;border-radius:999px;font-size:13px;font-weight:600;border:2px solid #2F8F57;color:#2F8F57;cursor:pointer;background:#fff}
+
+/* 空状态 */
+.empty{text-align:center;padding:40px 20px;color:#98A19C;background:#fff;border-radius:16px;border:1px solid #E8ECE9}
+.empty-icon{font-size:40px;margin-bottom:10px}
+
+/* 底部按钮 */
+.fab{position:fixed;bottom:0;left:0;right:0;padding:14px 20px;padding-bottom:calc(env(safe-area-inset-bottom)+14px);background:rgba(255,255,255,.92);backdrop-filter:blur(20px);z-index:10}
+.fab-inner{max-width:500px;margin:0 auto}
+.fab-btn{width:100%;padding:16px;border-radius:12px;font-size:17px;font-weight:700;background:#247847;color:#fff;border:none;cursor:pointer;box-shadow:0 6px 20px rgba(36,120,71,.3)}
+.fab-btn:disabled{opacity:.6}
+
+/* 确认收货弹窗 */
+.modal-mask{position:fixed;inset:0;background:rgba(31,36,33,.45);z-index:99;display:flex;align-items:center;justify-content:center}
+.dlg{width:86%;max-width:340px;background:#fff;border-radius:16px;padding:20px;box-sizing:border-box}
+.dlg-title{font-size:17px;font-weight:700;color:#1F2421;text-align:center;margin-bottom:6px}
+.dlg-name{font-size:13px;color:#98A19C;text-align:center;margin-bottom:16px;word-break:break-all}
+.dlg-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid #F5F6F4;font-size:14px}
+.dlg-label{color:#66706A}
+.dlg-value{color:#1F2421;font-weight:600;text-align:right}
+.dlg-input{width:120px;text-align:right;font-size:15px;font-weight:700;color:#1F2421;border:1.5px solid #E8ECE9;border-radius:8px;padding:6px 10px;outline:none}
+.dlg-input:focus{border-color:#2F8F57}
+.dlg-input[disabled]{background:#F5F6F4;color:#1F2421;-webkit-text-fill-color:#1F2421;opacity:1}
+.dlg-actions{display:flex;gap:10px;margin-top:18px}
+.dlg-btn{flex:1;height:44px;border-radius:999px;font-size:15px;font-weight:600;border:none;cursor:pointer}
+.dlg-btn.ghost{border:2px solid #E8ECE9;background:#fff;color:#1F2421}
+.dlg-btn.primary{background:#2F8F57;color:#fff}
+
+.loading{display:flex;justify-content:center;padding:40px;color:#98A19C;font-size:13px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="content"><div class="loading">加载中...</div></div>
+</div>
+<div class="fab" id="fab" style="display:none"><div class="fab-inner"><button class="fab-btn" id="fab-btn" onclick="confirmReceive()">确认收货</button></div></div>
+
+<!-- 确认收货弹窗 -->
+<div class="modal-mask" id="dlg" style="display:none">
+  <div class="dlg">
+    <div class="dlg-title">确认收货</div>
+    <div class="dlg-name" id="dlg-name"></div>
+    <div class="dlg-row"><span class="dlg-label">应收数量</span><span class="dlg-value" id="dlg-expect"></span></div>
+    <div class="dlg-row"><span class="dlg-label">实收</span><input class="dlg-input" id="dlg-input" type="number" inputmode="decimal" step="any" min="0" /></div>
+    <div class="dlg-actions">
+      <button class="dlg-btn ghost" onclick="closeDlg()">取消</button>
+      <button class="dlg-btn primary" onclick="submitDlg()">确认收货</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var API=window.location.origin+window.location.pathname.split('/upload/')[0]+'/api/mp'
+var qs=new URLSearchParams(location.search),TOKEN=qs.get('token')||'',ID=qs.get('id')||''
+
+var order=null,items=[],acting=false,selected={}
+var dlgMode='',dlgItemId=null,dlgItemIds=[]
+
+var STATUS_LABEL={pending:'待入库',done:'已入库',cancelled:'已关闭'}
+var STATUS_CLASS={pending:'pending',done:'done',cancelled:'cancelled'}
+
+function showToast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:999;background:rgba(0,0,0,.85);color:#fff;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;max-width:80%;text-align:center';document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){document.body.contains(t)&&document.body.removeChild(t)},300)},2200)}
+
+function xhr(method,url,body,cb,onErr){
+  var x=new XMLHttpRequest();x.open(method,url);x.setRequestHeader('Content-Type','application/json')
+  if(TOKEN)x.setRequestHeader('Authorization','Bearer '+TOKEN)
+  x.onload=function(){
+    try{var d=JSON.parse(x.responseText)
+      if(d.code===401){if(onErr)onErr();else showToast('登录已过期，请重新进入小程序');return}
+      if(d.code!==200){if(onErr)onErr();else showToast(d.message||d.msg||'操作失败');return}
+      cb&&cb(d.data)
+    }catch(e){if(onErr)onErr();else showToast('网络异常，请重试')}
+  }
+  x.onerror=function(){if(onErr)onErr();else showToast('网络异常，请重试')}
+  x.send(body?JSON.stringify(body):null)
+}
+
+function load(){
+  document.getElementById('content').innerHTML='<div class="loading">加载中...</div>'
+  xhr('GET',API+'/inbound/orders/'+ID,null,function(data){
+    order=data.order;items=data.items||[]
+    selected={}
+    render()
+  })
+}
+
+function isRec(it){return it.received===1}
+
+function render(){
+  if(!order){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-icon">📦</div>入库单不存在</div>';return}
+  var receivedCount=items.filter(isRec).length
+  var can=order.localStatus==='pending'
+  var unreceived=items.filter(function(i){return !isRec(i)})
+  var selCount=unreceived.filter(function(i){return selected[i.id]}).length
+
+  var html='<div class="summary">'
+    +'<div class="s-head"><span class="s-title">'+esc(order.warehouseName||'仓库')+'</span><span class="status '+STATUS_CLASS[order.localStatus]+'">'+(STATUS_LABEL[order.localStatus]||order.localStatus)+'</span></div>'
+    +'<div class="fields">'
+    +field('来源单号',esc(sourceNo(order)))
+    +field('创建时间',fmtTime(order.createdAtQmai))
+    +field('入库时间',fmtTime(order.inboundAt))
+    +field('本地入库时间',fmtTime(order.receivedAt))
+    +field('订单金额','¥'+(Number(order.amount)||0).toLocaleString('zh-CN'),'f-amount')
+    +field('种类/数量',(order.productTypeNum||0)+'种 / '+(order.productAllNum||0)+'件')
+    +'</div></div>'
+
+  var allSel=unreceived.length>0&&unreceived.every(function(i){return selected[i.id]})
+  html+='<div class="section-title"><span>物料清单</span><span class="sec-right"><span class="section-sub">已收 '+receivedCount+'/'+items.length+' 种</span>'
+    +(can&&unreceived.length?'<span class="sel-all'+(allSel?' on':'')+'" onclick="toggleSelectAll()">'+(allSel?'取消全选':'全选')+'</span>':'')
+    +'</span></div>'
+
+  if(items.length){
+    html+='<div class="item-card">'+items.map(function(it){
+      var rec=isRec(it)
+      var check=rec
+        ?'<span class="ir-check done">✓</span>'
+        :'<span class="ir-check'+(selected[it.id]?' sel':'')+'" onclick="event.stopPropagation();toggleItem('+it.id+')">'+(selected[it.id]?'✓':'')+'</span>'
+      var right=rec
+        ?'<div class="ir-right"><span class="ir-qty"><span class="ir-received">'+fmtQty(it.receivedQty)+'</span>/'+fmtQty(it.productNum)+it.productUnit+'</span><span class="ir-done">已收</span></div>'
+        :'<div class="ir-right"><span class="ir-qty">'+fmtQty(it.productNum)+it.productUnit+'</span>'+(can?'<span class="ir-btn" onclick="event.stopPropagation();openDlgSingleById('+it.id+')">收货</span>':'')+'</div>'
+      return '<div class="item-row'+(rec?' received':'')+'"'+(can&&!rec?' onclick="toggleItem('+it.id+')"':'')+'>'
+        +'<div class="ir-left">'+check
+        +'<span class="ir-info"><span class="ir-name">'+esc(it.productName||'')+(it.isGift===1?'<span class="ir-gift">(赠品)</span>':'')+'</span>'
+        +'<span class="ir-spec">'+esc(it.productSpec||'')+'</span></span></div>'
+        +right+'</div>'
+    }).join('')+'</div>'
+  }else{
+    html+='<div class="empty"><div class="empty-icon">📋</div>暂无物料明细</div>'
+  }
+  document.getElementById('content').innerHTML=html
+  document.getElementById('fab').style.display=can?'block':'none'
+  document.getElementById('fab-btn').textContent=selCount>0?'确认收货 ('+selCount+')':'确认收货'
+}
+
+function field(label,value,extraCls){
+  return '<div class="field"><span class="f-label">'+label+'</span><span class="f-value'+(extraCls?' '+extraCls:'')+'">'+value+'</span></div>'
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function sourceNo(o){return o.sourceRequireNo||o.bizNo||'--'}
+function fmtTime(t){if(!t)return '--';return String(t).replace('T',' ').substring(0,19)}
+function fmtQty(n){var v=Number(n)||0;return Number.isInteger(v)?String(v):String(Math.round(v*100)/100)}
+function findItem(id){for(var i=0;i<items.length;i++){if(items[i].id===id)return items[i]}return null}
+
+// ===== 多选 =====
+function toggleItem(id){
+  var it=findItem(id)
+  if(!it||isRec(it))return
+  selected[id]=!selected[id]
+  render()
+}
+
+function toggleSelectAll(){
+  var unreceived=items.filter(function(i){return !isRec(i)})
+  var allSel=unreceived.length>0&&unreceived.every(function(i){return selected[i.id]})
+  for(var i=0;i<unreceived.length;i++){selected[unreceived[i].id]=!allSel}
+  render()
+}
+
+// ===== 确认收货 =====
+function confirmReceive(){
+  if(acting||!order||order.localStatus!=='pending')return
+  var sels=items.filter(function(i){return selected[i.id]&&!isRec(i)})
+  if(!sels.length){showToast('请先勾选物料');return}
+  if(sels.length===1){openDlgSingle(sels[0])}
+  else{openDlgMulti(sels)}
+}
+
+function openDlgSingleById(id){var it=findItem(id);if(it&&!isRec(it))openDlgSingle(it)}
+
+function openDlgSingle(it){
+  dlgMode='single';dlgItemId=it.id;dlgItemIds=[]
+  document.getElementById('dlg-name').textContent=it.productName||''
+  document.getElementById('dlg-expect').textContent=fmtQty(it.productNum)+' '+it.productUnit
+  var inp=document.getElementById('dlg-input')
+  inp.disabled=false
+  inp.value=fmtQty(it.productNum)
+  inp.setAttribute('max',Number(it.productNum)||0)
+  showDlg()
+  setTimeout(function(){try{inp.focus()}catch(e){}},300)
+}
+
+function openDlgMulti(sels){
+  dlgMode='multi';dlgItemId=null;dlgItemIds=sels.map(function(i){return i.id})
+  var total=0,sameUnit=true
+  for(var i=0;i<sels.length;i++){
+    total+=Number(sels[i].productNum)||0
+    if(i>0&&sels[i].productUnit!==sels[0].productUnit)sameUnit=false
+  }
+  document.getElementById('dlg-name').textContent='共 '+sels.length+' 种物料'
+  document.getElementById('dlg-expect').textContent=fmtQty(total)+(sameUnit?' '+sels[0].productUnit:'')
+  var inp=document.getElementById('dlg-input')
+  inp.disabled=true
+  inp.value=fmtQty(total)
+  showDlg()
+}
+
+function showDlg(){document.getElementById('dlg').style.display='flex'}
+function closeDlg(){document.getElementById('dlg').style.display='none'}
+
+function submitDlg(){
+  if(acting)return
+  if(dlgMode==='single'){
+    var it=findItem(dlgItemId)
+    if(!it)return
+    var q=parseFloat(document.getElementById('dlg-input').value)
+    if(isNaN(q)||q<0||q>Number(it.productNum)){showToast('实收数量无效（0~'+fmtQty(it.productNum)+'）');return}
+    acting=true
+    xhr('POST',API+'/inbound/orders/'+ID+'/receive-item/'+dlgItemId,{qty:q},function(){
+      closeDlg();showToast('收货确认成功');acting=false;load()
+    },function(){acting=false})
+  }else{
+    acting=true
+    xhr('POST',API+'/inbound/orders/'+ID+'/receive-items',dlgItemIds,function(data){
+      closeDlg();showToast(data&&data.message||'收货成功');acting=false;load()
+    },function(){acting=false})
+  }
+}
+
+load()
+</script>
+</body>
+</html>

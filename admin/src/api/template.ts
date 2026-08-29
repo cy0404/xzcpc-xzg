@@ -1,7 +1,7 @@
 import api from './index'
 
 // 分页查询模板列表
-export function getTemplates(params: { keyword?: string; pageNum?: number; pageSize?: number }) {
+export function getTemplates(params: { keyword?: string; templateType?: string; pageNum?: number; pageSize?: number }) {
   return api.get('/templates', { params })
 }
 

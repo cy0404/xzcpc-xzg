@@ -187,11 +187,16 @@ public class MaterialRuleServiceImpl implements MaterialRuleService {
                 .collect(Collectors.toMap(MaterialInventoryRule::getMaterialId, Function.identity(), (a, b) -> a));
     }
 
+    /**
+     * 直查库而非 getAllMaterials（后者有 5min @Cacheable，刚创建的物料不在缓存里，
+     * 会导致创建后立刻保存规则报「物料不存在」）。
+     */
     private MaterialInfo findMaterial(String materialId) {
-        return materialService.getAllMaterials().stream()
-                .filter(item -> materialId.equals(item.getId()))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(404, "物料不存在"));
+        MaterialInfo material = materialService.getMaterialInfoById(materialId);
+        if (material == null) {
+            throw new BusinessException(404, "物料不存在");
+        }
+        return material;
     }
 
     /** 详情页调用，单条查询直接加载换算关系 */

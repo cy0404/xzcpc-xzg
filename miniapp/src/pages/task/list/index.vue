@@ -48,6 +48,14 @@ function enterCurrentTask() {
 function nowMonth() { const d = new Date(); return `${d.getFullYear()}年${d.getMonth()+1}月` }
 function fmtDeadline(d: string) { if (!d) return '--'; return d.replace('T',' ').substring(0,16) }
 function taskProgress(t: any) { if (!t?.totalMaterials) return 0; return Math.round((t.enteredMaterials / t.totalMaterials) * 100) }
+/** 盘点周期展示：周盘显示 2026年第34周，月盘显示 2026-08 */
+function taskPeriod(t: any) {
+  if (t.taskType === 'weekly') {
+    const m = /^(\d{4})-W(\d{2})$/.exec(t.taskWeek || '')
+    return m ? `${m[1]}年第${Number(m[2])}周` : (t.taskWeek || t.taskMonth || '--')
+  }
+  return t.taskMonth || '--'
+}
 </script>
 
 <template>
@@ -77,13 +85,16 @@ function taskProgress(t: any) { if (!t?.totalMaterials) return 0; return Math.ro
             <view class="task-top">
               <view class="task-icon">📦</view>
               <view class="task-head">
-                <text class="task-status" :class="t.status === 'not_started' ? 'ts-pending' : 'ts-active'">{{ t.status === 'not_started' ? '○ 未开始' : '● 进行中' }}</text>
+                <view class="task-badges">
+                  <text class="task-status" :class="t.status === 'not_started' ? 'ts-pending' : 'ts-active'">{{ t.status === 'not_started' ? '○ 未开始' : '● 进行中' }}</text>
+                  <text class="task-type" :class="t.taskType === 'weekly' ? 'tt-weekly' : 'tt-monthly'">{{ t.taskType === 'weekly' ? '周盘' : '月盘' }}</text>
+                </view>
                 <text class="task-name">{{ t.taskName }}</text>
               </view>
               <text class="task-arrow">›</text>
             </view>
             <view class="task-grid">
-              <view><text class="tgk">盘点周期</text><text class="tgv">{{ t.taskMonth }}</text></view>
+              <view><text class="tgk">盘点周期</text><text class="tgv">{{ taskPeriod(t) }}</text></view>
               <view><text class="tgk">截止时间</text><text class="tgv danger">{{ fmtDeadline(t.deadline) }}</text></view>
               <view><text class="tgk">区域数量</text><text class="tgv">{{ t.zoneCount || 0 }}</text></view>
               <view><text class="tgk">物料数量</text><text class="tgv">{{ t.totalMaterials || 0 }}</text></view>
@@ -101,7 +112,7 @@ function taskProgress(t: any) { if (!t?.totalMaterials) return 0; return Math.ro
       <view v-if="taskStore.historyTasks.length" class="section">
         <text class="section-title">历史任务</text>
         <view v-for="t in taskStore.historyTasks" :key="t.taskId" class="hist-card" :class="{ 'hist-overdue': t.status === 'overdue' }" @click="goHistoryTask(t)">
-          <view><text class="hc-name">{{ t.taskName }}</text><text class="hc-meta">{{ t.taskMonth }} · {{ t.totalMaterials }} SKU</text></view>
+          <view><text class="hc-name">{{ t.taskName }}</text><text class="hc-meta">{{ taskPeriod(t) }} · {{ t.totalMaterials }} SKU</text></view>
           <text class="hc-overdue" v-if="t.status === 'overdue'">已过期</text>
           <text class="hc-link" v-else>查看结果 ›</text>
         </view>
@@ -126,7 +137,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .section{margin-top:40rpx}.section-title{display:block;font-size:34rpx;font-weight:700;color:$t1;margin-bottom:20rpx}
 .task-card{background:$s;border-radius:24rpx;padding:28rpx;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}
 .task-top{display:flex;align-items:flex-start;gap:20rpx}.task-icon{width:80rpx;height:80rpx;border-radius:16rpx;background:$ps;display:flex;align-items:center;justify-content:center;font-size:40rpx;flex-shrink:0}
-.task-head{flex:1}.task-status{display:inline-flex;padding:6rpx 16rpx;border-radius:999rpx;background:$ps;color:$p;font-size:22rpx;font-weight:600}.task-status.ts-pending{background:#FAFBF9;color:$t3}.task-name{display:block;margin-top:12rpx;font-size:32rpx;font-weight:700;color:$t1}.task-arrow{font-size:48rpx;color:#8C9691}
+.task-head{flex:1}.task-badges{display:flex;align-items:center;gap:12rpx}.task-status{display:inline-flex;padding:6rpx 16rpx;border-radius:999rpx;background:$ps;color:$p;font-size:22rpx;font-weight:600}.task-status.ts-pending{background:#FAFBF9;color:$t3}.task-type{display:inline-flex;padding:6rpx 16rpx;border-radius:999rpx;font-size:22rpx;font-weight:600}.tt-monthly{background:#FAFBF9;color:$t3;border:2rpx solid $b}.tt-weekly{background:#FFF7E6;color:#D48806;border:2rpx solid #FFE7BA}.task-name{display:block;margin-top:12rpx;font-size:32rpx;font-weight:700;color:$t1}.task-arrow{font-size:48rpx;color:#8C9691}
 .task-grid{display:grid;grid-template-columns:1fr 1fr;gap:20rpx 32rpx;margin-top:24rpx;padding:20rpx;background:#FAFBF9;border-radius:16rpx}
 .tgk{font-size:24rpx;color:$t3}.tgv{display:block;margin-top:6rpx;font-size:28rpx;font-weight:600;color:$t1}.tgv.danger{color:$d}
 .progress-wrap{margin-top:32rpx}.pw-top{display:flex;justify-content:space-between;font-size:26rpx;color:$t2;margin-bottom:12rpx}

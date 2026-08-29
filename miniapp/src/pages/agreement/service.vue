@@ -14,7 +14,7 @@
 
       <text class="section">二、服务内容</text>
       <text class="body">本小程序向门店员工及管理人员提供以下服务：</text>
-      <text class="body">1. 盘点任务管理：接收月盘任务、按分区录入物料数量、查看盘点汇总与结果。</text>
+      <text class="body">1. 盘点任务管理：接收盘点任务（月盘/周盘）、按分区录入物料数量、查看盘点汇总与结果。</text>
       <text class="body">2. 支出登记：记录门店日常支出信息。</text>
       <text class="body">3. 员工管理：门店人员信息的登记、查看与编辑。</text>
       <text class="body">4. 门店总览：老板/店长查看门店整体经营概况。</text>

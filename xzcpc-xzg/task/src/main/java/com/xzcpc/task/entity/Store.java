@@ -22,6 +22,21 @@ public class Store {
     /** 门店名称 */
     private String storeName;
 
+    /** 小象基础门店名称（xinfo接口name，与企迈 store_name 分来源存储） */
+    private String xinfoStoreName;
+
+    /** 省（xinfo接口province） */
+    private String province;
+
+    /** 地市（xinfo接口city） */
+    private String city;
+
+    /** 县/区（xinfo接口district） */
+    private String district;
+
+    /** 详细地址（xinfo接口address） */
+    private String address;
+
     /** 门店编码 */
     private String storeCode;
 
@@ -48,6 +63,18 @@ public class Store {
 
     /** 督导（月度区域划分，本地维护） */
     private String supervisorName;
+
+    /** 企迈门店ID（本地维护，用于调用企迈API查询报货单等） */
+    private Long qmaiStoreId;
+
+    /** 企迈控制台仓库ID（本地维护，用于查询入库单） */
+    private String warehouseId;
+
+    /** 周盘点日(1周一-7周日, NULL=不参与周盘) */
+    private Integer weeklyInventoryDay;
+
+    /** 周盘暂停: 0参与 1暂停(暂停后自动生成跳过该店) */
+    private Integer weeklyPaused;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

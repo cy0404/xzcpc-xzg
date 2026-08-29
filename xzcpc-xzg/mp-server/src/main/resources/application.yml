@@ -29,9 +29,10 @@ store:
   api:
     url: http://119.45.162.160:5174/api/publish/entities/mendianxinxi/records
 
-material:
+xinfo:
   api:
-    url: http://119.45.162.160:5174/api/publish/entities/yuancailiao/records
+    url: ${XINFO_API_URL:http://162.14.122.80:18088}
+    key: ${XINFO_API_KEY}
 
 mybatis-plus:
   configuration:
@@ -66,6 +67,17 @@ xiangmu:
   app-key:
   secret:
   callback-token:
+
+# 企迈 OpenAPI（报货单查询等）
+qmai:
+  open-id: 71fcea7abc9709d653693116410b5385
+  grant-code: WaGI2rqy9b
+  open-key: KYDwl5j39Wb71bff5fe6b0434ac6366a913c0dbc947q1SpQyZ
+  base-url: https://openapi.qmai.cn
+  console:
+    base-url: https://inapi.qmai.cn
+    cookie: ${QMAI_CONSOLE_COOKIE:}
+    seller-id: ${QMAI_CONSOLE_SELLER_ID:216708}
 
 # 小象数据 OpenAPI（财报明细数据源）
 openapi:

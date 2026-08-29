@@ -45,6 +45,8 @@ CREATE TABLE material_inventory_rule (
     inventory_units VARCHAR(500)  DEFAULT NULL COMMENT '盘点单位串',
     stock_unit      VARCHAR(50)   DEFAULT NULL COMMENT '库存单位',
     unit_price      DECIMAL(10,2) DEFAULT NULL COMMENT '单价',
+    purchase_price  DECIMAL(12,4) DEFAULT NULL COMMENT '采购单价（元，按采购单位）',
+    purchase_unit   VARCHAR(50)   DEFAULT NULL COMMENT '采购单位',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag        INT           DEFAULT 0 COMMENT '删除标记',
@@ -73,6 +75,7 @@ CREATE TABLE template (
     biz_code        VARCHAR(50)   NOT NULL DEFAULT '' COMMENT '业务编码',
     template_name   VARCHAR(200)  NOT NULL COMMENT '模板名称',
     status          TINYINT       NOT NULL DEFAULT 1 COMMENT '1启用 0停用 2草稿',
+    template_type   VARCHAR(20)   NOT NULL DEFAULT 'monthly' COMMENT '模板类型: monthly月盘|weekly周盘',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag        INT           DEFAULT 0 COMMENT '删除标记 0正常 1删除',
@@ -121,8 +124,10 @@ CREATE TABLE task (
     warehouse_code  VARCHAR(50)   DEFAULT NULL COMMENT '仓库编码快照',
     template_id     INT           DEFAULT NULL COMMENT '关联模板ID',
     task_name       VARCHAR(200)  NOT NULL COMMENT '任务名称',
-    task_month      VARCHAR(20)   NOT NULL COMMENT '盘点月份',
-    deadline        DATETIME      NOT NULL COMMENT '截止时间',
+    task_month      VARCHAR(20)   NOT NULL COMMENT '盘点月份（周盘=周起始日所在月）',
+    task_type       VARCHAR(20)   NOT NULL DEFAULT 'monthly' COMMENT '任务类型: monthly月盘|weekly周盘',
+    task_week       VARCHAR(20)   DEFAULT NULL COMMENT '盘点周 YYYY-Www(仅周盘)',
+    deadline        DATETIME      NOT NULL COMMENT '截止时间（周盘=门店配置盘点日当天23:59:59）',
     status          VARCHAR(20)   NOT NULL DEFAULT 'not_started' COMMENT 'not_started|in_progress|pending_submit|submitted|overdue',
     created_by      VARCHAR(100)  NOT NULL DEFAULT '' COMMENT '创建人',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -130,8 +135,9 @@ CREATE TABLE task (
     submitted_at    DATETIME      DEFAULT NULL COMMENT '提交时间',
     del_flag        INT           DEFAULT 0 COMMENT '删除标记',
     version         INT           DEFAULT 0 COMMENT '乐观锁版本号',
-    INDEX idx_task_store_id (store_id)
-) COMMENT '月盘任务';
+    INDEX idx_task_store_id (store_id),
+    INDEX idx_task_type (task_type)
+) COMMENT '盘点任务（月盘/周盘）';
 
 CREATE TABLE task_zone (
     id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -228,6 +234,11 @@ CREATE TABLE store_info (
     owner_name      VARCHAR(50)   DEFAULT NULL COMMENT '老板姓名',
     owner_phone     VARCHAR(20)   DEFAULT NULL COMMENT '老板手机号',
     owner_openid    VARCHAR(128)  DEFAULT NULL COMMENT '绑定的微信openid',
+    chat_id         VARCHAR(128)  DEFAULT NULL COMMENT '外部问题表单系统门店标识',
+    supervisor_name VARCHAR(50)   DEFAULT NULL COMMENT '督导姓名',
+    qmai_store_id   BIGINT        DEFAULT NULL COMMENT '企迈门店ID',
+    warehouse_id    VARCHAR(50)   DEFAULT NULL COMMENT '企迈控制台仓库ID',
+    weekly_inventory_day TINYINT  DEFAULT NULL COMMENT '周盘点日(1周一-7周日, 仅周盘用)',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag        TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',

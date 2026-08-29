@@ -11,6 +11,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -31,6 +32,9 @@ public class FeishuMessageService {
     private String appSecret;
     @Value("${app.server-url:http://localhost:4026}")
     private String serverUrl;
+    /** 本地测试固定群（未验收问题提醒），配置后不按门店分组、只发该群 */
+    @Value("${feishu.issue-reminder-test-chat-id:}")
+    private String issueReminderTestChatId;
 
     /** token 简单缓存 */
     private volatile String cachedToken;
@@ -69,21 +73,23 @@ public class FeishuMessageService {
 
     // ==================== 发送 ====================
 
-    /** 发送交互卡片给个人（open_id），支持逗号分隔多人 */
-    public void sendToUser(String token, String userId, Map<String, Object> card) {
-        if (userId == null || userId.isEmpty()) return;
+    /** 发送交互卡片给个人（open_id），支持逗号分隔多人；返回最后一条成功消息的 message_id */
+    public String sendToUser(String token, String userId, Map<String, Object> card) {
+        String lastId = null;
+        if (userId == null || userId.isEmpty()) return null;
         for (String uid : userId.split(",")) {
             String u = uid.trim();
-            if (!u.isEmpty()) sendMessage(token, u, "open_id", card);
+            if (!u.isEmpty()) lastId = sendMessage(token, u, "open_id", card);
         }
+        return lastId;
     }
 
-    /** 发送交互卡片给群（chat_id） */
-    public void sendToChat(String token, String chatId, Map<String, Object> card) {
-        sendMessage(token, chatId, "chat_id", card);
+    /** 发送交互卡片给群（chat_id）；返回消息 message_id（失败返回 null，可用于查询已读） */
+    public String sendToChat(String token, String chatId, Map<String, Object> card) {
+        return sendMessage(token, chatId, "chat_id", card);
     }
 
-    private void sendMessage(String token, String receiveId, String idType, Map<String, Object> card) {
+    private String sendMessage(String token, String receiveId, String idType, Map<String, Object> card) {
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("config", Map.of("wide_screen_mode", true));
         content.put("header", card.get("header"));
@@ -93,7 +99,7 @@ public class FeishuMessageService {
             json = objectMapper.writeValueAsString(content);
         } catch (JsonProcessingException e) {
             log.error("卡片序列化失败", e);
-            return;
+            return null;
         }
         log.info("飞书卡片发送 target={} idType={} json={}", receiveId, idType, json);
         Map<String, Object> body = new LinkedHashMap<>();
@@ -104,11 +110,92 @@ public class FeishuMessageService {
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
         try {
-            restTemplate.exchange(
+            ResponseEntity<String> resp = restTemplate.exchange(
                     "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=" + idType,
                     HttpMethod.POST, new HttpEntity<>(body, h), String.class);
+            // 飞书业务错误（如 230002 机器人不在群）是 HTTP 200 + body code != 0，不检查会静默失败
+            if (resp.getBody() != null && !resp.getBody().isBlank()) {
+                try {
+                    Map<?, ?> rb = objectMapper.readValue(resp.getBody(), Map.class);
+                    Object code = rb.get("code");
+                    if (code != null && !"0".equals(String.valueOf(code))) {
+                        log.warn("飞书卡片发送失败 target={} idType={} code={} msg={}",
+                                receiveId, idType, code, rb.get("msg"));
+                        return null;
+                    }
+                    // 成功：取 message_id 供后续查询已读
+                    Object data = rb.get("data");
+                    if (data instanceof Map<?, ?> dm) {
+                        Object mid = dm.get("message_id");
+                        if (mid != null) return String.valueOf(mid);
+                    }
+                } catch (Exception ignored) {
+                    // 响应体不是 JSON 时忽略，HTTP 异常已由外层 catch 兜底
+                }
+            }
         } catch (Exception e) {
             log.error("飞书卡片发送失败 target={}", receiveId, e);
+        }
+        return null;
+    }
+
+    // ==================== 已读回执 ====================
+
+    /** 查询机器人自己发送的消息的已读用户列表（7 天内有效；仅返回已读用户） */
+    public List<Map<String, Object>> getReadUsers(String token, String messageId) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (messageId == null || messageId.isEmpty()) return out;
+        String pageToken = "";
+        for (int page = 0; page < 10; page++) {
+            String url = "https://open.feishu.cn/open-apis/im/v1/messages/" + messageId
+                    + "/read_users?page_size=100" + (pageToken.isEmpty() ? "" : "&page_token=" + pageToken);
+            HttpHeaders h = new HttpHeaders();
+            h.setBearerAuth(token);
+            try {
+                ResponseEntity<Map> resp = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(h), Map.class);
+                Map<?, ?> body = resp.getBody();
+                if (body == null || !"0".equals(String.valueOf(body.get("code")))) {
+                    log.warn("查询已读失败 messageId={} body={}", messageId, body);
+                    break;
+                }
+                Object data = body.get("data");
+                if (!(data instanceof Map<?, ?> dm)) break;
+                Object items = dm.get("items");
+                if (items instanceof List<?> list) {
+                    for (Object it : list) {
+                        if (it instanceof Map<?, ?> m) {
+                            Object uid = m.get("user_id") != null ? m.get("user_id") : m.get("open_id");
+                            if (uid != null) {
+                                out.add(Map.of(
+                                        "open_id", String.valueOf(uid),
+                                        "read_at", formatReadTime(m.get("timestamp"))));
+                            }
+                        }
+                    }
+                }
+                Object pt = dm.get("page_token");
+                pageToken = pt != null ? String.valueOf(pt) : "";
+                if (pageToken.isEmpty()) break;
+            } catch (Exception e) {
+                log.error("查询已读失败 messageId={}", messageId, e);
+                break;
+            }
+        }
+        return out;
+    }
+
+    /** 飞书已读时间戳（秒/毫秒）→ MM-dd HH:mm */
+    private String formatReadTime(Object ts) {
+        if (ts == null) return "";
+        String s = String.valueOf(ts).trim();
+        try {
+            long v = Long.parseLong(s);
+            if (s.length() >= 13) v = v / 1000;
+            return java.time.Instant.ofEpochSecond(v)
+                    .atZone(java.time.ZoneId.of("Asia/Shanghai"))
+                    .format(DateTimeFormatter.ofPattern("MM-dd HH:mm"));
+        } catch (Exception e) {
+            return s;
         }
     }
 
@@ -137,14 +224,33 @@ public class FeishuMessageService {
         }
     }
 
-    /** 获取群 chat_id */
+    /**
+     * 未验收问题提醒测试群：
+     * 优先读 sys_config.feishu_issue_reminder_test_chat_id（改库即生效，无需重启，生产可随时切换 测试群/门店群 模式）；
+     * sys_config 未配置或为空时，回退 @Value 配置项（yml / 环境变量）。
+     */
+    public String getIssueReminderTestChatId() {
+        String v = getConfig("feishu_issue_reminder_test_chat_id");
+        if (v != null && !v.isBlank()) {
+            return v.trim();
+        }
+        return issueReminderTestChatId;
+    }
+
     public String getLossChatId() {
         return getConfig("feishu_loss_chat_id");
     }
 
-    /** 获取牛油果泥 material_id */
+    /** 获取牛油果泥 material_id（sys_config 未配置或为空时，按物料名称兜底查找） */
     public String getAvocadoMaterialId() {
-        return getConfig("feishu_avocado_material_id");
+        String id = getConfig("feishu_avocado_material_id");
+        if (id != null && !id.isEmpty()) return id;
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT material_id FROM material WHERE material_name LIKE '%牛油果泥%' AND del_flag=0 ORDER BY updated_at DESC LIMIT 1");
+            if (!rows.isEmpty()) return String.valueOf(rows.get(0).get("material_id"));
+        } catch (Exception e) { }
+        return "";
     }
 
     /** 牛油果泥 件→包 换算：1件=24包 */
@@ -201,6 +307,14 @@ public class FeishuMessageService {
             }
         } catch (Exception e) {
             log.warn("加载分类分组映射失败", e);
+        }
+        // 兜底：sys_config.feishu_fruitveg_categories 里列出的分类也归入水果蔬菜组
+        String fv = getConfig("feishu_fruitveg_categories");
+        if (fv != null && !fv.isEmpty()) {
+            for (String c : fv.split(",")) {
+                String tc = c.trim();
+                if (!tc.isEmpty()) map.put(tc, "水果蔬菜");
+            }
         }
         return map;
     }

@@ -25,7 +25,6 @@ import com.xzcpc.template.entity.MaterialConversionRule;
 import com.xzcpc.template.entity.MaterialInventoryRule;
 import com.xzcpc.template.mapper.MaterialConversionRuleMapper;
 import com.xzcpc.template.mapper.MaterialInventoryRuleMapper;
-import com.xzcpc.template.mapper.MaterialMapper;
 import com.xzcpc.task.entity.Store;
 import com.xzcpc.task.entity.Task;
 import com.xzcpc.task.entity.TaskMaterialSummary;
@@ -37,6 +36,7 @@ import com.xzcpc.task.mapper.TaskZoneMaterialMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -54,7 +54,6 @@ public class InventoryReportController {
     private final TaskMapper taskMapper;
     private final TaskMaterialSummaryMapper taskMaterialSummaryMapper;
     private final TaskZoneMaterialMapper taskZoneMaterialMapper;
-    private final MaterialMapper materialMapper;
     private final ExpenseRecordMapper expenseRecordMapper;
     private final MaterialInventoryRuleMapper ruleMapper;
     private final MaterialConversionRuleMapper conversionMapper;
@@ -86,7 +85,7 @@ public class InventoryReportController {
 
         // 1. 先查不重复的（门店+月份）组合总数、并分页
         // 用 JdbcTemplate 构建 SQL
-        StringBuilder sqlBase = new StringBuilder(" FROM task WHERE status='submitted' AND del_flag=0");
+        StringBuilder sqlBase = new StringBuilder(" FROM task WHERE status='submitted' AND del_flag=0 AND task_type='monthly'");
         List<Object> params = new ArrayList<>();
         if (!monthList.isEmpty()) {
             sqlBase.append(" AND task_month IN (");
@@ -111,37 +110,41 @@ public class InventoryReportController {
 
         if (storeKeys.isEmpty()) return R.ok(pageResult(List.of(), total, pageNum, pageSize));
 
-        // 3. 查这些门店+月份组合的所有 task（一个门店可能在同一月份有多个任务？取 submitted 的即可）
-        LambdaQueryWrapper<Task> taskW = new LambdaQueryWrapper<Task>().eq(Task::getStatus, "submitted");
-        taskW.and(w -> {
-            boolean first = true;
-            for (Map<String, Object> key : storeKeys) {
-                String sid = (String) key.get("store_id");
-                String tm = (String) key.get("task_month");
-                if (first) {
-                    w.eq(Task::getStoreId, sid).eq(Task::getTaskMonth, tm);
-                    first = false;
-                } else {
-                    w.or().eq(Task::getStoreId, sid).eq(Task::getTaskMonth, tm);
-                }
-            }
-        });
-        List<Task> tasks = taskMapper.selectList(taskW);
+        // 3. 查这些门店+月份组合的所有 task。
+        //    pageSize=100 时原实现会拼出 100 组 OR 链 (store_id=? AND task_month=?)，优化器易退化，
+        //    改为 store_id IN + task_month IN 一次查回，Java 侧按组合过滤（语义等价）。
+        Set<String> pageKeys = storeKeys.stream()
+                .map(k -> (String) k.get("store_id") + "|" + (String) k.get("task_month"))
+                .collect(Collectors.toSet());
+        List<String> sidList = storeKeys.stream().map(k -> (String) k.get("store_id")).distinct().toList();
+        List<String> tmList = storeKeys.stream().map(k -> (String) k.get("task_month")).distinct().toList();
+        LambdaQueryWrapper<Task> taskW = new LambdaQueryWrapper<Task>()
+                .eq(Task::getStatus, "submitted")
+                .eq(Task::getTaskType, "monthly")
+                .in(Task::getStoreId, sidList)
+                .in(Task::getTaskMonth, tmList);
+        List<Task> tasks = taskMapper.selectList(taskW).stream()
+                .filter(t -> pageKeys.contains(t.getStoreId() + "|" + t.getTaskMonth()))
+                .toList();
 
         Map<Integer, Task> taskMap = new HashMap<>();
         for (Task t : tasks) taskMap.put(t.getId(), t);
 
-        // 4. 查汇总数据
+        // 4. 查汇总数据（只取分组需要的 3 列，避免整行拉取 unit_breakdown 等字段）
         List<Integer> taskIds = tasks.stream().map(Task::getId).toList();
         List<TaskMaterialSummary> summaries = taskMaterialSummaryMapper.selectList(
-                new LambdaQueryWrapper<TaskMaterialSummary>().in(TaskMaterialSummary::getTaskId, taskIds));
+                new LambdaQueryWrapper<TaskMaterialSummary>().in(TaskMaterialSummary::getTaskId, taskIds)
+                        .select(TaskMaterialSummary::getTaskId, TaskMaterialSummary::getMaterialId,
+                                TaskMaterialSummary::getAdjustedQty));
 
-        // 5. 从任务快照取盘点单位和单价
+        // 5. 从任务快照取盘点单位和单价（只取需要的 3 列，unit_inputs 等大字段不拉取）
         Map<String, String> snapUnit = new HashMap<>();
         Map<String, BigDecimal> snapPrice = new HashMap<>();
         if (!taskIds.isEmpty()) {
             List<TaskZoneMaterial> zms = taskZoneMaterialMapper.selectList(
-                    new LambdaQueryWrapper<TaskZoneMaterial>().in(TaskZoneMaterial::getTaskId, taskIds));
+                    new LambdaQueryWrapper<TaskZoneMaterial>().in(TaskZoneMaterial::getTaskId, taskIds)
+                            .select(TaskZoneMaterial::getMaterialId, TaskZoneMaterial::getBaseUnitSnapshot,
+                                    TaskZoneMaterial::getUnitPriceSnapshot));
             for (TaskZoneMaterial zm : zms) {
                 if (StringUtils.hasText(zm.getBaseUnitSnapshot())) snapUnit.putIfAbsent(zm.getMaterialId(), zm.getBaseUnitSnapshot());
                 if (zm.getUnitPriceSnapshot() != null) snapPrice.putIfAbsent(zm.getMaterialId(), zm.getUnitPriceSnapshot());
@@ -150,9 +153,7 @@ public class InventoryReportController {
 
         // 6. 物料详情
         List<String> matIds = summaries.stream().map(TaskMaterialSummary::getMaterialId).distinct().toList();
-        Map<String, Material> matMap = matIds.isEmpty() ? Map.of()
-                : materialMapper.selectList(new LambdaQueryWrapper<Material>().in(Material::getMaterialId, matIds))
-                .stream().collect(Collectors.toMap(Material::getMaterialId, m -> m, (a, b) -> a));
+        Map<String, Material> matMap = loadMaterialsIncludingDeleted(matIds);
 
         // 7. 按门店+月份分组
         Map<String, Map<String, Object>> storeMap = new LinkedHashMap<>();
@@ -207,7 +208,9 @@ public class InventoryReportController {
         List<String> storeIdList = parseList(storeIds);
 
         // 1. 查任务
-        LambdaQueryWrapper<Task> taskW = new LambdaQueryWrapper<Task>().eq(Task::getStatus, "submitted");
+        LambdaQueryWrapper<Task> taskW = new LambdaQueryWrapper<Task>()
+                .eq(Task::getStatus, "submitted")
+                .eq(Task::getTaskType, "monthly");
         if (!monthList.isEmpty()) taskW.in(Task::getTaskMonth, monthList);
         if (!storeIdList.isEmpty()) taskW.in(Task::getStoreId, storeIdList);
         List<Task> tasks = taskMapper.selectList(taskW);
@@ -216,16 +219,16 @@ public class InventoryReportController {
         Map<Integer, Task> taskMap = new HashMap<>();
         for (Task t : tasks) taskMap.put(t.getId(), t);
 
-        // 2. 查汇总
+        // 2. 查汇总（只取用到的 3 列）
         List<Integer> taskIds = tasks.stream().map(Task::getId).toList();
         List<TaskMaterialSummary> summaries = taskMaterialSummaryMapper.selectList(
-                new LambdaQueryWrapper<TaskMaterialSummary>().in(TaskMaterialSummary::getTaskId, taskIds));
+                new LambdaQueryWrapper<TaskMaterialSummary>().in(TaskMaterialSummary::getTaskId, taskIds)
+                        .select(TaskMaterialSummary::getTaskId, TaskMaterialSummary::getMaterialId,
+                                TaskMaterialSummary::getTotalQty));
 
         // 3. 查物料
         List<String> matIds = summaries.stream().map(TaskMaterialSummary::getMaterialId).distinct().toList();
-        Map<String, Material> matMap = matIds.isEmpty() ? Map.of()
-                : materialMapper.selectList(new LambdaQueryWrapper<Material>().in(Material::getMaterialId, matIds))
-                .stream().collect(Collectors.toMap(Material::getMaterialId, m -> m, (a, b) -> a));
+        Map<String, Material> matMap = loadMaterialsIncludingDeleted(matIds);
 
         // 4. 查盘点规则（baseUnit + stockUnit）
         Map<String, MaterialInventoryRule> ruleMap = matIds.isEmpty() ? Map.of()
@@ -355,7 +358,11 @@ public class InventoryReportController {
             List<Map<String, Object>> expenses = (List<Map<String, Object>>) store.get("expenses");
             expenses.add(item);
         }
-        return R.ok(pageResult(new ArrayList<>(storeMap.values()), storeMap.size(), pageNum, pageSize));
+        // 分页：按门店分组切片（与 self-purchase-cost 一致）
+        int total = storeMap.size();
+        int from = Math.min((pageNum - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return R.ok(pageResult(new ArrayList<>(storeMap.values()).subList(from, to), total, pageNum, pageSize));
     }
 
     // ---------- 自购成本 ----------
@@ -460,7 +467,11 @@ public class InventoryReportController {
             item.put("details", e.getValue());
             all.add(item);
         }
-        return R.ok(pageResult(all, all.size(), pageNum, pageSize));
+        // 分页：按门店分组切片
+        int total = all.size();
+        int from = Math.min((pageNum - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return R.ok(pageResult(all.subList(from, to), total, pageNum, pageSize));
     }
 
     // ---------- 到货报损单 ----------
@@ -508,9 +519,7 @@ public class InventoryReportController {
                 .stream().collect(Collectors.toMap(Store::getStoreId, s -> s, (a, b) -> a));
 
         Set<String> matIds = reports.stream().map(LossReport::getMaterialId).filter(StringUtils::hasText).collect(Collectors.toSet());
-        Map<String, Material> matMap = matIds.isEmpty() ? Map.of()
-                : materialMapper.selectList(new LambdaQueryWrapper<Material>().in(Material::getMaterialId, matIds))
-                .stream().collect(Collectors.toMap(Material::getMaterialId, m -> m, (a, b) -> a));
+        Map<String, Material> matMap = loadMaterialsIncludingDeleted(matIds);
 
         Map<String, MaterialInventoryRule> ruleMap = matIds.isEmpty() ? Map.of()
                 : ruleMapper.selectList(new LambdaQueryWrapper<MaterialInventoryRule>().in(MaterialInventoryRule::getMaterialId, matIds))
@@ -535,6 +544,7 @@ public class InventoryReportController {
 
             Store store = storeMap.get(r.getStoreId());
             item.put("cangkuid", store != null ? nvl(store.getCangkuid()) : "");
+            item.put("xiaochengxuid", store != null ? nvl(store.getXiaochengxuid()) : "");
             item.put("storeName", nvl(r.getStoreName()));
 
             Material mat = matMap.get(r.getMaterialId());
@@ -617,7 +627,10 @@ public class InventoryReportController {
         // 批量加载 loss_report_item
         List<Long> reportIds = reports.stream().map(LossReport::getId).toList();
         List<LossReportItem> items = lossReportItemMapper.selectList(
-                new LambdaQueryWrapper<LossReportItem>().in(LossReportItem::getReportId, reportIds));
+                new LambdaQueryWrapper<LossReportItem>().in(LossReportItem::getReportId, reportIds)
+                        .orderByDesc(LossReportItem::getReportId)
+                        .orderByAsc(LossReportItem::getSortNo)
+                        .orderByAsc(LossReportItem::getId));
 
         // 批量加载 stores
         Set<String> sids = reports.stream().map(LossReport::getStoreId).filter(StringUtils::hasText).collect(Collectors.toSet());
@@ -627,9 +640,7 @@ public class InventoryReportController {
 
         // 批量加载 materials
         Set<String> matIds = items.stream().map(LossReportItem::getMaterialId).filter(StringUtils::hasText).collect(Collectors.toSet());
-        Map<String, Material> matMap = matIds.isEmpty() ? Map.of()
-                : materialMapper.selectList(new LambdaQueryWrapper<Material>().in(Material::getMaterialId, matIds))
-                .stream().collect(Collectors.toMap(Material::getMaterialId, m -> m, (a, b) -> a));
+        Map<String, Material> matMap = loadMaterialsIncludingDeleted(matIds);
 
         List<Map<String, Object>> records = new ArrayList<>();
         for (LossReportItem item : items) {
@@ -665,7 +676,11 @@ public class InventoryReportController {
             records.add(row);
         }
 
-        return R.ok(pageResult(records, records.size(), pageNum, pageSize));
+        // 分页：按物料明细行切片
+        int total = records.size();
+        int from = Math.min((pageNum - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return R.ok(pageResult(records.subList(from, to), total, pageNum, pageSize));
     }
 
     private static String toStatusCn(String status) {
@@ -728,9 +743,7 @@ public class InventoryReportController {
 
         // 批量加载 materials
         Set<String> matIds = allItems.stream().map(TransferOrderItem::getMaterialId).filter(StringUtils::hasText).collect(Collectors.toSet());
-        Map<String, Material> matMap = matIds.isEmpty() ? Map.of()
-                : materialMapper.selectList(new LambdaQueryWrapper<Material>().in(Material::getMaterialId, matIds))
-                .stream().collect(Collectors.toMap(Material::getMaterialId, m -> m, (a, b) -> a));
+        Map<String, Material> matMap = loadMaterialsIncludingDeleted(matIds);
 
         // 批量加载归还记录（按 transferId，取每个 item 最晚的 created_at）
         List<Long> itemIds = allItems.stream().map(TransferOrderItem::getId).toList();
@@ -815,6 +828,20 @@ public class InventoryReportController {
 
     private BigDecimal scale4(BigDecimal val) {
         return val != null ? val.setScale(4, java.math.RoundingMode.HALF_UP) : BigDecimal.ZERO.setScale(4);
+    }
+
+    /**
+     * 按 material_id 批量加载物料，包含 del_flag=2（彻底删除）的行。
+     * 报表接口要展示历史单据的物料分类/企迈编码，物料被删除后仍可能被历史单据引用，
+     * 走 jdbcTemplate 绕过 MyBatis-Plus 逻辑删除过滤。
+     */
+    private Map<String, Material> loadMaterialsIncludingDeleted(Collection<String> matIds) {
+        Set<String> ids = matIds.stream().filter(StringUtils::hasText).collect(Collectors.toSet());
+        if (ids.isEmpty()) return Map.of();
+        String sql = "SELECT * FROM material WHERE material_id IN ("
+                + ids.stream().map(m -> "?").collect(Collectors.joining(",")) + ")";
+        return jdbcTemplate.query(sql, new BeanPropertyRowMapper<>(Material.class), ids.toArray())
+                .stream().collect(Collectors.toMap(Material::getMaterialId, m -> m, (a, b) -> a));
     }
 
     private Map<String, Object> pageResult(List<Map<String, Object>> records, int total, int pageNum, int pageSize) {

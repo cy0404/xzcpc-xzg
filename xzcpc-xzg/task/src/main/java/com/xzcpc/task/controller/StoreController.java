@@ -39,4 +39,13 @@ public class StoreController {
         storeService.updateQrCode(id, body.getOrDefault("qrCode", ""));
         return R.ok();
     }
+
+    @OpLog(module = "门店", operation = "更新订货周期配置")
+    @PutMapping("/order-cycle")
+    public R<Void> updateOrderCycle(@RequestBody Map<String, Map<String, Object>> body) {
+        // body: {storeId: {orderDays: "1,4"|null, paused: 0|1}}，
+        // orderDays 为空表示清空（不参与周盘），非空则 upsert 并保存暂停开关
+        storeService.updateOrderCycle(body);
+        return R.ok();
+    }
 }

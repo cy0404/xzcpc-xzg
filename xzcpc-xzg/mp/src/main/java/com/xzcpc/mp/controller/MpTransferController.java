@@ -6,6 +6,7 @@ import com.xzcpc.common.annotation.OpLog;
 import com.xzcpc.common.response.R;
 import com.xzcpc.mp.context.UserContextHolder;
 import com.xzcpc.mp.dto.TransferCreateReq;
+import com.xzcpc.mp.util.ConversionFactorUtil;
 import com.xzcpc.mp.entity.TransferOrder;
 import com.xzcpc.mp.entity.TransferOrderItem;
 import com.xzcpc.mp.entity.TransferReturnRecord;
@@ -212,7 +213,7 @@ public class MpTransferController {
                 } else {
                     java.math.BigDecimal factor = null;
                     if (unitPrice != null) {
-                        factor = computeConversionFactor(u, baseUnit, convs);
+                        factor = ConversionFactorUtil.computeConversionFactor(u, baseUnit, convs);
                         unitPrices.put(u, factor != null ? unitPrice.multiply(factor) : unitPrice);
                     }
                     if (factor != null) {
@@ -241,64 +242,9 @@ public class MpTransferController {
         return R.ok(Map.of("list", list));
     }
 
-    /**
-     * 通过换算链计算：1 stockUnit = ? baseUnit
-     * 换算规则语义：from_qty from_unit = to_qty to_unit
-     * 返回 factor = 多少 baseUnit 等于 1 stockUnit
-     */
-    private java.math.BigDecimal computeConversionFactor(
-            String stockUnit, String baseUnit,
-            List<MaterialConversionRule> rules) {
-        if (rules.isEmpty()) return null;
-
-        // 构建双向图: unit -> [(ratio, nextUnit)]
-        // ratio 表示"1 unit = ratio nextUnit"
-        Map<String, List<ConversionEdge>> graph = new HashMap<>();
-        for (MaterialConversionRule r : rules) {
-            if (!"unit".equals(r.getConversionType())) continue; // 仅单位换算
-            // from_qty from_unit = to_qty to_unit
-            // → 1 from_unit = (to_qty / from_qty) to_unit
-            // → 1 to_unit = (from_qty / to_qty) from_unit
-            java.math.BigDecimal fromToTo = r.getToQuantity().divide(r.getFromQuantity(), 10,
-                    java.math.RoundingMode.HALF_UP);
-            java.math.BigDecimal toToFrom = r.getFromQuantity().divide(r.getToQuantity(), 10,
-                    java.math.RoundingMode.HALF_UP);
-            graph.computeIfAbsent(r.getFromUnit(), k -> new ArrayList<>())
-                    .add(new ConversionEdge(r.getToUnit(), fromToTo));
-            graph.computeIfAbsent(r.getToUnit(), k -> new ArrayList<>())
-                    .add(new ConversionEdge(r.getFromUnit(), toToFrom));
-        }
-
-        if (!graph.containsKey(stockUnit)) return null;
-
-        // BFS from stockUnit to baseUnit
-        Map<String, java.math.BigDecimal> visited = new HashMap<>();
-        Deque<String> queue = new ArrayDeque<>();
-        visited.put(stockUnit, java.math.BigDecimal.ONE);
-        queue.add(stockUnit);
-
-        while (!queue.isEmpty()) {
-            String cur = queue.poll();
-            java.math.BigDecimal curFactor = visited.get(cur);
-            if (cur.equals(baseUnit)) return curFactor;
-
-            List<ConversionEdge> edges = graph.getOrDefault(cur, List.of());
-            for (ConversionEdge e : edges) {
-                if (visited.containsKey(e.toUnit)) continue;
-                java.math.BigDecimal newFactor = curFactor.multiply(e.ratio);
-                visited.put(e.toUnit, newFactor);
-                queue.add(e.toUnit);
-            }
-        }
-        return null;
-    }
-
     /** 格式化换算系数，如 "200" 或 "0.5" */
     private String fmtFactor(java.math.BigDecimal f) {
         if (f == null) return "?";
         return f.stripTrailingZeros().toPlainString();
     }
-
-    /** BFS 边 */
-    private record ConversionEdge(String toUnit, java.math.BigDecimal ratio) {}
 }

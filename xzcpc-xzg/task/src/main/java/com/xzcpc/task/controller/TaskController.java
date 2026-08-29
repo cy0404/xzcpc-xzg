@@ -37,10 +37,11 @@ public class TaskController { // 月盘任务控制器
                                @RequestParam(defaultValue = "") String keyword,
                                @RequestParam(defaultValue = "") String templateName,
                                @RequestParam(defaultValue = "") String taskMonth,
+                               @RequestParam(defaultValue = "") String taskType,
                                @RequestParam(defaultValue = "1") int pageNum,
                                @RequestParam(defaultValue = "10") int pageSize) {
         String ids = StringUtils.hasText(storeIds) ? storeIds : storeId;
-        return R.ok(taskService.page(ids, supervisorName, status, keyword, templateName, taskMonth, pageNum, pageSize));
+        return R.ok(taskService.page(ids, supervisorName, status, keyword, templateName, taskMonth, taskType, pageNum, pageSize));
     }
 
     @OpLog(module = "任务", operation = "创建")
@@ -49,6 +50,12 @@ public class TaskController { // 月盘任务控制器
         int count = taskService.batchCreate(request);
         Map<String, Object> result = Map.of("count", count);
         return R.ok(result);
+    }
+
+    @OpLog(module = "任务", operation = "自动生成周盘任务")
+    @PostMapping("/weekly-generate")
+    public R<Map<String, Object>> weeklyGenerate() { // 手动触发周盘自动生成（联调/补生成）
+        return R.ok(taskService.autoGenerateWeekly());
     }
 
     @OpLog(module = "任务", operation = "查询详情")

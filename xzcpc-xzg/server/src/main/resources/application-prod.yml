@@ -53,6 +53,9 @@ app:
   public-url: https://www.xzcpc-9pd.top
   upload:
     path: /data/inventory-upload
+  # 每日凌晨 3 点物料同步（xinfo），迁移完成后设置 APP_SYNC_ENABLED=true 开启
+  sync:
+    enabled: ${APP_SYNC_ENABLED:false}
 
 admin:
   jwt:
@@ -60,3 +63,14 @@ admin:
     expire-hours: 72
   local-dev-login:
     enabled: false
+
+# ---------- 企迈开放平台（server 依赖 mp 模块，需提供 QmaiClient 所需配置） ----------
+qmai:
+  open-id: 71fcea7abc9709d653693116410b5385
+  grant-code: WaGI2rqy9b
+  open-key: KYDwl5j39Wb71bff5fe6b0434ac6366a913c0dbc947q1SpQyZ
+  base-url: https://openapi.qmai.cn
+  console:
+    base-url: https://inapi.qmai.cn
+    cookie: ${QMAI_CONSOLE_COOKIE:}
+    seller-id: ${QMAI_CONSOLE_SELLER_ID:216708}

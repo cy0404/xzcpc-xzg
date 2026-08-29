@@ -45,7 +45,8 @@ public class AdminWebMvcConfig implements WebMvcConfigurer {
                         "/api/reports/**",
                         "/api/logs/operation",
                         "/api/logs/login",
-                        "/api/public/**"
+                        "/api/public/**",
+                        "/api/xzg/**"
                 );
     }
 }

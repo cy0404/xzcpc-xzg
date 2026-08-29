@@ -203,11 +203,24 @@ public class MpIssueController {
                 Map<String, Object> rb = resp.getBody();
                 return R.ok((Map<String, Object>) rb.getOrDefault("data", rb));
             }
+            // 非 2xx 但未抛异常（自定义 ResponseErrorHandler 场景）
+            String errMsg = resp.getBody() != null ? resp.getBody().toString() : resp.getStatusCode().toString();
+            log.warn("[issue-store-confirm] non-2xx response: {}", errMsg);
+            throw new BusinessException("外部服务返回异常: " + errMsg);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            // 4xx/5xx：尝试从响应体提取错误信息
+            String detail = e.getResponseBodyAsString();
+            log.error("[issue] store-confirm HTTP {} issue={} response={}", e.getStatusCode(), issue.getBizCode(), detail);
+            throw new BusinessException("外部服务拒绝(" + e.getStatusCode().value() + ")，请稍后重试");
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            log.error("[issue] store-confirm network error issue={}", issue.getBizCode(), e);
+            throw new BusinessException("外部服务暂时不可达，请稍后重试");
         } catch (Exception e) {
             log.error("[issue] store-confirm failed issue={}", issue.getBizCode(), e);
             throw new BusinessException("操作失败，请稍后重试");
         }
-        return R.ok(Map.of());
     }
 
     @OpLog(module = "小程序-问题处理", operation = "门店回复")

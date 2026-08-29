@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>入库管理</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;color:#1F2421;font-size:14px}
+.page{max-width:500px;margin:0 auto;padding:16px;padding-bottom:100px}
+
+/* 搜索 */
+.search-bar{display:flex;align-items:center;background:#fff;border:1px solid #E8ECE9;border-radius:14px;padding:0 14px;height:44px;margin-bottom:12px}
+.search-icon{font-size:16px;margin-right:8px}
+.search-input{flex:1;height:100%;border:none;outline:none;font-size:15px;background:transparent;color:#1F2421}
+.search-input::placeholder{color:#98A19C}
+
+/* 状态 tabs */
+.tabs{display:flex;gap:8px;margin-bottom:10px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
+.tab{padding:8px 18px;border-radius:999px;font-size:13px;background:#fff;color:#66706A;border:1.5px solid #E8ECE9;cursor:pointer;flex-shrink:0}
+.tab.on{background:#2F8F57;color:#fff;border-color:#2F8F57}
+
+/* 下拉同步指示（挂在页面顶部上方，随页面内容一起被拖出） */
+.pull-indicator{height:50px;margin-top:-50px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:10px;pointer-events:none;opacity:0;transition:opacity .15s}
+.pull-indicator.show{opacity:1}
+.pull-indicator .pill{display:flex;align-items:center;gap:8px;padding:8px 18px;border-radius:999px;background:rgba(31,36,33,.85);color:#fff;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+.pi-spinner{display:inline-block;font-size:15px;color:#7BE0A5}
+.pi-spinner.spin{animation:pi-spin 1s linear infinite}
+@keyframes pi-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+/* 卡片 */
+.card{background:#fff;border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid #E8ECE9;cursor:pointer}
+.card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.warehouse{font-size:17px;font-weight:700;color:#1F2421;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;flex-shrink:0;margin-left:8px}
+.status.pending{background:#FFF8EE;color:#E58A2D}
+.status.done{background:#F1F8F3;color:#2F8F57}
+.status.cancelled{background:#FAFBF9;color:#66706A}
+
+.fields{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.field{display:flex;justify-content:space-between;align-items:center}
+.f-label{font-size:13px;color:#98A19C;flex-shrink:0}
+.f-value{font-size:13px;color:#1F2421;text-align:right;word-break:break-all}
+.f-amount{font-weight:700}
+
+/* 操作按钮 */
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{height:42px;border-radius:999px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;cursor:pointer;border:none}
+.btn-primary{background:#2F8F57;color:#fff}
+.btn-secondary{border:2px solid #E8ECE9;background:#fff;color:#1F2421}
+.btn:disabled{opacity:.6}
+.link{display:flex;justify-content:flex-end;align-items:center;gap:2px;font-size:13px;color:#2F8F57}
+.link .arrow{font-size:18px}
+
+/* 空状态 */
+.empty{text-align:center;padding:60px 20px;color:#98A19C}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-text{font-size:14px;margin-bottom:20px}
+.empty-btn{padding:10px 32px;border-radius:999px;border:2px solid #2F8F57;color:#2F8F57;font-size:14px;font-weight:600;cursor:pointer;background:#fff}
+
+/* 加载中 */
+.loading{display:flex;justify-content:center;padding:40px;color:#98A19C;font-size:13px}
+</style>
+</head>
+<body>
+<div class="page" id="wrap">
+  <div class="pull-indicator" id="pull-indicator"><div class="pill"><span class="pi-spinner" id="pi-spinner">↻</span><span id="pi-text">下拉同步最新入库单</span></div></div>
+  <div class="search-bar">
+    <span class="search-icon" onclick="onSearch()">🔍</span>
+    <input class="search-input" id="keyword" type="search" enterkeyhint="search" placeholder="请输入来源单号/关联单号" oninput="scheduleSearch()" onkeydown="if(event.key==='Enter'){event.preventDefault();onSearch()}" />
+  </div>
+
+  <div class="tabs" id="tabs">
+    <span class="tab on" data-k="all" onclick="switchTab('all')">全部</span>
+    <span class="tab" data-k="pending" onclick="switchTab('pending')">待入库</span>
+    <span class="tab" data-k="done" onclick="switchTab('done')">已入库</span>
+    <span class="tab" data-k="cancelled" onclick="switchTab('cancelled')">已关闭</span>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<script>
+var API=window.location.origin+window.location.pathname.split('/upload/')[0]+'/api/mp'
+var qs=new URLSearchParams(location.search),TOKEN=qs.get('token')||''
+function H(){var h={'Content-Type':'application/json'};if(TOKEN)h['Authorization']='Bearer '+TOKEN;return h}
+
+var CUR_STATUS='all',records=[],acting=false,reqSeq=0,searchTimer=null
+
+var STATUS_LABEL={pending:'待入库',done:'已入库',cancelled:'已关闭'}
+var STATUS_CLASS={pending:'pending',done:'done',cancelled:'cancelled'}
+
+function showToast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:999;background:rgba(0,0,0,.85);color:#fff;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;max-width:80%;text-align:center';document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){document.body.contains(t)&&document.body.removeChild(t)},300)},2200)}
+
+function xhr(method,url,body,cb,onErr){
+  var x=new XMLHttpRequest();x.open(method,url);x.setRequestHeader('Content-Type','application/json')
+  if(TOKEN)x.setRequestHeader('Authorization','Bearer '+TOKEN)
+  x.onload=function(){
+    try{var d=JSON.parse(x.responseText)
+      if(d.code===401){if(onErr)onErr();else showToast('登录已过期，请重新进入小程序');return}
+      if(d.code!==200){if(onErr)onErr();else showToast(d.message||d.msg||'操作失败');return}
+      cb&&cb(d.data)
+    }catch(e){if(onErr)onErr();else showToast('网络异常，请重试')}
+  }
+  x.onerror=function(){if(onErr)onErr();else showToast('网络异常，请重试')}
+  x.send(body?JSON.stringify(body):null)
+}
+
+function load(){
+  var seq=++reqSeq
+  document.getElementById('list').innerHTML='<div class="loading">加载中...</div>'
+  var params={pageNum:1,pageSize:50}
+  if(CUR_STATUS!=='all')params.status=CUR_STATUS
+  var kw=document.getElementById('keyword').value.trim()
+  if(kw)params.keyword=kw
+  xhr('GET',API+'/inbound/orders?'+Object.keys(params).map(function(k){return k+'='+encodeURIComponent(params[k])}).join('&'),null,function(data){
+    if(seq!==reqSeq)return // 已有更新的请求，丢弃过期结果
+    records=data.records||[]
+    render()
+  })
+}
+
+function render(){
+  var box=document.getElementById('list')
+  if(!records.length){box.innerHTML='<div class="empty"><div class="empty-icon">📦</div><div class="empty-text">暂无可入库的入库单</div><span class="empty-btn" onclick="doSync()">同步入库单</span></div>';return}
+  box.innerHTML=records.map(function(r){
+    var can=r.localStatus==='pending'
+    var actionHtml=can
+      ?'<div class="actions"><button class="btn btn-secondary" onclick="event.stopPropagation();quickInbound('+r.id+')">一键入库</button><button class="btn btn-primary" onclick="event.stopPropagation();goDetail('+r.id+')">开始收货</button></div>'
+      :'<div class="link" onclick="event.stopPropagation();goDetail('+r.id+')"><span>查看详情</span><span class="arrow">›</span></div>'
+    return '<div class="card" onclick="goDetail('+r.id+')">'
+      +'<div class="card-head"><span class="warehouse">'+esc(r.warehouseName||'仓库')+'</span><span class="status '+STATUS_CLASS[r.localStatus]+'">'+(STATUS_LABEL[r.localStatus]||r.localStatus)+'</span></div>'
+      +'<div class="fields">'
+      +field('来源单号',esc(sourceNo(r)))
+      +field('创建时间',fmtTime(r.createdAtQmai))
+      +field('入库时间',fmtTime(r.inboundAt))
+      +field('种类/数量',(r.productTypeNum||0)+'/'+(r.productAllNum||0))
+      +field('订单金额','¥'+(Number(r.amount)||0).toLocaleString('zh-CN'),'f-amount')
+      +'</div>'+actionHtml+'</div>'
+  }).join('')
+}
+
+function field(label,value,extraCls){
+  return '<div class="field"><span class="f-label">'+label+'</span><span class="f-value'+(extraCls?' '+extraCls:'')+'">'+value+'</span></div>'
+}
+
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function sourceNo(r){return r.sourceRequireNo||r.bizNo||'--'}
+function fmtTime(t){if(!t)return '--';return String(t).replace('T',' ').substring(0,19)}
+
+function switchTab(k){
+  CUR_STATUS=k
+  var tabs=document.querySelectorAll('#tabs .tab')
+  for(var i=0;i<tabs.length;i++){tabs[i].classList.toggle('on',tabs[i].getAttribute('data-k')===k)}
+  load()
+}
+
+function onSearch(){clearTimeout(searchTimer);load()}
+
+// 输入即搜（防抖 400ms），中文输入法也只在停顿后触发
+function scheduleSearch(){
+  clearTimeout(searchTimer)
+  searchTimer=setTimeout(onSearch,400)
+}
+
+function doSync(quiet){
+  if(acting)return;acting=true
+  if(!quiet){
+    piSpin.classList.add('spin');piText.textContent='同步中...';pi.classList.add('show')
+    wrap.style.transition='transform .25s';wrap.style.transform='translateY(50px)'
+  }
+  xhr('POST',API+'/inbound/orders/sync',null,function(data){
+    if(!quiet){showToast(data&&data.message||'同步完成');resetPull()}
+    acting=false;load()
+  },function(){
+    if(!quiet){showToast('同步失败，请重试');resetPull()}
+    acting=false
+  })
+}
+
+// 下拉同步最新：页面顶部下拉超过阈值触发（内容跟随手指位移，带阻尼）
+var pi=document.getElementById('pull-indicator'),piText=document.getElementById('pi-text'),piSpin=document.getElementById('pi-spinner')
+var wrap=document.getElementById('wrap')
+var pullStartY=0,pulling=false,pullDist=0,PULL_THRESHOLD=50
+
+window.addEventListener('touchstart',function(e){
+  if(window.scrollY<=0&&!acting){pullStartY=e.touches[0].clientY;pulling=true}
+},{passive:true})
+
+window.addEventListener('touchmove',function(e){
+  if(!pulling)return
+  var d=e.touches[0].clientY-pullStartY
+  if(d<=0){pullDist=0;resetPull();return}
+  if(window.scrollY>0)return
+  if(d>8)e.preventDefault()
+  pullDist=Math.min(d*0.6,80) // 阻尼，手感更自然
+  wrap.style.transition=''
+  wrap.style.transform='translateY('+pullDist+'px)'
+  piText.textContent=pullDist>PULL_THRESHOLD?'松开立即同步':'下拉同步最新入库单'
+  pi.classList.add('show')
+},{passive:false})
+
+window.addEventListener('touchend',function(){
+  if(!pulling)return
+  pulling=false
+  var trigger=pullDist>=PULL_THRESHOLD
+  pullDist=0
+  if(trigger){
+    wrap.style.transition='transform .25s'
+    wrap.style.transform='translateY(50px)'
+    doSync()
+  }else{
+    resetPull()
+  }
+})
+
+function resetPull(){
+  wrap.style.transition='transform .25s'
+  wrap.style.transform=''
+  pi.classList.remove('show')
+  piSpin.classList.remove('spin')
+  piText.textContent='下拉同步最新入库单'
+}
+
+function quickInbound(id){
+  if(acting)return
+  if(!confirm('确认整单一键入库？所有货品将标记为已收货。'))return
+  acting=true
+  xhr('POST',API+'/inbound/orders/'+id+'/quick',null,function(){
+    showToast('入库完成');acting=false;load()
+  })
+}
+
+function goDetail(id){
+  location.href='inbound-detail.html?id='+id+'&token='+encodeURIComponent(TOKEN)
+}
+
+// 从详情页返回时刷新列表
+window.addEventListener('pageshow',function(e){if(e.persisted)load()})
+
+load()
+// 进页面自动静默同步一次：成功刷新列表，失败保留本地缓存不打扰
+doSync(true)
+</script>
+</body>
+</html>

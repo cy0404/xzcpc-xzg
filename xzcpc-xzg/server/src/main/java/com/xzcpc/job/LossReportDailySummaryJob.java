@@ -53,10 +53,12 @@ public class LossReportDailySummaryJob {
 
         // 卡片 A：水果蔬菜 pending
         sendCardA(token, today, allReports);
-        // 卡片 B：其他类按原因拆分（审核+补发各2张）
+        // 卡片 B：其他类按原因拆分（审核2张+补发1张）
         sendCardsB(token, today, allReports);
         // 卡片 E：牛油果泥审核
         sendCardE(token, today);
+        // 卡片 G：牛油果泥补发
+        sendCardG(token, today);
         // 卡片 F：群统计
         sendCardF(token, today, allReports);
     }
@@ -128,9 +130,9 @@ public class LossReportDailySummaryJob {
                 : "AND r.reason != '运输破损-外包装'";
         }
 
-        // 审核卡片排除牛油果泥（有独立卡片E），补发卡片不排除
+        // 审核卡片排除牛油果泥（有独立卡片E），补发卡片也排除（有独立卡片G）
         String avoFilter = "";
-        if ("audit".equals(mode) && !avocadoId.isEmpty()) {
+        if (!avocadoId.isEmpty()) {
             avoFilter = "AND r.material_id != '" + avocadoId.replace("'", "''") + "' ";
         }
 
@@ -158,6 +160,8 @@ public class LossReportDailySummaryJob {
             pendingCnt = rows.stream().filter(r -> "registered".equals(r.get("status"))).count();
         }
         doneCnt = rows.size() - pendingCnt;
+        // 待审核/待补发为 0 时不再发卡片（只剩历史已处理记录，不值得打扰）
+        if (pendingCnt == 0) { log.info("卡片B {} {} 待处理为 0，跳过", label, mode); return; }
         int stores = (int) rows.stream().map(r -> r.get("store_name")).distinct().count();
 
         boolean isAudit = "audit".equals(mode);
@@ -166,7 +170,7 @@ public class LossReportDailySummaryJob {
         String doneLabel = isAudit ? "已审核" : "已补发";
 
         Map<String, Object> card = new LinkedHashMap<>();
-        String cardTitle = isAudit ? ("到货验收报损 · 审核 · " + label) : "到货验收报损 · 补发";
+        String cardTitle = isAudit ? ("到货验收报损 · 审核 · " + label) : "到货验收报损 · 补发 · 其他类";
         card.put("header", fms.cardHeader(isAudit ? (isOuterPackage ? "yellow" : "blue") : "green", cardTitle));
         List<Map<String, Object>> els = new ArrayList<>();
         String info = "**" + tabMode + "清单 其他类**\n" + pendingLabel + " **" + pendingCnt + "** 条 · "
@@ -284,9 +288,9 @@ public class LossReportDailySummaryJob {
                 "SELECT r.store_name, r.status FROM loss_report r " +
                 "WHERE r.loss_type='arrival' AND r.material_id=? AND r.status IN ('pending','registered','rejected') " +
                 "AND r.del_flag=0", avocadoId);
-        if (list.isEmpty()) { log.info("卡片E 无牛油果泥待审核数据，跳过"); return; }
-
         long pendingCnt = list.stream().filter(r -> "pending".equals(r.get("status"))).count();
+        // 待审核为 0 时不发卡片
+        if (pendingCnt == 0) { log.info("卡片E 无牛油果泥待审核数据，跳过"); return; }
         long doneCnt = list.size() - pendingCnt;
         int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
 
@@ -303,6 +307,39 @@ public class LossReportDailySummaryJob {
         card.put("elements", els);
         fms.sendToUser(token, uid, card);
         log.info("卡片E 牛油果泥审核 pending={} done={} → {}", pendingCnt, doneCnt, uid);
+    }
+
+    // ==================== 卡片 G：牛油果泥补发 ====================
+    private void sendCardG(String token, String today) {
+        String avocadoId = fms.getAvocadoMaterialId();
+        if (avocadoId.isEmpty()) { log.info("卡片G 未配置 avocado_material_id，跳过"); return; }
+
+        String uid = fms.getCardUserId("其他类", "avocado_resend");
+        if (uid.isEmpty()) { log.info("卡片G 未配置 avocado_resend 收件人，跳过"); return; }
+
+        List<Map<String, Object>> list = jdbcTemplate.queryForList(
+                "SELECT r.store_name, r.status FROM loss_report r " +
+                "WHERE r.loss_type='arrival' AND r.material_id=? AND r.status IN ('registered','confirmed_resend','received','not_received') " +
+                "AND r.del_flag=0", avocadoId);
+        // 无待补发（全部已补发完毕）则不打扰
+        long pendingCnt = list.stream().filter(r -> "registered".equals(r.get("status"))).count();
+        if (pendingCnt == 0) { log.info("卡片G 无牛油果泥待补发数据，跳过"); return; }
+        long doneCnt = list.size() - pendingCnt;
+        int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
+
+        Map<String, Object> card = new LinkedHashMap<>();
+        card.put("header", fms.cardHeader("yellow", "到货验收报损 · 补发 · 牛油果泥"));
+        List<Map<String, Object>> els = new ArrayList<>();
+        String info = "**牛油果泥补发清单**\n待补发 **" + pendingCnt + "** 条 · 已补发 **" + doneCnt + "** 条 · 涉及 **" + stores + "** 个门店";
+        els.add(fms.mdEl(info));
+        els.add(fms.tagEl("hr"));
+        try {
+            String name = java.net.URLEncoder.encode("其他类", "UTF-8");
+            els.add(fms.mdEl("[查看补发详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=resend&materialId=" + avocadoId + "&uid=" + uid) + ")"));
+        } catch (Exception ignored) {}
+        card.put("elements", els);
+        fms.sendToUser(token, uid, card);
+        log.info("卡片G 牛油果泥补发 pending={} done={} → {}", pendingCnt, doneCnt, uid);
     }
 
     // ==================== 卡片 F：群统计（唯一发到群的消息） ====================

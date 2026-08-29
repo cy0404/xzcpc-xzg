@@ -11,7 +11,7 @@ import java.util.List;
 public interface TemplateService {
 
     // 分页查询模板，支持名称模糊搜索
-    Page<Template> page(String keyword, int pageNum, int pageSize);
+    Page<Template> page(String keyword, String templateType, int pageNum, int pageSize);
 
     // 新增模板
     void add(Template template);

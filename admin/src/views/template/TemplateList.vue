@@ -18,6 +18,18 @@
           @search="handleSearch"
         />
 
+        <a-segmented
+          v-model:value="typeFilter"
+          :options="[
+            { label: '全部', value: '' },
+            { label: '月盘', value: 'monthly' },
+            { label: '周盘', value: 'weekly' },
+          ]"
+          block
+          class="template-type-filter"
+          @change="onTypeFilterChange"
+        />
+
         <a-spin :spinning="loading">
           <div v-if="dataSource.length === 0 && !loading" class="list-empty">
             <a-empty description="暂无模板" :image="Empty.PRESENTED_IMAGE_SIMPLE" />
@@ -31,6 +43,9 @@
           >
             <div class="template-card-name">{{ item.templateName }}</div>
             <div class="template-card-meta">
+              <span class="template-type-label" :class="'template-type-label--' + (item.templateType || 'monthly')">
+                {{ item.templateType === 'weekly' ? '周盘' : '月盘' }}
+              </span>
               最后更新 {{ formatDate(item.updatedAt) }}
             </div>
             <a-tag :color="getStatusColor(item.status)">
@@ -73,6 +88,9 @@
               </template>
               <template v-else>
                 <h2 class="editor-title">{{ selectedTemplate.templateName }}</h2>
+                <span class="template-type-label" :class="'template-type-label--' + (selectedTemplate.templateType || 'monthly')">
+                  {{ selectedTemplate.templateType === 'weekly' ? '周盘模板' : '月盘模板' }}
+                </span>
                 <EditOutlined v-if="!isTemplateEnabled" class="title-edit-icon" @click="startTitleEdit" />
               </template>
             </div>
@@ -260,6 +278,14 @@
       destroy-on-close
       @cancel="resetTemplateModal"
     >
+      <div class="modal-field">
+        <label class="modal-label">模板类型</label>
+        <a-radio-group v-model:value="templateForm.templateType">
+          <a-radio-button value="monthly">月盘模板</a-radio-button>
+          <a-radio-button value="weekly">周盘模板</a-radio-button>
+        </a-radio-group>
+        <p class="field-hint">周盘模板建议只包含重点盘点物料</p>
+      </div>
       <div class="modal-field">
         <label class="modal-label" :class="{ error: nameValidateStatus === 'error' }">
           模板名称
@@ -513,6 +539,7 @@ interface MaterialItem {
 }
 
 const keyword = ref('')
+const typeFilter = ref('')
 const loading = ref(false)
 const zonesLoading = ref(false)
 const dataSource = ref<any[]>([])
@@ -667,7 +694,7 @@ const deleteLoading = ref(false)
 
 const templateModalVisible = ref(false)
 const templateSubmitLoading = ref(false)
-const templateForm = reactive({ templateName: '' })
+const templateForm = reactive({ templateName: '', templateType: 'monthly' })
 const nameValidateStatus = ref<'success' | 'error' | ''>('')
 
 const zoneModalVisible = ref(false)
@@ -776,6 +803,7 @@ async function fetchData() {
   try {
     const res: any = await getTemplates({
       keyword: keyword.value,
+      templateType: typeFilter.value || undefined,
       pageNum: pagination.current,
       pageSize: pagination.pageSize,
     })
@@ -887,6 +915,12 @@ async function handleSaveAndLeave() {
 }
 
 function handleSearch() {
+  pagination.current = 1
+  fetchData()
+}
+
+/** 切换模板类型筛选 */
+function onTypeFilterChange() {
   pagination.current = 1
   fetchData()
 }
@@ -1115,12 +1149,14 @@ async function handleDeleteTemplate() {
 
 function showAddModal() {
   templateForm.templateName = ''
+  templateForm.templateType = 'monthly'
   nameValidateStatus.value = ''
   templateModalVisible.value = true
 }
 
 function resetTemplateModal() {
   templateForm.templateName = ''
+  templateForm.templateType = 'monthly'
   nameValidateStatus.value = ''
 }
 
@@ -1178,7 +1214,7 @@ async function handleTemplateSubmit() {
       message.warning('模板名称已存在，请使用其他名称')
       return
     }
-    await addTemplate({ templateName: name })
+    await addTemplate({ templateName: name, templateType: templateForm.templateType })
     message.success('创建成功')
     templateModalVisible.value = false
     resetTemplateModal()
@@ -1419,6 +1455,31 @@ onMounted(fetchData)
 
 .template-search {
   margin-bottom: 12px;
+}
+
+.template-type-filter {
+  margin-bottom: 12px;
+}
+
+.template-type-label {
+  display: inline-block;
+  padding: 0 6px;
+  margin-right: 6px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 4px;
+  vertical-align: 1px;
+}
+
+.template-type-label--monthly {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.template-type-label--weekly {
+  background: #fff7e6;
+  color: #d48806;
+  border: 1px solid #ffe7ba;
 }
 
 .template-card {

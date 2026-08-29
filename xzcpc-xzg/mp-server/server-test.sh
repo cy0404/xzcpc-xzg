@@ -21,6 +21,7 @@ export DB_PASSWORD="Xzcpc@2026"
 export MP_JWT_SECRET="xzcpc-mp-jwt-secret-key-2026-production-change-this"
 export WX_APP_SECRET="f9651f46d1b892c6e36e20eac6f932b3"
 export STORE_API_KEY="aSwnTbaCRhKPARFtARvaBHtyZ6fUMZJM"
+export XINFO_API_KEY="xk-axK3mP9vL2nQ7wR4jF6tH1yC5bN8"
 export FEISHU_ALERT_WEBHOOK_URL="https://open.feishu.cn/open-apis/bot/v2/hook/f69d5ede-5be0-4d31-a285-4d64f4757bf8"
 
 #------------------------------------------------------------------------------

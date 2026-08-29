@@ -28,6 +28,9 @@ public class SupervisorStoreAccess {
     /** 门店名称（冗余） */
     private String storeName;
 
+    /** 来源标记：auto=接口同步（可被自动重建覆盖） manual=手工维护（永不覆盖） */
+    private String source;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

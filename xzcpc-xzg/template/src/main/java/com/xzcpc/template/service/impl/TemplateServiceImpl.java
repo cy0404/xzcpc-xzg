@@ -41,10 +41,13 @@ public class TemplateServiceImpl implements TemplateService {
 
     @Override
     // 分页查询模板，按创建时间倒序
-    public Page<Template> page(String keyword, int pageNum, int pageSize) {
+    public Page<Template> page(String keyword, String templateType, int pageNum, int pageSize) {
         LambdaQueryWrapper<Template> wrapper = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
             wrapper.like(Template::getTemplateName, keyword);
+        }
+        if (StringUtils.hasText(templateType)) {
+            wrapper.eq(Template::getTemplateType, templateType);
         }
         wrapper.orderByDesc(Template::getCreatedAt);
         return templateMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
@@ -55,6 +58,12 @@ public class TemplateServiceImpl implements TemplateService {
     public void add(Template template) {
         if (!StringUtils.hasText(template.getTemplateName())) {
             throw new BusinessException("模板名称不能为空");
+        }
+        if (!StringUtils.hasText(template.getTemplateType())) {
+            template.setTemplateType("monthly");
+        }
+        if (!"monthly".equals(template.getTemplateType()) && !"weekly".equals(template.getTemplateType())) {
+            throw new BusinessException("模板类型非法: " + template.getTemplateType());
         }
         Long count = templateMapper.selectCount(
                 new LambdaQueryWrapper<Template>()
@@ -77,6 +86,11 @@ public class TemplateServiceImpl implements TemplateService {
         }
         if (template.getBizCode() == null) {
             template.setBizCode(exist.getBizCode());
+        }
+        if (StringUtils.hasText(template.getTemplateType())
+                && !"monthly".equals(template.getTemplateType())
+                && !"weekly".equals(template.getTemplateType())) {
+            throw new BusinessException("模板类型非法: " + template.getTemplateType());
         }
         if (!exist.getTemplateName().equals(template.getTemplateName())) {
             Long count = templateMapper.selectCount(

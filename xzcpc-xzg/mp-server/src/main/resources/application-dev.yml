@@ -25,6 +25,17 @@ pg:
       idle-timeout: 300000
       max-lifetime: 600000
 
+# 企迈 OpenAPI（开发环境）
+qmai:
+  open-id: 71fcea7abc9709d653693116410b5385
+  grant-code: WaGI2rqy9b
+  open-key: KYDwl5j39Wb71bff5fe6b0434ac6366a913c0dbc947q1SpQyZ
+  base-url: https://openapi.qmai.cn
+  console:
+    base-url: https://inapi.qmai.cn
+    cookie: ${QMAI_CONSOLE_COOKIE:}
+    seller-id: ${QMAI_CONSOLE_SELLER_ID:216708}
+
 logging:
   level:
     com.xzcpc: DEBUG

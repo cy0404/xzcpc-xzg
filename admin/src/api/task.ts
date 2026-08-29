@@ -5,20 +5,21 @@ export function getLatestMonth() {
   return api.get('/tasks/latest-month')
 }
 
-// 分页查询任务列表，支持按门店/状态/关键词(全局搜索)/模板名称/月份筛选
+// 分页查询任务列表，支持按门店/状态/关键词(全局搜索)/模板名称/月份/任务类型筛选
 export function getTasks(params: {
   storeId?: string
   status?: string
   keyword?: string
   templateName?: string
   taskMonth?: string
+  taskType?: string
   pageNum?: number
   pageSize?: number
 }) {
   return api.get('/tasks', { params })
 }
 
-// 创建月盘任务（从模板生成快照）
+// 创建盘点任务（月盘/周盘，从模板生成快照）
 export function createTask(data: any) {
   return api.post('/tasks', data)
 }

@@ -31,6 +31,27 @@ public class AsyncConfig {
     }
 
     /**
+     * 客诉通知专用线程池（门店群推送 @督导）。
+     * <p>
+     * 与日志线程池隔离：通知是飞书外呼，避免和日志写库互相排队。
+     * 使用 CallerRunsPolicy：极端情况下由提交线程自己发，不丢通知。
+     */
+    @Bean("feedbackNotifyExecutor")
+    public Executor feedbackNotifyExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);
+        executor.setKeepAliveSeconds(60);
+        executor.setThreadNamePrefix("feedback-notify-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        executor.initialize();
+        return executor;
+    }
+
+    /**
      * 飞书异常告警专用线程池。
      * <p>
      * 使用 DiscardPolicy：告警发送队列满时直接丢弃，不阻塞业务线程。

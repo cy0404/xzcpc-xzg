@@ -3,6 +3,8 @@ import { ref, computed, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { fetchMyStores, switchStore } from '@/api/auth'
+import { fetchSmartOrderOverviewTotal } from '@/api/smart-order'
+import { H5_BASE } from '@/utils/constants'
 
 const userStore = useUserStore()
 
@@ -14,6 +16,9 @@ const scope = ref<Scope>('all')
 const myStores = ref<StoreOption[]>([])
 const showStoreSheet = ref(false)
 const pendingExecUrl = ref('')
+const pendingExecIsH5 = ref(false)
+const pendingExecComplaint = ref(false)
+const smartOrderPending = ref(0)
 
 const isStaff = computed(() => userStore.role === 'staff' || userStore.role === '店员')
 const isSingle = computed(() => myStores.value.length <= 1)
@@ -37,6 +42,8 @@ const viewTools = computed(() => {
     ]
   }
   return [
+    // 暂隐藏「智能订货」入口，需要时恢复：
+    // { title: '智能订货', desc: smartOrderPending.value > 0 ? `每周建议订货单 · ${smartOrderPending.value} 张待确认` : '每周建议订货单', icon: '📋', url: '', h5: true },
     { title: '调货管理', desc: '店间物料调拨', icon: '⇄', url: '/pages/transfer/list/index' },
     { title: '人员管理', desc: '查看门店人员', icon: '👥', url: '/pages/staff/list/index' },
     // 暂隐藏「问题处理」入口，需要时恢复：
@@ -44,20 +51,63 @@ const viewTools = computed(() => {
   ]
 })
 
+// 入库管理 H5 入口（web-view 打开，token 走 URL；导航时动态构建保证 token 最新）
+function buildInboundUrl(): string {
+  const token = uni.getStorageSync('token') || userStore.token || ''
+  const storeName = userStore.storeName || ''
+  const h5url = H5_BASE + '/upload/h5/inbound-list.html?token=' + encodeURIComponent(token) + '&storeName=' + encodeURIComponent(storeName)
+  return '/pages/common/webview/index?url=' + encodeURIComponent(h5url)
+}
+
+// 智能订货 H5 入口（web-view 打开；跨店视图走 all 模式，单店先确保 token 已切到该门店）
+function buildSmartOrderUrl(all: boolean): string {
+  const token = uni.getStorageSync('token') || userStore.token || ''
+  const storeName = userStore.storeName || ''
+  const h5url = H5_BASE + '/upload/h5/smart-order-list.html?v=3&token=' + encodeURIComponent(token)
+    + (all ? '&all=1' : '&storeName=' + encodeURIComponent(storeName))
+  return '/pages/common/webview/index?url=' + encodeURIComponent(h5url) + '&title=' + encodeURIComponent('智能订货待确认')
+}
+
+async function goSmartOrder() {
+  if (scope.value === 'all') {
+    uni.navigateTo({ url: buildSmartOrderUrl(true) })
+    return
+  }
+  // 单店：先同步后端 token 到该门店，再打开 H5
+  try {
+    const data: any = await switchStore(scope.value)
+    if (data?.token) {
+      uni.setStorageSync('token', data.token)
+      userStore.token = data.token
+    }
+    userStore.storeId = data?.storeId || scope.value
+    userStore.storeName = data?.storeName || userStore.storeName || ''
+    userStore.chatId = data?.chatId || ''
+  } catch { /* ignore, use current token */ }
+  uni.navigateTo({ url: buildSmartOrderUrl(false) })
+}
+
+interface ToolItem { title: string; desc: string; icon: string; url: string; h5?: boolean; complaint?: boolean }
+
 // 执行类工具 — role-aware
-const execTools = computed(() => {
+const execTools = computed<ToolItem[]>(() => {
   if (isStaff.value) {
     return [
       { title: '盘点', desc: '进入盘点任务', icon: '✅', url: '/pages/task/list/index' },
+      // 暂隐藏「入库管理」入口，需要时恢复：
+      // { title: '入库管理', desc: '报货单收货入库', icon: '📦', url: '/pages/common/webview/index', h5: true },
       { title: '支出登记', desc: '记录门店费用', icon: '🧾', url: '/pages/expense/list/index' },
       { title: '门店报损', desc: '日常/到货报损', icon: '📋', url: '/pages/loss-report/list/index' },
     ]
   }
   return [
     { title: '盘点', desc: '进入盘点任务', icon: '✅', url: '/pages/task/list/index' },
+    // 暂隐藏「入库管理」入口，需要时恢复：
+    // { title: '入库管理', desc: '报货单收货入库', icon: '📦', url: '/pages/common/webview/index', h5: true },
     { title: '支出登记', desc: '记录门店费用', icon: '🧾', url: '/pages/expense/list/index' },
     { title: '工时登记', desc: '录入上月汇总', icon: '⏱', url: '/pages/work-hours/index/index' },
     { title: '门店报损', desc: '日常/到货报损', icon: '📋', url: '/pages/loss-report/list/index' },
+    { title: '客诉处理', desc: '处理顾客投诉', icon: '💬', url: '', complaint: true },
   ]
 })
 
@@ -83,7 +133,17 @@ onShow(() => {
   scope.value = myStores.value.length === 1
     ? myStores.value[0].storeId
     : (savedScope && myStores.value.some((s: any) => s.storeId === savedScope) ? savedScope : 'all')
+  // loadSmartOrderPending()  // 暂隐藏智能订货，不请求待确认数
 })
+
+// 智能订货待确认数（员工无入口，不请求；暂隐藏智能订货，函数保留待恢复）
+async function loadSmartOrderPending() {
+  if (isStaff.value) { smartOrderPending.value = 0; return }
+  try {
+    const data: any = await fetchSmartOrderOverviewTotal()
+    smartOrderPending.value = data?.pending || 0
+  } catch { /* keep defaults */ }
+}
 
 function setScope(val: Scope) {
   scope.value = val
@@ -112,12 +172,32 @@ function goTool(url: string) {
   }
 }
 
-function handleExecTool(url: string) {
+function handleExecTool(url: string, isH5 = false) {
   if (scope.value === 'all') {
     pendingExecUrl.value = url
+    pendingExecIsH5.value = isH5
+    pendingExecComplaint.value = false
     showStoreSheet.value = true
   } else {
-    uni.navigateTo({ url })
+    uni.navigateTo({ url: isH5 ? buildInboundUrl() : url })
+  }
+}
+
+// 客诉处理 H5 入口（web-view 打开，token 走 URL；导航时动态构建保证 token 最新）
+function goComplaint() {
+  const token = uni.getStorageSync('token') || userStore.token || ''
+  const storeName = userStore.storeName || ''
+  const h5url = H5_BASE + '/upload/h5/complaint.html?v=1&token=' + encodeURIComponent(token) + '&storeName=' + encodeURIComponent(storeName)
+  uni.navigateTo({ url: '/pages/common/webview/index?url=' + encodeURIComponent(h5url) + '&title=' + encodeURIComponent('客诉处理') })
+}
+
+// 客诉处理：全部门店视图下先弹选门店 sheet（客诉按门店处理），单店视图直接打开
+function goComplaintTool() {
+  if (scope.value === 'all') {
+    pendingExecComplaint.value = true
+    showStoreSheet.value = true
+  } else {
+    goComplaint()
   }
 }
 
@@ -134,7 +214,8 @@ async function confirmExecStore(store: StoreOption) {
   } catch { /* ignore, use local switch */ }
   scope.value = store.storeId
   showStoreSheet.value = false
-  uni.navigateTo({ url: pendingExecUrl.value })
+  if (pendingExecComplaint.value) { pendingExecComplaint.value = false; goComplaint(); return }
+  uni.navigateTo({ url: pendingExecIsH5.value ? buildInboundUrl() : pendingExecUrl.value })
 }
 </script>
 
@@ -161,7 +242,7 @@ async function confirmExecStore(store: StoreOption) {
         <text class="sec-tag">可跨门店</text>
       </view>
       <view class="tool-grid">
-        <view v-for="(t, i) in viewTools" :key="t.title" class="tool-card" :class="'tc-' + colors[i % colors.length]" @click="goTool(t.url)">
+        <view v-for="(t, i) in viewTools" :key="t.title" class="tool-card" :class="'tc-' + colors[i % colors.length]" @click="t.h5 ? goSmartOrder() : goTool(t.url)">
           <text class="tc-title">{{ t.title }}</text>
           <text class="tc-desc">{{ t.desc }}</text>
           <text class="tc-icon">{{ t.icon }}</text>
@@ -176,7 +257,7 @@ async function confirmExecStore(store: StoreOption) {
         <text class="sec-tag warn">{{ execLabel }}</text>
       </view>
       <view class="tool-grid">
-        <view v-for="(t, i) in execTools" :key="t.title" class="tool-card" :class="'tc-' + colors[(i + viewTools.length) % colors.length]" @click="handleExecTool(t.url)">
+        <view v-for="(t, i) in execTools" :key="t.title" class="tool-card" :class="'tc-' + colors[(i + viewTools.length) % colors.length]" @click="t.complaint ? goComplaintTool() : handleExecTool(t.url, t.h5)">
           <text class="tc-title">{{ t.title }}</text>
           <text class="tc-desc">{{ t.desc }}</text>
           <text class="tc-icon">{{ t.icon }}</text>

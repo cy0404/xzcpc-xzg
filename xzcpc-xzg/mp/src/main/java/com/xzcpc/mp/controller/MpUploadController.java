@@ -18,6 +18,7 @@ import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/mp")
@@ -32,6 +33,13 @@ public class MpUploadController {
     private String publicUrl;
 
     private static final long MAX_FILE_SIZE = 200L * 1024 * 1024; // 200MB
+
+    // 分片上传会话 ID 格式（32 位 hex，由 UUID 去横线生成），防路径穿越
+    private static final Pattern UPLOAD_ID_PATTERN = Pattern.compile("[0-9a-f]{32}");
+    // 单个分片上限 6MB（客户端按 5MB 切片 + 余量），防止旧客户端把整个文件当分片上传
+    private static final long MAX_CHUNK_SIZE = 6L * 1024 * 1024;
+    // 分片数量上限（200MB / 5MB ≈ 40 片）
+    private static final int MAX_CHUNK_COUNT = 64;
 
     @OpLog(module = "小程序-上传", operation = "上传凭证文件")
     @PostMapping("/upload/voucher")
@@ -86,8 +94,11 @@ public class MpUploadController {
         result.put("url", fullUrl);
         result.put("filename", filename);
         if (isVideo) {
+            faststartRemux(dest);
             String thumbPath = generateThumbnail(dest.getAbsolutePath());
             if (thumbPath != null) result.put("thumb", thumbUrl(fullUrl));
+        } else {
+            generateImageThumb(dest);
         }
         return R.ok(result);
     }
@@ -148,19 +159,21 @@ public class MpUploadController {
         new Thread(() -> {
             try {
                 String src = f.getAbsolutePath();
-                ProcessBuilder probePb = new ProcessBuilder("ffprobe", "-v", "error",
+                ProcessBuilder probePb = new ProcessBuilder("ffprobe", "-v", "error", "-nostdin",
                     "-select_streams", "v:0", "-show_entries", "stream=codec_name",
                     "-of", "default=noprint_wrappers=1:nokey=1", src);
                 Process probe = probePb.start();
+                try { probe.getOutputStream().close(); } catch (IOException ignored) {}
                 String codec = new String(probe.getInputStream().readAllBytes()).trim();
                 probe.waitFor();
                 if (!"hevc".equalsIgnoreCase(codec) && !"h265".equalsIgnoreCase(codec)) return;
                 String tmp = src + ".transcoded.mp4";
-                ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-y", "-i", src,
+                ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-y", "-nostdin", "-i", src,
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24",
                     "-c:a", "aac", "-movflags", "+faststart", tmp);
                 pb.redirectErrorStream(true);
                 Process p = pb.start();
+                try { p.getOutputStream().close(); } catch (IOException ignored) {}
                 p.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
                 if (p.waitFor() == 0 && new File(tmp).length() > 0) {
                     Files.delete(f.toPath());
@@ -173,14 +186,85 @@ public class MpUploadController {
         }).start();
     }
 
+    /**
+     * faststart 重排：手机原片 moov 元数据在文件末尾，iOS 微信/浏览器点击播放
+     * 必须拉完整文件才开播；-c copy 只把 moov 挪到文件头（不重新编码，几秒完成），
+     * 让播放器能边看边下载。仅处理 mp4/mov；失败保留原文件不影响上传。
+     * -nostdin + 关闭子进程 stdin：服务器 ffmpeg 3.4.13 调试控制台会读 stdin
+     * 导致 waitFor 挂死（与 compress-videos.sh 踩过的坑同根因）。
+     */
+    private void faststartRemux(File f) {
+        String name = f.getName().toLowerCase();
+        if (!name.endsWith(".mp4") && !name.endsWith(".mov")) return;
+        String src = f.getAbsolutePath();
+        String tmp = src + ".faststart.tmp";
+        // ffmpeg 靠输出扩展名推断容器格式，.faststart.tmp 推断不出（服务器实测：
+        // "Unable to find a suitable output format" → 每次失败保留原文件）
+        // → 显式 -f 指定容器（mov 保持 mov，其余按 mp4）
+        String fmt = name.endsWith(".mov") ? "mov" : "mp4";
+        try {
+            ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-y", "-nostdin", "-v", "error", "-i", src,
+                    "-c", "copy", "-movflags", "+faststart", "-f", fmt, tmp);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            try { p.getOutputStream().close(); } catch (IOException ignored) {}
+            // 捕获 ffmpeg 输出：失败时打进日志定位原因（此前直接丢弃，失败原因不可见）
+            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            if (p.waitFor() == 0 && new File(tmp).length() > 0) {
+                Files.delete(f.toPath());
+                Files.move(Paths.get(tmp), f.toPath());
+                log.info("faststart 完成: {}", f.getAbsolutePath());
+            } else {
+                Files.deleteIfExists(Paths.get(tmp));
+                String detail = out.isBlank() ? "(无输出)" : out.strip().replaceAll("\\s+", " ");
+                if (detail.length() > 500) detail = detail.substring(0, 500) + "...";
+                log.warn("faststart 失败（保留原文件）: {} | exit={} ffmpeg输出: {}", f.getAbsolutePath(),
+                        p.exitValue(), detail);
+            }
+        } catch (Exception e) {
+            try { Files.deleteIfExists(Paths.get(tmp)); } catch (IOException ignored) {}
+            log.warn("faststart 异常（保留原文件）: {} | {}", f.getAbsolutePath(), e.getMessage());
+        }
+    }
+
+    /**
+     * 图片缩略图：生成 <原名>_thumb.jpg（宽 320，质量 5），审核页用缩略图展示、
+     * 点击看原图（页面 thumbOf() 同规则）。异步线程生成，不阻塞上传响应——
+     * 门店晚上 10 点扎堆传图时上传速度不受影响；失败静默忽略（页面 onerror 回退原图）。
+     * ffmpeg 默认 autorotate 会按 EXIF 转正，缩略图方向与原图一致。
+     */
+    private void generateImageThumb(File f) {
+        String src = f.getAbsolutePath();
+        int dot = src.lastIndexOf('.');
+        if (dot < 0) return;
+        final String thumbPath = src.substring(0, dot) + "_thumb.jpg";
+        new Thread(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-y", "-nostdin", "-v", "error", "-i", src,
+                        "-vf", "scale=320:-2", "-frames:v", "1", "-q:v", "5", thumbPath);
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+                try { p.getOutputStream().close(); } catch (IOException ignored) {}
+                p.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
+                p.waitFor();
+                if (!new File(thumbPath).exists()) {
+                    log.warn("图片缩略图生成失败（忽略）: {}", src);
+                }
+            } catch (Exception e) {
+                log.warn("图片缩略图异常（忽略）: {} | {}", src, e.getMessage());
+            }
+        }).start();
+    }
+
     private String generateThumbnail(String videoPath) {
         String thumbPath = videoPath.substring(0, videoPath.lastIndexOf('.')) + "_thumb.jpg";
         try {
-            ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-y", "-i", videoPath,
+            ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-y", "-nostdin", "-i", videoPath,
                     "-ss", "1", "-vframes", "1", "-q:v", "5", "-vf", "scale=320:-2", thumbPath);
             pb.redirectErrorStream(true);
             Process process = pb.start();
-            new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream())).lines().forEach(line -> {});
+            try { process.getOutputStream().close(); } catch (IOException ignored) {}
+            process.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
             process.waitFor();
             if (new File(thumbPath).exists()) return thumbPath;
         } catch (Exception e) {
@@ -197,6 +281,11 @@ public class MpUploadController {
     @OpLog(module = "小程序-上传", operation = "初始化分片上传")
     @PostMapping("/upload/chunk/init")
     public R<Map<String, String>> initChunkUpload(@RequestBody Map<String, Object> body) {
+        // H5 端 init 可能不带 totalChunks（空 body），仅在携带时校验范围
+        if (body.containsKey("totalChunks")) {
+            int totalChunks = body.get("totalChunks") instanceof Number ? ((Number) body.get("totalChunks")).intValue() : 0;
+            if (totalChunks <= 0 || totalChunks > MAX_CHUNK_COUNT) return R.fail(400, "分片数量非法");
+        }
         String uploadId = UUID.randomUUID().toString().replace("-", "");
         Path chunkDir = Paths.get(uploadPath).toAbsolutePath().normalize().resolve("chunks").resolve(uploadId);
         try {
@@ -214,7 +303,10 @@ public class MpUploadController {
     @PostMapping("/upload/chunk/{uploadId}/{chunkIndex}")
     public R<Void> uploadChunk(@PathVariable String uploadId, @PathVariable int chunkIndex,
                                @RequestParam("file") MultipartFile file) {
+        if (!UPLOAD_ID_PATTERN.matcher(uploadId).matches()) return R.fail(400, "上传会话格式不正确");
+        if (chunkIndex < 0 || chunkIndex >= MAX_CHUNK_COUNT) return R.fail(400, "分片序号非法");
         if (file.isEmpty()) return R.fail(400, "分片为空");
+        if (file.getSize() > MAX_CHUNK_SIZE) return R.fail(400, "分片大小不能超过6MB");
         Path chunkDir = Paths.get(uploadPath).toAbsolutePath().normalize().resolve("chunks").resolve(uploadId);
         if (!Files.exists(chunkDir)) return R.fail(404, "上传会话不存在");
         Path chunkFile = chunkDir.resolve(String.valueOf(chunkIndex));
@@ -231,6 +323,7 @@ public class MpUploadController {
     @PostMapping("/upload/chunk/{uploadId}/complete")
     public R<Map<String, String>> completeChunkUpload(@PathVariable String uploadId,
                                                        @RequestBody Map<String, Object> body) {
+        if (!UPLOAD_ID_PATTERN.matcher(uploadId).matches()) return R.fail(400, "上传会话格式不正确");
         String fileName = (String) body.getOrDefault("fileName", "video.mp4");
         int totalChunks = body.containsKey("totalChunks") ? ((Number) body.get("totalChunks")).intValue() : 0;
         Path chunkDir = Paths.get(uploadPath).toAbsolutePath().normalize().resolve("chunks").resolve(uploadId);
@@ -281,7 +374,7 @@ public class MpUploadController {
         } catch (IOException ignored) {}
 
         boolean isVideo = ext.matches("\\.(mp4|mov|avi|mkv|webm)");
-        // 转码已关闭
+        // 转码已关闭（HEVC 重编码不做）；仅做 faststart 重排，保证点击即播
 
         String baseUrl = publicUrl.isBlank()
                 ? "http://localhost:" + 8081 + "/storeInventory"
@@ -294,8 +387,11 @@ public class MpUploadController {
         result.put("url", fullUrl);
         result.put("filename", destFilename);
         if (isVideo) {
+            faststartRemux(destFile.toFile());
             String thumbPath = generateThumbnail(destFile.toAbsolutePath().toString());
             if (thumbPath != null) result.put("thumb", thumbUrl(fullUrl));
+        } else {
+            generateImageThumb(destFile.toFile());
         }
         return R.ok(result);
     }

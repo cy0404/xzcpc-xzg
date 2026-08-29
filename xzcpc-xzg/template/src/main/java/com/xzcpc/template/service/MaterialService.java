@@ -8,10 +8,7 @@ import java.util.Map;
 
 public interface MaterialService {
 
-    /** 一次性迁移：从外部 API 拉取盘点单位，写入 material_inventory_rule */
-    int migrateInventoryUnits();
-
-    /** 手动触发从外部 API 全量同步物料 */
+    /** 手动触发从外部 API（xinfo）全量同步物料 */
     int syncFromApi();
 
     /** 以 MaterialInfo 返回全部物料（存量调用方兼容） */

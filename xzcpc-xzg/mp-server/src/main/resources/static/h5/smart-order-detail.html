@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>订货单</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;color:#1F2421;font-size:14px;-webkit-tap-highlight-color:transparent}
+.page{max-width:500px;margin:0 auto;padding:12px 16px;padding-bottom:120px}
+
+/* 周概览面板（灰色，非点击） */
+.overview{background:#EDEFED;border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid #E2E5E2}
+.ov-week{font-size:14px;font-weight:600;color:#2F8F57;line-height:22px}
+.ov-title{display:block;margin-top:2px;font-size:18px;font-weight:700;line-height:26px;color:#1F2421}
+.ov-sub{display:block;margin-top:2px;font-size:13px;color:#66706A;line-height:20px}
+.metrics{display:flex;gap:8px;margin-top:14px}
+.metric{flex:1;background:#FAFBF9;border-radius:12px;padding:10px 12px}
+.m-label{display:block;font-size:11px;color:#98A19C;line-height:16px}
+.m-value{display:block;margin-top:2px;font-size:20px;font-weight:700;line-height:28px;color:#1F2421}
+.m-value.green{color:#2F8F57}
+.m-value.orange{color:#E58A2D}
+.m-value.red{color:#E05A47}
+.m-value.blue{color:#2E6BE6}
+
+/* 状态卡 */
+.state-card{border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid #E8ECE9;display:flex;align-items:flex-start;gap:12px}
+.state-card.orange{background:#FFF8EE;color:#E58A2D}
+.state-card.green{background:#F1F8F3;color:#2F8F57}
+.state-card.red{background:#FFF4F2;color:#E05A47}
+.state-card.blue{background:#EDF2FF;color:#2E6BE6}
+.sc-icon{font-size:24px;line-height:1;margin-top:2px}
+.sc-body{flex:1;min-width:0}
+.sc-title{font-size:16px;font-weight:600;line-height:24px;color:#1F2421}
+.sc-note{display:block;margin-top:2px;font-size:13px;color:#66706A;line-height:20px;word-break:break-all}
+.sc-meta{display:block;margin-top:6px;font-size:12px;color:#98A19C;line-height:18px;word-break:break-all}
+
+/* 明细表 */
+.section-title{font-size:15px;font-weight:700;color:#1F2421;margin:4px 0 10px}
+.table{background:#fff;border-radius:16px;border:1px solid #E8ECE9;overflow:hidden;box-shadow:0 4px 16px rgba(31,36,33,.04)}
+.table-head{display:flex;justify-content:space-between;align-items:center;background:#FAFBF9;padding:8px 16px;font-size:12px;color:#98A19C}
+.table-head .th-qty{text-align:center}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid #F5F6F4;min-height:64px}
+.row:first-of-type{border-top:0}
+.r-info{flex:1;min-width:0}
+.r-name{display:block;font-size:14px;font-weight:600;color:#1F2421;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-spec{display:block;font-size:12px;color:#98A19C;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.r-chip{font-size:11px;color:#66706A;background:#FAFBF9;border:1px solid #E8ECE9;border-radius:6px;padding:2px 8px}
+/* 总仓库存标注：超量时红色（数量≤库存才能下单） */
+.r-stock{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#66706A;background:#FAFBF9;border:1px solid #E8ECE9;border-radius:6px;padding:2px 8px;margin-top:4px}
+.r-stock.over{color:#E05A47;background:#FDEEEC;border-color:#F2C7BE;font-weight:600}
+.row.over{background:#FFF8F7}
+.r-qty{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.qty-btn{width:30px;height:30px;border-radius:8px;border:1px solid #E8ECE9;background:#fff;font-size:18px;font-weight:500;color:#56605B;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;line-height:1}
+.qty-btn.plus{color:#2F8F57}
+.qty-btn:active{background:#F5F6F4}
+.qty-input{width:52px;height:32px;border-radius:8px;border:1px solid #E8ECE9;background:#fff;text-align:center;font-size:14px;font-weight:600;color:#1F2421;outline:none;padding:0}
+.qty-input:focus{border-color:#2F8F57;box-shadow:0 0 0 2px #E7F4EB}
+.qty-unit{font-size:12px;color:#66706A;min-width:16px;text-align:left}
+.r-qty-col{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0}
+.r-amount{font-size:12px;font-weight:600;color:#E58A2D}
+
+/* 搜索栏 */
+.search-bar{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #E8ECE9;border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.search-input{flex:1;border:none;outline:none;font-size:14px;color:#1F2421;background:transparent;padding:0}
+.search-input::placeholder{color:#98A19C}
+.search-clear{border:none;background:#F5F6F4;color:#66706A;width:22px;height:22px;border-radius:50%;font-size:12px;line-height:1;cursor:pointer;padding:0;flex-shrink:0}
+
+.r-locked{font-size:15px;font-weight:700;color:#1F2421;white-space:nowrap}
+.r-locked .qty-unit{font-size:12px;font-weight:400;color:#66706A}
+
+/* 底部固定栏 */
+.fab{position:fixed;bottom:0;left:0;right:0;padding:12px 20px;padding-bottom:calc(env(safe-area-inset-bottom)+12px);background:rgba(255,255,255,.92);backdrop-filter:blur(20px);z-index:10;border-top:1px solid #EEF1EF}
+.fab-inner{max-width:500px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.fab-total{font-size:13px;color:#66706A;white-space:nowrap}
+.fab-total b{font-size:20px;color:#1F2421;margin:0 2px}
+.fab-btn{flex:1;height:42px;border-radius:10px;font-size:14px;font-weight:700;background:#2F8F57;color:#fff;border:none;cursor:pointer;box-shadow:0 6px 20px rgba(36,120,71,.25)}
+.fab-btn:disabled{opacity:.6}
+.fab-btn.ghost{flex:0 0 auto;padding:0 14px;background:#fff;color:#56605B;border:1.5px solid #DDE3DF;box-shadow:none}
+
+/* 确认弹窗 */
+.modal-mask{position:fixed;inset:0;background:rgba(31,36,33,.45);z-index:99;display:flex;align-items:center;justify-content:center}
+.dlg{width:86%;max-width:340px;background:#fff;border-radius:16px;padding:20px}
+.dlg-title{font-size:17px;font-weight:700;color:#1F2421;text-align:center}
+.dlg-body{font-size:13px;color:#66706A;text-align:center;margin-top:10px;line-height:20px}
+.dlg-actions{display:flex;gap:10px;margin-top:18px}
+.dlg-btn{flex:1;height:44px;border-radius:999px;font-size:15px;font-weight:600;border:none;cursor:pointer}
+.dlg-btn.ghost{border:2px solid #E8ECE9;background:#fff;color:#1F2421}
+.dlg-btn.primary{background:#2F8F57;color:#fff}
+
+/* 去支付弹窗 */
+.pay-no{margin-top:14px;padding:10px 12px;background:#F7F8F6;border:1px dashed #DDE3DF;border-radius:12px;font-size:20px;font-weight:700;letter-spacing:1px;color:#1F2421;text-align:center;word-break:break-all;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.pay-no:active{background:#EDEFED}
+.pay-copy{font-size:15px;cursor:pointer;background:#fff;border:1px solid #E2E5E2;border-radius:8px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;line-height:1}
+.pay-copy:active{background:#EDEFED}
+.pay-hint{font-size:11px;color:#98A19C;text-align:center;margin-top:6px}
+
+/* 明细标题行 + 添加物料按钮 */
+.title-row{display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px}
+.title-row .section-title{margin:0}
+.add-btn{height:32px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;background:#2F8F57;color:#fff;border:none;cursor:pointer;flex-shrink:0}
+.add-btn:active{opacity:.85}
+.del-btn{height:32px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;background:#fff;color:#E05A47;border:1.5px solid #F2C7BE;cursor:pointer;flex-shrink:0}
+.del-btn:active{opacity:.8}
+.del-btn.primary{background:#E05A47;color:#fff;border:none;min-width:96px;text-align:center}
+.del-btn:disabled{opacity:.5;cursor:not-allowed}
+.title-row .row-actions{display:flex;align-items:center;gap:8px}
+/* 批量选择（勾选态用 CSS 伪元素，避免 JS 改文本引起重绘） */
+.sel-box{position:relative;flex-shrink:0;width:22px;height:22px;border-radius:7px;border:1.5px solid #CBD2CD;background:#fff;cursor:pointer;margin-left:-6px}
+.sel-box.checked{background:#2F8F57;border-color:#2F8F57}
+.sel-box.checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-weight:700}
+.row.sel{background:#F1F8F3}
+
+/* 关联单据（报货单拆单：订货单按配送中心 + 采购单） */
+.rel-card{background:#fff;border-radius:16px;border:1px solid #E8ECE9;overflow:hidden;margin-bottom:12px}
+.rel-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px;color:#98A19C;background:#FAFBF9}
+.rel-count{font-weight:600;color:#2F8F57}
+.rel-row{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid #F5F6F4}
+.rel-no{font-size:14px;font-weight:600;color:#1F2421;word-break:break-all;flex:1;min-width:0}
+.rel-sub{display:block;font-size:12px;color:#98A19C;font-weight:400;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rel-status{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;flex-shrink:0;white-space:nowrap}
+.rel-status.orange{background:#FFF8EE;color:#E58A2D}
+.rel-status.blue{background:#EDF2FF;color:#2E6BE6}
+.rel-status.green{background:#F1F8F3;color:#2F8F57}
+.rel-status.red{background:#FDEEEC;color:#E05A47}
+.rel-status.gray{background:#F1F2F1;color:#98A19C}
+.rel-btn{height:34px;padding:0 16px;border-radius:999px;font-size:13px;font-weight:600;background:#2F8F57;color:#fff;border:none;cursor:pointer;flex-shrink:0}
+.rel-btn:active{opacity:.85}
+.rel-btn.done{background:#F1F8F3;color:#2F8F57;border:1.5px solid #BFE3CC;cursor:default}
+.rel-empty{text-align:center;padding:18px 16px;font-size:13px;color:#98A19C}
+/* 物料明细展开区（对齐入库单 inbound-detail 展示：应收/实收/已收状态） */
+.rel-arrow{font-size:12px;color:#98A19C;flex-shrink:0;transition:transform .2s;transform:rotate(180deg)}
+.rel-row.open .rel-arrow{transform:rotate(0)}
+.rel-items{display:block;background:#FAFBF9;border-top:1px solid #F5F6F4;padding:0 16px 8px}
+.rel-row.open+.rel-items{display:none}
+.rel-inbound{display:flex;justify-content:space-between;align-items:center;padding:9px 0 2px;font-size:12px;color:#66706A;border-bottom:1px dashed #E8ECE9;margin-bottom:4px}
+.ri-in-no{font-weight:600;color:#2F8F57;word-break:break-all}
+.rel-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #F5F6F4;font-size:13px}
+.rel-item:first-child{border-top:0}
+.ri-left{flex:1;min-width:0}
+.ri-name{display:block;color:#1F2421;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ri-spec{display:block;font-size:11px;color:#98A19C;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ri-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.ri-qty{font-size:13px;font-weight:600;color:#1F2421;white-space:nowrap}
+.ri-qty .ri-unit{font-weight:400;color:#98A19C;font-size:12px}
+.ri-rec{font-size:12px;color:#2F8F57;white-space:nowrap}
+.ri-note{font-size:11px;color:#98A19C;white-space:nowrap}
+.rel-items-note{padding:10px 0 4px;font-size:12px;color:#98A19C}
+
+/* 空状态 / 加载中 */
+.empty{text-align:center;padding:60px 20px;color:#98A19C;background:#fff;border-radius:16px;border:1px solid #E8ECE9}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-text{font-size:14px}
+.loading{display:flex;justify-content:center;padding:40px;color:#98A19C;font-size:13px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="content"><div class="loading">加载中...</div></div>
+</div>
+
+<div class="fab" id="fab" style="display:none">
+  <div class="fab-inner">
+    <span class="fab-total" id="fab-total-wrap">合计<b id="fab-total">¥0.00</b></span>
+    <span class="fab-total" id="fab-sel" style="display:none">已选 <b id="sel-count">0</b> 项</span>
+    <button class="fab-btn ghost" id="fab-cancel-batch" onclick="exitBatch()" style="display:none">取消</button>
+    <button class="fab-btn ghost" id="fab-save" onclick="saveChanges()" style="display:none">保存</button>
+    <button class="fab-btn" id="fab-batch-del" onclick="confirmBatchDelete()" style="display:none">删除选中</button>
+    <button class="fab-btn" id="fab-btn" onclick="fabClick()">确认订货</button>
+  </div>
+</div>
+
+<div class="modal-mask" id="dlg" style="display:none">
+  <div class="dlg">
+    <div class="dlg-title" id="dlg-title">确认订货</div>
+    <div class="dlg-body" id="dlg-body">确认后将提交企迈生成订货单，<br>数量可改为 0 表示本次不订。</div>
+    <div class="dlg-actions">
+      <button class="dlg-btn ghost" onclick="closeDlg()">取消</button>
+      <button class="dlg-btn primary" id="dlg-ok" onclick="submitConfirm()">确认提交</button>
+    </div>
+  </div>
+</div>
+
+<!-- 去支付弹窗：提交成功后自动弹出，展示报货单号 + 复制图标 + 引导 -->
+<div class="modal-mask" id="pay-dlg" style="display:none">
+  <div class="dlg">
+    <div class="dlg-title">请到企迈APP付款</div>
+    <div class="dlg-body" style="margin-top:14px">报货单已生成，请到企迈APP完成付款。</div>
+    <div class="pay-no" id="pay-no-wrap" onclick="copyPayNo()">
+      <span id="pay-no"></span>
+      <button class="pay-copy" onclick="copyPayNo();event.stopPropagation()" title="复制">📋</button>
+    </div>
+    <div class="dlg-actions">
+      <button class="dlg-btn ghost" onclick="closePayDlg()">取消</button>
+      <button class="dlg-btn primary" onclick="copyPayNo()">复制报货单号</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var API=window.location.origin+window.location.pathname.split('/upload/')[0]+'/api/mp'
+var qs=new URLSearchParams(location.search)
+var TOKEN=qs.get('token')||'',ID=qs.get('id')||''
+// 列表页传入的企迈支付状态（列表刚批量实时查询过，单查失败时兜底）
+var URL_QS=qs.get('qs'),URL_PS=qs.get('ps')
+
+var order=null,items=[],qtyMap={},deletedSet={},origQty={},searchKey='',acting=false,dirty=false,pendingPayDlg=false
+var batchMode=false,selectedSet={}
+
+var STATUS_LABEL={pending:'待确认',syncing:'同步中',success:'同步成功',submit_failed:'提交失败'}
+var STATUS_CLASS={pending:'orange',syncing:'orange',success:'green',submit_failed:'red'}
+
+function showToast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:999;background:rgba(0,0,0,.85);color:#fff;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;max-width:80%;text-align:center';document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){document.body.contains(t)&&document.body.removeChild(t)},300)},2200)}
+
+function xhr(method,url,body,cb,onErr){
+  var x=new XMLHttpRequest();x.open(method,url);x.setRequestHeader('Content-Type','application/json')
+  if(TOKEN)x.setRequestHeader('Authorization','Bearer '+TOKEN)
+  x.onload=function(){
+    try{var d=JSON.parse(x.responseText)
+      if(d.code===401){var m1='登录已过期，请重新进入小程序';if(onErr)onErr(m1);else showToast(m1);return}
+      if(d.code!==200){var m2=d.message||d.msg||'操作失败';if(onErr)onErr(m2);else showToast(m2);return}
+      cb&&cb(d.data)
+    }catch(e){var m3='网络异常，请重试';if(onErr)onErr(m3);else showToast(m3)}
+  }
+  x.onerror=function(){var m4='网络异常，请重试';if(onErr)onErr(m4);else showToast(m4)}
+  x.send(body?JSON.stringify(body):null)
+}
+
+function readJSON(k){
+  try{var v=sessionStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}
+}
+
+/** preserve=true：从物料选择页返回时，恢复跳转前的已删/已改状态，并合并选择页的最终数量 */
+function load(preserve){
+  document.getElementById('content').innerHTML='<div class="loading">加载中...</div>'
+  xhr('GET',API+'/smart-order/'+ID+'?_t='+Date.now(),null,function(data){
+    order=data.order;items=data.items||[]
+    // 企迈支付状态（success 且已有报货单号时，后端实时查询企迈；失败为 undefined）
+    order.qmOrderStatus=data.qmOrderStatus
+    order.qmPayStatus=data.qmPayStatus
+    // 报货单拆单关联（订货单/采购单；success 时后端实时查询，失败为 undefined）
+    order.related=data.related
+    // 列表页刚查询的支付状态优先（后端单查失败降级时兜底，保证与列表展示一致）
+    if(URL_QS!==null&&URL_QS!=='')order.qmOrderStatus=Number(URL_QS)
+    if(URL_PS!==null&&URL_PS!=='')order.qmPayStatus=Number(URL_PS)
+    qtyMap={};deletedSet={};origQty={};searchKey='';dirty=false;batchMode=false;selectedSet={}
+    items.forEach(function(it){
+      qtyMap[it.id]=Number(it.confirmedQty!=null?it.confirmedQty:it.suggestQty)||0
+      // 服务端基线：保存修改时做差异对比
+      origQty[it.id]=qtyMap[it.id]
+    })
+    if(preserve){
+      var pend=readJSON('sod_pending'),fin=readJSON('sod_final')
+      sessionStorage.removeItem('sod_pending')
+      sessionStorage.removeItem('sod_final')
+      // 选择页 POST 成功后带回的新物料行（真实 id）：本地直接插入，防止详情 GET 命中 WebView 缓存导致不显示
+      var nw=readJSON('sod_new')
+      sessionStorage.removeItem('sod_new')
+      if(nw&&nw.length){
+        nw.forEach(function(n){
+          if(!n||n.id==null)return
+          if(items.some(function(it){return it.id===n.id}))return
+          var q=Number(n.suggestQty)||0
+          items.push(n)
+          qtyMap[n.id]=q
+          origQty[n.id]=q
+        })
+      }
+      // 选择页对有变动的在单物料给出的最终数量：0=标记删除，>0=恢复并改数量
+      var finalQty={}
+      if(fin){
+        items.forEach(function(it){
+          if(Object.prototype.hasOwnProperty.call(fin,it.materialId))finalQty[it.id]=fin[it.materialId]
+        })
+      }
+      if(pend){
+        var q=pend.qty||{},d=pend.deleted||{}
+        for(var id in q){if(finalQty[id]===undefined)qtyMap[id]=q[id]}
+        for(var id2 in d){if(finalQty[id2]===undefined&&d[id2])deletedSet[id2]=true}
+      }
+      for(var fid in finalQty){
+        if(finalQty[fid]===0)deletedSet[fid]=true
+        else{deletedSet[fid]=false;qtyMap[fid]=finalQty[fid]}
+      }
+      if(fin||pend)dirty=true
+    }
+    render()
+    // 刚提交成功且企迈订单待支付：自动弹出"请到企迈APP付款"
+    if(pendingPayDlg){
+      pendingPayDlg=false
+      if(isUnpaid())openPayDlg()
+    }
+  })
+}
+
+function isActionable(){return order&&(order.status==='pending'||order.status==='submit_failed')}
+
+/** 概览"状态"文案：success 直译企迈订单状态（0待支付 1待接单 2已接单 3履约中 4已完成 5已取消 6已驳回） */
+function statusText(st){
+  if(st==='success'){
+    var q=qmOrderStatus()
+    if(q===0)return '未支付'
+    if(q===1)return '待接单'
+    if(q===2)return '已接单'
+    if(q===3)return '待收货'
+    if(q===4)return relAllDone()?'已完成':'待收货'
+    if(q===5)return '已取消'
+    if(q===6)return '已驳回'
+    return '已下单'
+  }
+  return STATUS_LABEL[st]||st
+}
+function statusClass(st){
+  if(st==='success'){
+    var q=qmOrderStatus()
+    if(q===1)return 'blue'
+    if(q===0||q===5||q===6)return 'red'
+    if(q===4&&!relAllDone())return 'orange'
+    return 'green'
+  }
+  return STATUS_CLASS[st]||'orange'
+}
+
+/* 企迈报货单状态（后端实时查询）：orderStatus 0=待支付 1=待接单 2=已接单 3=履约中 4=已完成 5=已取消 6=已驳回；payStatus 0=未支付 1=已付款 */
+function qmOrderStatus(){return order&&order.qmOrderStatus!=null?order.qmOrderStatus:null}
+
+/** 单内物料是否全部按应收收齐（部分收视为未收齐） */
+function itemsAllIn(arr){
+  var a=arr||[]
+  if(!a.length)return true
+  return a.every(function(i){
+    if(i.received!==1)return false
+    return Number(i.receivedQty)>=Number(i.productNum)
+  })
+}
+
+/** 关联单据是否全部收齐：订货单企迈已完成且本地入库单非待收且物料收齐，采购单全部已收货（采购申请未转单视为未完成；已关闭视为完成） */
+function relAllDone(){
+  var rel=order.related
+  if(!rel)return true
+  var rs=rel.requireOrders||[],ps=rel.purchases||[]
+  for(var i=0;i<rs.length;i++){
+    var r=rs[i]
+    if(r.inboundStatus==='cancelled')continue    // 本地入库单已关闭 → 视为完成
+    if(Number(r.orderStatus)!==6)return false      // 企迈未终态（6=已完成）
+    if(!r.inboundStatus)continue                  // 无本地入库单（未同步）→ 企迈已完成即视为收齐
+    if(r.inboundStatus==='pending')return false   // 本地入库单仍待收
+    if(!itemsAllIn(r.items))return false          // 实收不足应收（部分收）
+  }
+  for(var j=0;j<ps.length;j++){
+    var p=ps[j]
+    if(p.type==='apply')return false              // 采购申请未转采购单
+    if(p.inboundStatus==='cancelled')continue    // 入库单已关闭 → 视为完成
+    if(p.inboundStatus!=='done')return false      // 采购单未收货
+    if(!itemsAllIn(p.items))return false          // 实收不足应收（部分收）
+  }
+  return true
+}
+/** 待支付：企迈已生成报货单且订单状态=待支付(0) */
+function isUnpaid(){return !!(order&&order.status==='success'&&order.qmaiDeclareNo&&qmOrderStatus()===0)}
+/** 已支付：企迈已付款(1)或已审核(2) */
+function isQmPaid(){return !!(order&&order.status==='success'&&order.qmaiDeclareNo&&order.qmPayStatus!=null&&order.qmPayStatus>=1)}
+
+function weekLabelOf(wl){
+  var m=String(wl||'').match(/^(\d+)-W(\d+)$/)
+  return m?(m[1]+' 年第 '+Number(m[2])+' 周'):(wl||'')
+}
+
+function fmtMoney(n){return '¥'+(Number(n)||0).toLocaleString('zh-CN')}
+function fmtTime(t){if(!t)return '--';return String(t).replace('T',' ').substring(0,16)}
+function fmtNum(n){
+  var v=Number(n)
+  if(!isFinite(v))return '--'
+  return String(Math.round(v*100)/100)
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+function totalQty(){
+  return items.reduce(function(sum,it){if(deletedSet[it.id])return sum;return sum+(Number(qtyMap[it.id])||0)},0)
+}
+
+/** 单个物料总金额 = 数量 × 单价（无单价返回 null，不展示不计入合计；已删除不参与） */
+function itemAmount(it){
+  if(deletedSet[it.id])return null
+  if(it.unitPrice==null)return null
+  return (Number(qtyMap[it.id])||0)*Number(it.unitPrice)
+}
+
+function totalAmount(){
+  return items.reduce(function(sum,it){var a=itemAmount(it);return sum+(a||0)},0)
+}
+
+function fmtMoney2(n){
+  return '¥'+(Number(n)||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
+}
+
+function stateCardHtml(){
+  var st=order.status
+  var cls=STATUS_CLASS[st]||'orange'
+  if(st==='pending'){
+    var hhmm='18:00'
+    if(order.deadline){var t=String(order.deadline);var m=t.match(/T?(\d{2}:\d{2})/);if(m)hhmm=m[1]}
+    return stateCard(cls,'⏳','订货单待确认','请确认每个品项数量，'+hhmm+' 前提交企迈订货。','生成时间：'+fmtTime(order.generatedAt))
+  }
+  if(st==='syncing'){
+    return stateCard(cls,'🔄','正在同步企迈','已保留本次建议清单，系统正在向企迈提交订货单。','提交时间：'+fmtTime(order.confirmedAt))
+  }
+  if(st==='success'){
+    if(order.qmaiDeclareNo){
+      var qs=qmOrderStatus()
+      if(qs===0){
+        return stateCard('orange','💰','未支付','企迈已生成报货单，尚未支付。请到企迈APP付款。','提交时间：'+fmtTime(order.confirmedAt))
+      }
+      if(qs===1){
+        return stateCard('blue','✅','待接单','企迈已确认收款，等待商家接单。','提交时间：'+fmtTime(order.confirmedAt))
+      }
+      if(qs===2){
+        return stateCard('green','📦','已接单','商家已接单，等待发货履约。','提交时间：'+fmtTime(order.confirmedAt))
+      }
+      if(qs===3){
+        return stateCard('green','🚚','待收货','订单履约中，正在配送至门店。','提交时间：'+fmtTime(order.confirmedAt))
+      }
+      if(qs===4){
+        if(!relAllDone()){
+          return stateCard('orange','📦','待收货','本单订货已完成，仍有单据待收货，全部收齐后自动变为已完成。','提交时间：'+fmtTime(order.confirmedAt))
+        }
+        return stateCard('green','🎉','已完成','本单订货已完成。','提交时间：'+fmtTime(order.confirmedAt))
+      }
+      if(qs===5){
+        return stateCard('red','🚫','已取消','订单已取消。','提交时间：'+fmtTime(order.confirmedAt))
+      }
+      if(qs===6){
+        return stateCard('red','⛔','已驳回','订单被驳回，请重新订货。','提交时间：'+fmtTime(order.confirmedAt))
+      }
+      return stateCard(cls,'✅','已下单','企迈已接收本次订货单，后续物流会在物流信息中展示。','企迈单号：'+esc(order.qmaiDeclareNo)+' · 提交时间：'+fmtTime(order.confirmedAt))
+    }
+    return stateCard(cls,'✅','确认完成','本次确认数量均为 0，已跳过企迈下单。','提交时间：'+fmtTime(order.confirmedAt))
+  }
+  // submit_failed
+  var err=order.submitError||'提交企迈失败，请检查后重新提交。'
+  var attempts=order.syncAttempts||0
+  return stateCard(cls,'⚠️','提交失败',esc(err),'提交时间：'+fmtTime(order.confirmedAt)+(attempts>0?' · 已尝试 '+attempts+' 次':''))
+}
+
+function stateCard(cls,icon,title,note,meta){
+  return '<div class="state-card '+cls+'"><span class="sc-icon">'+icon+'</span>'
+    +'<div class="sc-body"><span class="sc-title">'+title+'</span>'
+    +'<span class="sc-note">'+note+'</span>'
+    +'<span class="sc-meta">'+meta+'</span></div></div>'
+}
+
+/* ==================== 关联单据（报货单拆单） ==================== */
+
+/** 订货单状态：0待审核 1待发货 2已部分发货 3已发货 4已驳回 5已取消 6已完成 */
+var RQ_STATUS={0:['待审核','orange'],1:['待发货','blue'],2:['部分发货','blue'],3:['已发货','green'],4:['已驳回','red'],5:['已取消','gray'],6:['已完成','gray']}
+
+/** 采购单状态：CGSQ=采购申请中（橙），CG=采购单（生成即待收货，行内按钮区分去收货/已收货） */
+
+/** 物料明细展开区（对齐入库单展示：入库单号 + 应收/实收/已收标记） */
+function itemsHtml(r){
+  var arr=r.items||[]
+  var head=''
+  if(r.inboundNo){
+    // 状态已由单据行标签表达，展开区只保留入库单号
+    head='<div class="rel-inbound"><span class="ri-in-no">入库单 '+esc(r.inboundNo)+'</span></div>'
+  }
+  if(!arr.length){
+    return '<div class="rel-items">'+head+'<div class="rel-items-note">'
+      +(r.inboundNo?'暂无物料明细':'到货后生成入库单可见物料明细')
+      +'</div></div>'
+  }
+  return '<div class="rel-items">'+head
+    +arr.map(function(it){
+      var rec=''
+      if(it.received!=null){
+        rec=it.received===1
+          ?'<span class="ri-rec">已收 '+fmtNum(it.receivedQty)+'</span>'
+          :'<span class="ri-note">待收</span>'
+      }
+      return '<div class="rel-item"><span class="ri-left"><span class="ri-name">'+esc(it.productName||'')+'</span>'
+        +(it.productSpec?'<span class="ri-spec">'+esc(it.productSpec)+'</span>':'')
+        +'</span><span class="ri-right"><span class="ri-qty">'+fmtNum(it.productNum)+' <span class="ri-unit">'+(it.productUnit||'')+'</span></span>'+rec+'</span></div>'
+    }).join('')
+    +(r.inboundNo?'':'<div class="rel-items-note">报货单物料 · 到货生成入库单后以实际到货为准</div>')
+    +'</div>'
+}
+
+function relRowHtml(no,sub,lb,btn,r,expandable){
+  var arrow=expandable?'<span class="rel-arrow">▾</span>':''
+  // 展开/收起箭头放单号前，状态由右侧标签表达
+  return '<div class="rel-row'+(expandable?'" onclick="toggleRel(this)"':'"')+'>'
+    +arrow
+    +'<span class="rel-no">'+esc(no)+'</span>'
+    +'<span class="rel-status '+lb[1]+'">'+lb[0]+'</span>'
+    +btn+'</div>'
+    +(expandable?itemsHtml(r):'')
+}
+
+/** 点击单行展开/收起物料明细（默认展开；class + 显式 display 双保险） */
+function toggleRel(row){
+  row.classList.toggle('open')
+  var open=row.classList.contains('open')
+  var items=row.nextElementSibling
+  if(items&&items.classList.contains('rel-items')){
+    items.style.display=open?'none':'block'
+  }
+}
+
+/** 关联单据卡片：订货单（按配送中心，各自状态+物料）+ 采购单 */
+function relatedHtml(rel){
+  var rs=rel.requireOrders||[],ps=rel.purchases||[]
+  if(!rs.length&&!ps.length)return ''
+  var html=''
+  if(rs.length){
+    html+='<div class="rel-card"><div class="rel-head"><span>订货单（按配送中心拆单）</span><span class="rel-count">'+rs.length+' 个</span></div>'
+      +rs.map(requireRowHtml).join('')+'</div>'
+  }
+  if(ps.length){
+    html+='<div class="rel-card"><div class="rel-head"><span>采购单</span><span class="rel-count">'+ps.length+' 个</span></div>'
+      +ps.map(purchaseRowHtml).join('')+'</div>'
+  }
+  return html
+}
+
+function requireRowHtml(r){
+  var btn=''
+  // 已发货(3) → 收货入口；本地已入库 → 只读；已关闭 → 无按钮；其余不显示
+  if(r.orderStatus===3){
+    if(r.inboundStatus==='pending'){
+      btn='<button class="rel-btn" onclick="event.stopPropagation();goReceive('+r.inboundId+')">去收货</button>'
+    }else if(r.inboundStatus==='done'){
+      btn='<button class="rel-btn done" onclick="event.stopPropagation()">已收货</button>'
+    }else if(r.inboundStatus!=='cancelled'){
+      // 已发货但本地无入库单（未同步）→ 点击提示先同步
+      btn='<button class="rel-btn" onclick="event.stopPropagation();goReceive(null)">去收货</button>'
+    }
+  }
+  // 状态：有本地入库单显示入库单状态（待入库/已入库/已关闭），无入库单且已发货=待收货，否则显示企迈状态
+  var lb
+  if(r.inboundStatus==='pending')lb=['待入库','orange']
+  else if(r.inboundStatus==='done')lb=requireInboundLb(r)
+  else if(r.inboundStatus==='cancelled')lb=['已关闭','gray']
+  else if(r.orderStatus===3)lb=['待收货','orange']
+  else lb=RQ_STATUS[r.orderStatus]||['--','gray']
+  return relRowHtml(r.requireNo,'',lb,btn,r,true)
+}
+
+/** 订货单入库状态标签：done 时区分全收/部分收 */
+function requireInboundLb(r){
+  var items=r.items||[]
+  var partial=items.some(function(i){return i.received===1&&Number(i.receivedQty)<Number(i.productNum)})
+  return partial?['部分收货','orange']:['已入库','green']
+}
+
+function purchaseRowHtml(p){
+  var btn=''
+  // 采购单（CG）生成即有入库单 → 直接收货入口；本地未同步 → 提示先同步；已关闭不可收货
+  if(p.type==='purchase'){
+    if(p.inboundStatus==='done'){
+      btn='<button class="rel-btn done" onclick="event.stopPropagation()">已收货</button>'
+    }else if(p.inboundStatus==='cancelled'){
+      btn=''
+    }else{
+      btn='<button class="rel-btn" onclick="event.stopPropagation();goReceive('+(p.inboundId?p.inboundId:'null')+')">去收货</button>'
+    }
+  }
+  // 状态：全收齐=已收货；实收不足应收=部分收货；未收=待入库；已关闭=已关闭
+  var lb=p.type==='purchase'?purchaseLb(p):['采购申请','orange']
+  return relRowHtml(p.purchaseNo,'',lb,btn,p,true)
+}
+
+/** 采购单状态标签：done 时区分全收/部分收；cancelled=已关闭 */
+function purchaseLb(p){
+  if(p.inboundStatus==='cancelled')return ['已关闭','gray']
+  if(p.inboundStatus!=='done')return ['待入库','orange']
+  var items=p.items||[]
+  var partial=items.some(function(i){return i.received===1&&Number(i.receivedQty)<Number(i.productNum)})
+  return partial?['部分收货','orange']:['已收货','green']
+}
+
+/** 去收货：有本地入库单 → 直达入库单收货页；未同步 → 提示先同步 */
+function goReceive(inboundId){
+  if(inboundId){
+    location.href='inbound-detail.html?id='+inboundId+'&token='+encodeURIComponent(TOKEN)
+    return
+  }
+  showToast('入库单尚未同步，请先在"入库管理"下拉同步后重试')
+}
+
+/** 数量是否超过总仓可用库存（qmStock 为 null=未查到，不做比对） */
+function overStock(it){
+  return it.qmStock!=null&&(Number(qtyMap[it.id])||0)>Number(it.qmStock)
+}
+
+function stockText(it){
+  var n=fmtNum(it.qmStock),u=it.qmStockUnit||it.stockUnit||''
+  return overStock(it)?('库存不足 · 总仓仅 '+n+(u?' '+u:'')):('总仓库存 '+n+(u?' '+u:''))
+}
+
+function rowHtml(it){
+  var selHtml=batchMode?'<span class="sel-box'+(selectedSet[it.id]?' checked':'')+'" onclick="toggleSel('+it.id+')"></span>':''
+  var info='<div class="r-info">'
+    +'<span class="r-name">'+esc(it.materialName||'')+'</span>'
+    +(it.spec?'<span class="r-spec">规格：'+esc(it.spec)+'</span>':'')
+  var chips=''
+  if(it.supportDays!=null)chips+='<span class="r-chip">可支撑 '+fmtNum(it.supportDays)+' 天</span>'
+  if(it.unitPrice!=null)chips+='<span class="r-chip">单价 '+fmtMoney(it.unitPrice)+(it.stockUnit?'/'+esc(it.stockUnit):'')+'</span>'
+  if(chips)info+='<span class="r-chips">'+chips+'</span>'
+  // 总仓实时库存标注（qmStock 为 null 不显示）；超量红色，行高亮
+  if(it.qmStock!=null)info+='<span class="r-stock'+(overStock(it)?' over':'')+'" id="stock-'+it.id+'">'+stockText(it)+'</span>'
+  info+='</div>'
+
+  var amt=itemAmount(it)
+  var amtHtml=amt!=null?'<span class="r-amount" id="amt-'+it.id+'">'+fmtMoney2(amt)+'</span>':''
+  var qty
+  if(isActionable()){
+    qty='<div class="r-qty">'
+      +'<button class="qty-btn" onclick="changeQty('+it.id+',-1)">-</button>'
+      +'<input class="qty-input" id="qty-'+it.id+'" type="text" inputmode="numeric" value="'+fmtNum(qtyMap[it.id])+'"'
+      +' oninput="onQtyInput('+it.id+',this.value)" onblur="onQtyBlur('+it.id+',this)" />'
+      +'<button class="qty-btn plus" onclick="changeQty('+it.id+',1)">+</button>'
+      +'<span class="qty-unit">'+esc(it.stockUnit||'')+'</span>'
+      +'</div>'
+  }else{
+    qty='<span class="r-locked">'+fmtNum(qtyMap[it.id])+' <span class="qty-unit">'+esc(it.stockUnit||'')+'</span></span>'
+  }
+  var kw=((it.materialName||'')+' '+(it.spec||'')+' '+(it.qmCode||'')+' '+(it.category||'')).toLowerCase()
+  return '<div class="row'+(overStock(it)?' over':'')+(batchMode&&selectedSet[it.id]?' sel':'')+'" data-id="'+it.id+'" data-search="'+esc(kw)+'">'+selHtml+info+'<div class="r-qty-col">'+qty+amtHtml+'</div></div>'
+}
+
+/** 数量变化后实时刷新库存标注（只改单元素，避免整页重绘闪烁） */
+function refreshStockMark(id){
+  var it=items.find(function(x){return x.id===id})
+  if(!it||it.qmStock==null)return
+  var el=document.getElementById('stock-'+id)
+  if(el){
+    el.className='r-stock'+(overStock(it)?' over':'')
+    el.textContent=stockText(it)
+  }
+  var row=document.querySelector('.row[data-id="'+id+'"]')
+  if(row)row.classList.toggle('over',overStock(it))
+}
+
+function render(){
+  if(!order){
+    document.getElementById('content').innerHTML='<div class="empty"><div class="empty-icon">🛒</div><div class="empty-text">订货单不存在</div></div>'
+    document.getElementById('fab').style.display='none'
+    return
+  }
+  var total=totalQty()
+  var st=order.status
+  var stCls=statusClass(st)
+  var html='<div class="overview">'
+    +'<span class="ov-title">'+esc(weekLabelOf(order.weekLabel)+'建议订货单')+'</span>'
+    +'<span class="ov-sub">系统生成本周建议订货清单。</span>'
+    +'<div class="metrics">'
+    +'<div class="metric"><span class="m-label">建议品项</span><span class="m-value">'+(order.itemCount||0)+'</span></div>'
+    +'<div class="metric"><span class="m-label">建议数量</span><span class="m-value green">'+fmtNum(total)+'</span></div>'
+    +'<div class="metric"><span class="m-label">状态</span><span class="m-value '+stCls+'">'+esc(statusText(st))+'</span></div>'
+    +'</div></div>'
+  html+=stateCardHtml()
+  if(order.related)html+=relatedHtml(order.related)
+  // 已提交后物料已按单展示在订货单/采购单展开区：隐藏全量"订货明细"块（避免单号与物料分离）；
+  // related 无任何物料时保留全量明细兜底，避免页面空白
+  var relItemsCount=0
+  if(order.related){
+    ;(order.related.requireOrders||[]).forEach(function(r){relItemsCount+=(r.items||[]).length})
+    ;(order.related.purchases||[]).forEach(function(p){relItemsCount+=(p.items||[]).length})
+  }
+  var showDetail=!(order.related&&relItemsCount>0)
+  if(items.length&&showDetail){
+    html+='<div class="search-bar">'
+      +'<input id="search-input" class="search-input" type="text" placeholder="搜索物料名称/规格/编码" oninput="onSearch(this.value)" />'
+      +'<button id="search-clear" class="search-clear" onclick="clearSearch()" style="display:none">✕</button>'
+      +'</div>'
+  }
+  if(showDetail){
+    html+='<div class="title-row"><span class="section-title">订货明细</span>'
+      +(isActionable()?(batchMode
+        ?'<div class="row-actions"><button class="del-btn primary" id="batch-del-title" onclick="confirmBatchDelete()">删除选中</button><button class="del-btn" onclick="exitBatch()">取消</button></div>'
+        :'<div class="row-actions"><button class="del-btn" onclick="enterBatch()">批量删除</button><button class="add-btn" onclick="goAdd()">＋ 添加物料</button></div>')
+        :'')
+      +'</div>'
+  }
+  if(showDetail){
+    if(items.length){
+      html+='<div class="table"><div class="table-head"><span>物料</span><span class="th-qty">建议订货量</span></div>'
+        +items.filter(function(it){return !deletedSet[it.id]}).map(rowHtml).join('')+'</div>'
+      html+='<div class="empty" id="no-match" style="display:none"><div class="empty-icon">🔍</div><div class="empty-text">无匹配物料</div></div>'
+    }else{
+      html+='<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">暂无物料明细</div></div>'
+    }
+  }
+  document.getElementById('content').innerHTML=html
+  applySearch()
+
+  // 底部栏：待确认/提交失败可操作；待支付显示"去支付"；批量模式下切换为 已选/取消/删除
+  var unpaid=isUnpaid()
+  document.getElementById('fab').style.display=(isActionable()||unpaid)?'block':'none'
+  document.getElementById('fab-total').textContent=fmtMoney2(totalAmount())
+  document.getElementById('fab-btn').textContent=unpaid?'去支付':(st==='submit_failed'?'重新提交':'确认订货')
+  document.getElementById('dlg-title').textContent=st==='submit_failed'?'重新提交':'确认订货'
+  refreshFab()
+}
+
+/** 批量选中数同步：标题行"删除选中(N)"（未选中置灰）+ 底部"删除选中(N)" + 已选计数 */
+function updateBatchUI(){
+  var n=Object.keys(selectedSet).length
+  var t=document.getElementById('batch-del-title')
+  if(t){t.textContent=n?'删除选中('+n+')':'删除选中';t.disabled=!n}
+  var b=document.getElementById('fab-batch-del')
+  if(b)b.textContent=n?'删除选中('+n+')':'删除选中'
+  var c=document.getElementById('sel-count')
+  if(c)c.textContent=n
+}
+
+/** 底部栏按钮按批量模式切换（不重建 DOM，避免闪烁） */
+function refreshFab(){
+  var batch=!!batchMode
+  var saveBtn=document.getElementById('fab-save')
+  if(saveBtn)saveBtn.style.display=(!batch&&isActionable())?'block':'none'
+  document.getElementById('fab-total-wrap').style.display=batch?'none':''
+  document.getElementById('fab-sel').style.display=batch?'':'none'
+  document.getElementById('fab-cancel-batch').style.display=batch?'':'none'
+  document.getElementById('fab-batch-del').style.display=batch?'':'none'
+  document.getElementById('fab-btn').style.display=batch?'none':''
+  updateBatchUI()
+}
+
+/** 刷新单行金额显示 */
+function refreshRowAmount(id){
+  var item=items.find(function(it){return it.id===id})
+  if(!item||item.unitPrice==null)return
+  var ae=document.getElementById('amt-'+id)
+  if(ae)ae.textContent=fmtMoney2((Number(qtyMap[id])||0)*Number(item.unitPrice))
+}
+
+function refreshQtyInput(id){
+  var el=document.getElementById('qty-'+id)
+  if(el)el.value=fmtNum(qtyMap[id])
+  refreshRowAmount(id)
+  document.getElementById('fab-total').textContent=fmtMoney2(totalAmount())
+  // 同步概览面板建议数量
+  var mv=document.querySelector('.metrics .m-value.green')
+  if(mv)mv.textContent=fmtNum(totalQty())
+}
+
+function changeQty(id,delta){
+  if(!isActionable()||acting)return
+  var v=Math.floor(Number(qtyMap[id])||0)+delta
+  if(v<=0){
+    markDeleted(id)
+    return
+  }
+  qtyMap[id]=v
+  dirty=true
+  refreshQtyInput(id)
+  refreshStockMark(id)
+}
+
+/** 数量为 1 时点"-"即删除该物料：行立即移除，保存后从订单删除 */
+function markDeleted(id){
+  if(!isActionable()||acting)return
+  deletedSet[id]=true
+  dirty=true
+  var row=document.querySelector('.row[data-id="'+id+'"]')
+  if(row)row.parentNode.removeChild(row)
+  applySearch()
+  document.getElementById('fab-total').textContent=fmtMoney2(totalAmount())
+  var mv=document.querySelector('.metrics .m-value.green')
+  if(mv)mv.textContent=fmtNum(totalQty())
+  showToast('已删除该物料，保存后生效')
+}
+
+function onQtyInput(id,val){
+  if(!isActionable())return
+  var v=parseFloat(val)
+  qtyMap[id]=isFinite(v)?Math.max(0,Math.floor(v)):0
+  dirty=true
+  refreshRowAmount(id)
+  refreshStockMark(id)
+  document.getElementById('fab-total').textContent=fmtMoney2(totalAmount())
+  var mv=document.querySelector('.metrics .m-value.green')
+  if(mv)mv.textContent=fmtNum(totalQty())
+}
+
+function onQtyBlur(id,el){
+  var v=parseFloat(el.value)
+  qtyMap[id]=isFinite(v)?Math.max(0,Math.floor(v)):0
+  dirty=true
+  refreshQtyInput(id)
+  refreshStockMark(id)
+}
+
+/** 搜索：按物料名/规格/编码/分类过滤明细行 */
+function onSearch(val){
+  searchKey=String(val||'').trim().toLowerCase()
+  document.getElementById('search-clear').style.display=searchKey?'block':'none'
+  applySearch()
+}
+
+function clearSearch(){
+  searchKey=''
+  var inp=document.getElementById('search-input')
+  if(inp)inp.value=''
+  document.getElementById('search-clear').style.display='none'
+  applySearch()
+}
+
+function applySearch(){
+  var rows=document.querySelectorAll('.row[data-search]')
+  var visible=0
+  for(var i=0;i<rows.length;i++){
+    var hit=!searchKey||rows[i].getAttribute('data-search').indexOf(searchKey)>=0
+    rows[i].style.display=hit?'':'none'
+    if(hit)visible++
+  }
+  var nm=document.getElementById('no-match')
+  if(nm){
+    var allDel=rows.length===0
+    nm.style.display=(visible===0&&(searchKey||allDel))?'block':'none'
+    if(nm.style.display==='block'){
+      nm.querySelector('.empty-text').textContent=searchKey?'无匹配物料':'已移除全部物料，提交时均视为不订'
+    }
+  }
+}
+
+/* ==================== 新增物料（跳转物料选择页） ==================== */
+
+/** 跳转前把已删/已改状态暂存 sessionStorage，返回时恢复 */
+function goAdd(){
+  if(!isActionable()||acting)return
+  try{
+    sessionStorage.setItem('sod_pending',JSON.stringify({deleted:deletedSet,qty:qtyMap}))
+    // 在单物料明细（id=明细行id，materialId=物料id，suggestQty=建议量），给添加页做预填，免去大响应请求
+    sessionStorage.setItem('sod_items',JSON.stringify(items.map(function(it){
+      return {id:it.id,materialId:it.materialId,suggestQty:Number(it.suggestQty)||0}
+    })))
+    sessionStorage.setItem('sod_back','1')
+  }catch(e){}
+  location.href='smart-order-add-item.html?v=7&token='+encodeURIComponent(TOKEN)+'&id='+encodeURIComponent(ID)
+}
+
+/** 底部主按钮：待支付走"去支付"，其余走"确认订货" */
+function fabClick(){
+  if(isUnpaid())openPayDlg()
+  else openDlg()
+}
+
+/** 水果蔬菜类不参与总仓库存拦截（企迈不记录生鲜库存，显示照旧、下单不拦） */
+function isNoStockCheck(it){
+  return it.category&&String(it.category).indexOf('水果蔬菜')>=0
+}
+
+/** 超量物料清单：下单数量 > 总仓可用库存（qmStock 为 null 或水果蔬菜类不参与） */
+function stockIssues(){
+  var list=[]
+  items.forEach(function(it){
+    if(deletedSet[it.id]||it.qmStock==null||isNoStockCheck(it))return
+    var q=Number(qtyMap[it.id])||0
+    if(q>0&&q>Number(it.qmStock))list.push({name:it.materialName||'',stock:it.qmStock,unit:it.stockUnit||''})
+  })
+  return list
+}
+
+function openDlg(){
+  if(acting)return
+  // 数量必须 ≤ 总仓库存才能下单：超量时阻止并提示第一个超量物料
+  var issues=stockIssues()
+  if(issues.length){
+    var it=issues[0]
+    showToast('「'+it.name+'」数量超过总仓库存（仅 '+fmtNum(it.stock)+(it.unit?' '+it.unit:'')+'），请调整后再提交')
+    return
+  }
+  document.getElementById('dlg-body').innerHTML='本次合计金额 <b style="color:#E58A2D">'+fmtMoney2(totalAmount())+'</b>，<br>确认后提交企迈生成订货单，数量可改为 0 表示本次不订。'
+  var ok=document.getElementById('dlg-ok')
+  ok.textContent='确认提交';ok.style.background='';ok.onclick=submitConfirm
+  document.getElementById('dlg').style.display='flex'
+}
+
+/* ==================== 批量删除 ==================== */
+function enterBatch(){
+  if(!isActionable()||acting)return
+  batchMode=true;selectedSet={}
+  // 只改必要部分，不整页重绘（避免顶部模块闪烁、搜索框被清空）
+  var trow=document.querySelector('.title-row')
+  if(trow)trow.innerHTML='<span class="section-title">订货明细</span><div class="row-actions"><button class="del-btn primary" id="batch-del-title" onclick="confirmBatchDelete()">删除选中</button><button class="del-btn" onclick="exitBatch()">取消</button></div>'
+  Array.prototype.forEach.call(document.querySelectorAll('#content .row'),function(row){
+    if(row.querySelector('.sel-box'))return
+    var box=document.createElement('span')
+    box.className='sel-box'
+    box.setAttribute('onclick','toggleSel('+row.getAttribute('data-id')+')')
+    row.insertBefore(box,row.firstChild)
+  })
+  refreshFab()
+  showToast('勾选要删除的物料后点"删除选中"')
+}
+function exitBatch(){
+  if(!batchMode)return
+  batchMode=false;selectedSet={}
+  render()
+}
+function toggleSel(id){
+  if(!batchMode)return
+  if(selectedSet[id])delete selectedSet[id]
+  else selectedSet[id]=true
+  var row=document.querySelector('.row[data-id="'+id+'"]')
+  if(row)row.classList.toggle('sel',!!selectedSet[id])
+  var box=row&&row.querySelector('.sel-box')
+  if(box)box.classList.toggle('checked',!!selectedSet[id])
+  updateBatchUI()
+}
+function confirmBatchDelete(){
+  var n=Object.keys(selectedSet).length
+  if(!n){showToast('请先勾选要删除的物料');return}
+  document.getElementById('dlg-title').textContent='批量删除物料'
+  document.getElementById('dlg-body').innerHTML='确定删除选中的 <b style="color:#E05A47">'+n+'</b> 个物料？<br>删除后需点击"保存"生效。'
+  var ok=document.getElementById('dlg-ok')
+  ok.textContent='删除';ok.style.background='#E05A47';ok.onclick=doBatchDelete
+  document.getElementById('dlg').style.display='flex'
+}
+function doBatchDelete(){
+  var ids=Object.keys(selectedSet)
+  ids.forEach(function(id){deletedSet[id]=true})
+  dirty=true
+  // 只移除选中行，不整页重绘（避免顶部模块闪烁白屏）
+  ids.forEach(function(id){
+    var row=document.querySelector('.row[data-id="'+id+'"]')
+    if(row)row.parentNode.removeChild(row)
+  })
+  batchMode=false;selectedSet={}
+  // 标题行恢复：批量删除 + 添加物料
+  var trow=document.querySelector('.title-row')
+  if(trow)trow.innerHTML='<span class="section-title">订货明细</span><div class="row-actions"><button class="del-btn" onclick="enterBatch()">批量删除</button><button class="add-btn" onclick="goAdd()">＋ 添加物料</button></div>'
+  // 移除剩余行前的勾选框
+  Array.prototype.forEach.call(document.querySelectorAll('#content .row .sel-box'),function(box){box.parentNode.removeChild(box)})
+  // 全部删光时表格替换为空态
+  if(!document.querySelector('#content .row')){
+    var tb=document.querySelector('#content .table')
+    if(tb)tb.outerHTML='<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">暂无物料明细</div></div>'
+  }
+  document.getElementById('dlg').style.display='none'
+  var ok=document.getElementById('dlg-ok')
+  ok.textContent='确认提交';ok.style.background='';ok.onclick=submitConfirm
+  refreshFab()
+  applySearch()
+  // 合计与概览建议数量同步
+  document.getElementById('fab-total').textContent=fmtMoney2(totalAmount())
+  var mv=document.querySelector('.metrics .m-value.green')
+  if(mv)mv.textContent=fmtNum(totalQty())
+  showToast('已删除 '+ids.length+' 个物料，保存后生效')
+}
+
+/* ==================== 去支付（待支付引导） ==================== */
+
+function openPayDlg(){
+  if(acting)return
+  var no=document.getElementById('pay-no')
+  if(no)no.textContent=order&&order.qmaiDeclareNo?order.qmaiDeclareNo:''
+  document.getElementById('pay-dlg').style.display='flex'
+}
+
+function closePayDlg(){
+  document.getElementById('pay-dlg').style.display='none'
+}
+
+/** 复制报货单号：优先 Clipboard API，降级 execCommand（微信 WebView 兼容） */
+function copyPayNo(){
+  var no=order&&order.qmaiDeclareNo?order.qmaiDeclareNo:''
+  if(!no){showToast('报货单号为空');return}
+  function ok(){showToast('已复制报货单号')}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(no).then(ok,function(){fallbackCopy(no,ok)})
+  }else{
+    fallbackCopy(no,ok)
+  }
+}
+
+function fallbackCopy(text,ok){
+  var ta=document.createElement('textarea')
+  ta.value=text
+  ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0'
+  document.body.appendChild(ta)
+  ta.select()
+  try{document.execCommand('copy');ok()}catch(e){showToast('复制失败，请长按单号选择复制')}
+  document.body.removeChild(ta)
+}
+
+function closeDlg(){
+  document.getElementById('dlg').style.display='none'
+}
+
+function submitConfirm(){
+  if(acting)return
+  // 后端同样硬校验，这里兜底防绕行
+  var issues=stockIssues()
+  if(issues.length){
+    showToast('存在超过总仓库存的物料，请调整后再提交')
+    return
+  }
+  acting=true
+  // 已删除的明细不提交（保存后服务端已无该明细），避免"明细不存在"报错
+  var payload={items:items.filter(function(it){return !deletedSet[it.id]}).map(function(it){return {itemId:it.id,qty:Number(qtyMap[it.id])||0}})}
+  xhr('PUT',API+'/smart-order/'+ID+'/confirm',payload,function(){
+    acting=false
+    closeDlg()
+    showToast('已提交，请到企迈APP付款')
+    pendingPayDlg=true
+    load()
+  },function(){
+    acting=false
+  })
+}
+
+/** 保存修改：删除的明细调 DELETE，数量变化调 POST 更新，全部成功才刷新服务端状态 */
+function saveChanges(){
+  if(!isActionable()||acting)return
+  var tasks=[]
+  items.forEach(function(it){
+    if(deletedSet[it.id]){tasks.push({method:'DELETE',url:API+'/smart-order/'+ID+'/items/'+it.id,body:null});return}
+    var cur=Number(qtyMap[it.id])||0
+    if(cur===0){tasks.push({method:'DELETE',url:API+'/smart-order/'+ID+'/items/'+it.id,body:null});return}
+    if(cur!==(origQty[it.id]||0))tasks.push({method:'POST',url:API+'/smart-order/'+ID+'/items',body:{materialId:it.materialId,qty:cur}})
+  })
+  if(!tasks.length){showToast('没有需要保存的修改');return}
+  acting=true
+  var i=0
+  function next(){
+    if(i>=tasks.length){
+      acting=false
+      showToast('已保存')
+      load()
+      return
+    }
+    var t=tasks[i++]
+    xhr(t.method,t.url,t.body,function(){next()},function(err){
+      acting=false
+      if(err)showToast(err)
+      else showToast('保存失败，请重试')
+    })
+  }
+  next()
+}
+
+// 从物料选择页返回：重新拉取服务端数据并合并暂存的已删/已改状态
+function onBackFromAdd(){
+  if(!sessionStorage.getItem('sod_back'))return
+  sessionStorage.removeItem('sod_back')
+  sessionStorage.removeItem('sod_items')
+  load(true)
+}
+window.addEventListener('pageshow',onBackFromAdd)
+document.addEventListener('visibilitychange',function(){if(!document.hidden)onBackFromAdd()})
+
+load()
+</script>
+</body>
+</html>

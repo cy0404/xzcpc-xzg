@@ -3,6 +3,9 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { fetchZoneMaterials, saveZone, itemSave } from '@/api/zone'
 import { fetchCandidates, addMaterial, sortMaterials } from '@/api/material'
+
+// ---- 功能开关：暂时隐藏新增物料功能，恢复时改为 true ----
+const ENABLE_ADD_MATERIAL = false
 import { request } from '@/utils/request'
 import { materialDisplayName } from '@/utils/formatter'
 import EmptyState from '@/components/EmptyState.vue'
@@ -20,6 +23,7 @@ const materials = ref<any[]>([])
 const searchKey = ref('')
 const showPending = ref(true)
 const showDone = ref(true)
+const activeCategory = ref('')
 const focusMaterialId = ref('')
 const focusMaterialName = ref('')
 const locateMode = ref(false)
@@ -244,6 +248,35 @@ const doneCount = computed(() => completed.value.length)
 const totalCount = computed(() => materials.value.length)
 const progressPercent = computed(() => totalCount.value ? Math.round(doneCount.value / totalCount.value * 100) : 0)
 
+/** 分类映射：二级=半成品 → 半成品；一级=自购食材成本 → 食材物料；否则取一级 */
+function mapCategory(m: any): string {
+  const cat = (m.category || '').trim()
+  const pCat = (m.parentCategory || '').trim()
+  if (cat === '半成品') return '半成品'
+  let label = pCat === '自购食材成本' ? '食材物料' : (pCat || '其他')
+  return label.replace('成本', '物料')
+}
+
+const categories = computed(() => {
+  const map = new Map<string, number>()
+  for (const m of materials.value) {
+    const c = mapCategory(m)
+    map.set(c, (map.get(c) || 0) + 1)
+  }
+  const list = Array.from(map.entries()).map(([name, count]) => ({ name, count }))
+  list.sort((a, b) => {
+    if (a.name === '其他') return 1
+    if (b.name === '其他') return -1
+    return 0
+  })
+  return list
+})
+
+function categoryFilter(list: any[]) {
+  if (!activeCategory.value) return list
+  return list.filter(m => mapCategory(m) === activeCategory.value)
+}
+
 const isAirportStore = computed(() => (storeName.value || '').includes('机场'))
 
 const airportFilter = (list: any[]) => {
@@ -260,8 +293,8 @@ const searchFilter = (list: any[]) => {
   const kw = searchKey.value.trim().toLowerCase()
   return filtered.filter(m => (m.materialName || '').toLowerCase().includes(kw))
 }
-const filteredPending = computed(() => searchFilter(airportFilter(pending.value)))
-const filteredCompleted = computed(() => searchFilter(airportFilter(completed.value)))
+const filteredPending = computed(() => categoryFilter(searchFilter(airportFilter(pending.value))))
+const filteredCompleted = computed(() => categoryFilter(searchFilter(airportFilter(completed.value))))
 
 const displayList = computed(() => editMode.value ? editList.value : materials.value)
 const hasRule = (m: any) => m.inventoryRule?.ruleStatus === 'maintained'
@@ -576,6 +609,7 @@ function clearSearch() {
   parsedVoiceQty.value = null
   parsedVoiceUnit.value = ''
   voiceHintText.value = ''
+  activeCategory.value = ''
 }
 
 /** 点击待盘物料：多单位打开抽屉，单单位有语音值则快速保存 */
@@ -910,6 +944,7 @@ watch([searchKey, voiceSearchVersion, filteredPending, filteredCompleted], () =>
   } else {
     voiceHintText.value = ''
   }
+  if (!ENABLE_ADD_MATERIAL) { extResults.value = []; extLoading.value = false; return }
   if (extTimer) clearTimeout(extTimer)
   extLoading.value = true
   extTimer = setTimeout(async () => {
@@ -1025,6 +1060,10 @@ async function confirmExtDrawer() {
         <text class="filter-btn" :class="{active:showPending&&!showDone}" @click="showPending=true;showDone=false">待盘 {{ pendingCount }}</text>
         <text class="filter-btn" :class="{active:!showPending&&showDone}" @click="showPending=false;showDone=true">已盘 {{ doneCount }}</text>
       </view>
+      <view class="filter-row cat-row" v-if="!editMode && categories.length > 1">
+        <text class="cat-btn" :class="{active:!activeCategory}" @click="activeCategory=''">全部 {{ totalCount }}</text>
+        <text v-for="c in categories" :key="c.name" class="cat-btn" :class="{active:activeCategory===c.name}" @click="activeCategory=c.name">{{ c.name }} {{ c.count }}</text>
+      </view>
       <view v-if="voiceHintText" class="voice-hint">
         <text>{{ voiceHintText }}</text>
       </view>
@@ -1043,7 +1082,10 @@ async function confirmExtDrawer() {
               </view>
               <view class="mr-info">
                 <text class="mr-name">{{ materialDisplayName(m) }}</text>
-                <text class="mr-desc">{{ m.spec || '--' }}</text>
+                <view class="mr-sub">
+                  <text class="mr-desc">{{ m.spec || '--' }}</text>
+                  <text class="mr-cat">{{ mapCategory(m) }}</text>
+                </view>
               </view>
               <view v-if="!isMultiUnit(m)" class="mr-input-wrap" @click.stop>
                 <input class="mr-input" type="digit" placeholder="0" :value="m.inputQtyRaw||''" @blur="(e:any)=>quickSave(m,e.detail.value)" />
@@ -1060,7 +1102,10 @@ async function confirmExtDrawer() {
               <view class="mr-icon check">✓</view>
               <view class="mr-info">
                 <text class="mr-name done-name">{{ materialDisplayName(m) }}</text>
-                <text class="mr-desc done-desc">{{ breakdownText(m) }}</text>
+                <view class="mr-sub">
+                  <text class="mr-desc done-desc">{{ breakdownText(m) }}</text>
+                  <text class="mr-cat">{{ mapCategory(m) }}</text>
+                </view>
               </view>
               <view class="mr-done">
                 <text class="mr-val">{{ m.inputQty||'--' }} {{ m.unit || baseUnit(m) }}</text>
@@ -1100,8 +1145,8 @@ async function confirmExtDrawer() {
       </template>
 
       <!-- 搜索物料库 -->
-      <view v-if="!editMode && extLoading && !locateMode" class="ext-hint">搜索物料库中...</view>
-      <template v-if="!editMode && !locateMode && !extLoading && searchKey">
+      <view v-if="ENABLE_ADD_MATERIAL && !editMode && extLoading && !locateMode" class="ext-hint">搜索物料库中...</view>
+      <template v-if="ENABLE_ADD_MATERIAL && !editMode && !locateMode && !extLoading && searchKey">
         <template v-if="extResults.length > 0">
           <view class="ext-not-found">未在本区域的物料</view>
           <view class="ext-list">
@@ -1139,7 +1184,10 @@ async function confirmExtDrawer() {
         <view class="dh"></view>
         <view class="drawer-head">
           <view>
-            <text class="dht">{{ materialDisplayName(drawerItem) }}</text>
+            <view class="drawer-title-row">
+              <text class="dht">{{ materialDisplayName(drawerItem) }}</text>
+              <text class="drawer-cat">{{ mapCategory(drawerItem) }}</text>
+            </view>
             <text class="dhs" v-if="drawerItem.spec">{{ drawerItem.spec }}</text>
           </view>
           <text class="dhx" @click="discardDrawer">✕</text>
@@ -1211,7 +1259,7 @@ async function confirmExtDrawer() {
       </view>
     </view>
 
-    <view v-if="extDrawerItem" class="mask" @click="closeExtDrawer" @touchmove.stop.prevent>
+    <view v-if="ENABLE_ADD_MATERIAL && extDrawerItem" class="mask" @click="closeExtDrawer" @touchmove.stop.prevent>
       <view class="drawer" @click.stop>
         <view class="dh"></view>
         <view class="drawer-head">
@@ -1254,7 +1302,7 @@ async function confirmExtDrawer() {
       </view>
     </view>
 
-    <view v-if="addSearchVisible" class="mask" @click="addSearchVisible=false">
+    <view v-if="ENABLE_ADD_MATERIAL && addSearchVisible" class="mask" @click="addSearchVisible=false">
       <view class="sheet" @click.stop>
         <view class="sh"></view>
         <view class="sheet-head">
@@ -1344,6 +1392,8 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .voice-hint{margin-top:16rpx;margin-bottom:12rpx;padding:16rpx 24rpx;background:#FFF8EE;border-radius:12rpx;border:2rpx solid #E58A2D;font-size:26rpx;color:#9A4F1F}
 .filter-btn{padding:14rpx 28rpx;border-radius:999rpx;border:2rpx solid $b;background:$s;font-size:26rpx;color:$t2;white-space:nowrap;flex-shrink:0}
 .filter-btn.active{background:$p;color:#fff;border-color:$p;font-weight:600}
+.cat-btn{padding:8rpx 20rpx;border-radius:999rpx;border:1rpx solid $b;background:$s;font-size:22rpx;color:$t3;white-space:nowrap;flex-shrink:0}
+.cat-btn.active{background:#E7F4EB;color:$p;border-color:$p;font-weight:500}
 
 .search-row{display:flex;gap:12rpx;margin-bottom:16rpx;align-items:center}
 .edit-tip{flex:1;font-size:26rpx;color:#E58A2D;font-weight:500}
@@ -1367,6 +1417,8 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .mr-icon{width:72rpx;height:72rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32rpx;flex-shrink:0}.mr-icon.green{background:$ps;color:$p}.mr-icon.gray{background:#FAFBF9;color:$t3}.mr-icon.check{background:$ps;color:$p;width:56rpx;height:56rpx;font-size:24rpx;font-weight:700}
 .mr-info{flex:1;min-width:0}.mr-name{display:block;font-size:28rpx;font-weight:400;color:$t1}.mr-name.done-name{font-size:28rpx;font-weight:400}
 .mr-desc{display:block;margin-top:4rpx;font-size:24rpx;color:$t3}.mr-desc.done-desc{font-size:22rpx}
+.mr-sub{display:flex;align-items:center;gap:12rpx;margin-top:4rpx}
+.mr-cat{font-size:20rpx;color:$p;background:#E7F4EB;padding:2rpx 10rpx;border-radius:6rpx;flex-shrink:0}
 .mr-done{text-align:right;flex-shrink:0}.mr-val{display:block;font-size:26rpx;font-weight:600;color:$t1}.mr-edit{display:block;margin-top:4rpx;font-size:22rpx;color:$p;padding:8rpx 0}
 .mr-input-wrap{display:flex;align-items:center;gap:8rpx;flex-shrink:0}
 .mr-input{width:120rpx;height:72rpx;text-align:center;font-size:30rpx;font-weight:500;border:2rpx solid $b;border-radius:12rpx;background:#FAFBF9}
@@ -1414,7 +1466,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .mask{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;background:rgba(31,36,33,.4)}
 .drawer{width:100%;max-height:92vh;border-radius:32rpx 32rpx 0 0;background:$s;display:flex;flex-direction:column;overflow:hidden}
 .dh{width:80rpx;height:6rpx;border-radius:999rpx;background:$b;margin:16rpx auto;flex-shrink:0}
-.drawer-head{display:flex;align-items:flex-start;justify-content:space-between;padding:8rpx 32rpx 10rpx;border-bottom:2rpx solid #EEF1EF;flex-shrink:0}.dht{display:block;font-size:34rpx;font-weight:700;color:$t1}.dhs{display:block;margin-top:4rpx;font-size:24rpx;color:$t2}.dhx{font-size:48rpx;font-weight:700;color:$t2;flex-shrink:0;margin-left:16rpx;padding:8rpx}
+.drawer-head{display:flex;align-items:flex-start;justify-content:space-between;padding:8rpx 32rpx 10rpx;border-bottom:2rpx solid #EEF1EF;flex-shrink:0}.drawer-title-row{display:flex;align-items:center;gap:12rpx}.dht{font-size:34rpx;font-weight:700;color:$t1}.dhs{display:block;margin-top:4rpx;font-size:24rpx;color:$t2}.drawer-cat{font-size:22rpx;color:$p;background:#E7F4EB;padding:2rpx 12rpx;border-radius:6rpx;flex-shrink:0}.dhx{font-size:48rpx;font-weight:700;color:$t2;flex-shrink:0;margin-left:16rpx;padding:8rpx}
 .drawer-body{padding:12rpx 32rpx 8rpx;display:flex;flex-direction:column;gap:12rpx;flex-shrink:0}
 .drawer-tabs{display:flex;margin:0 32rpx 8rpx;padding:6rpx;background:#F3F5F4;border-radius:16rpx;gap:6rpx;flex-shrink:0}
 .dtab{flex:1;height:72rpx;border-radius:12rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:600;color:$t2}

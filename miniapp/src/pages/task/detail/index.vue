@@ -174,6 +174,14 @@ function goZoneEntry(zone: any) {
 }
 function goSummary() { uni.navigateTo({ url: `/pages/task/summary/index?taskId=${taskId.value}` }) }
 function fmtDeadline(d: string) { if (!d) return '--'; return d.replace('T', ' ').substring(0, 16) }
+/** 盘点周期展示：周盘显示 2026年第34周，月盘显示 2026-08 */
+function taskPeriod(t: any) {
+  if (t.taskType === 'weekly') {
+    const m = /^(\d{4})-W(\d{2})$/.exec(t.taskWeek || '')
+    return m ? `${m[1]}年第${Number(m[2])}周` : (t.taskWeek || t.taskMonth || '--')
+  }
+  return t.taskMonth || '--'
+}
 function zoneProgress(z: any) { if (!z.total) return 0; return Math.round(((z.entered || 0) / z.total) * 100) }
 
 async function doAddZone() {
@@ -291,7 +299,7 @@ async function saveAndExit() {
         <text class="info-title">{{ detail.taskName }}</text>
         <view class="info-rows">
           <view class="ir"><text class="irk">盘点门店</text><text class="irv">{{ detail.storeName }}</text></view>
-          <view class="ir"><text class="irk">盘点周期</text><text class="irv">{{ detail.taskMonth }}</text></view>
+          <view class="ir"><text class="irk">盘点周期</text><text class="irv">{{ taskPeriod(detail) }}</text></view>
           <view class="ir"><text class="irk">截止时间</text><text class="irv danger">{{ fmtDeadline(detail.deadline) }}</text></view>
         </view>
       </view>

@@ -103,26 +103,39 @@ public class FeishuWebhookAlertService {
     }
 
     /**
-     * 格式化堆栈信息，截断过长的堆栈。
+     * 格式化堆栈信息（含根因链），截断过长的堆栈。
+     * 顶层异常最多打印 MAX_STACK_LINES 帧，每层 cause 只打印前 3 帧摘要，深度上限 5 层。
      */
     private String formatStackTrace(Throwable e) {
-        StackTraceElement[] elements = e.getStackTrace();
         StringBuilder sb = new StringBuilder();
-        sb.append(e.getClass().getName());
-        if (e.getMessage() != null) {
-            sb.append(": ").append(e.getMessage());
-        }
-        sb.append("\n");
+        Throwable t = e;
+        int depth = 0;
+        while (t != null && depth <= 5) {
+            if (depth > 0) sb.append("Caused by: ");
+            sb.append(t.getClass().getName());
+            if (t.getMessage() != null && !t.getMessage().isBlank()) {
+                String msg = t.getMessage();
+                if (msg.length() > MAX_MESSAGE_CHARS) {
+                    msg = msg.substring(0, MAX_MESSAGE_CHARS) + "...";
+                }
+                sb.append(": ").append(msg);
+            }
+            sb.append("\n");
 
-        int totalLines = elements.length;
-        int printLines = Math.min(totalLines, MAX_STACK_LINES);
-        for (int i = 0; i < printLines; i++) {
-            sb.append("    at ").append(elements[i].toString()).append("\n");
+            StackTraceElement[] elements = t.getStackTrace();
+            int printLines = (depth == 0)
+                    ? Math.min(elements.length, MAX_STACK_LINES)
+                    : Math.min(elements.length, 3);
+            for (int i = 0; i < printLines; i++) {
+                sb.append("    at ").append(elements[i].toString()).append("\n");
+            }
+            if (elements.length > printLines) {
+                sb.append("    ... (省略 ").append(elements.length - printLines).append(" 行)\n");
+            }
+            t = t.getCause();
+            depth++;
         }
-        if (totalLines > MAX_STACK_LINES) {
-            sb.append("    ... (共 ").append(totalLines).append(" 行，已省略 ")
-                    .append(totalLines - MAX_STACK_LINES).append(" 行)\n");
-        }
+        if (t != null) sb.append("... (根因链过长，已截断)\n");
 
         String result = sb.toString();
         if (result.length() > MAX_STACK_CHARS) {

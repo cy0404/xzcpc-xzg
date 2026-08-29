@@ -216,7 +216,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
     @Override
     public int batchCalculateUncounted() {
         List<Integer> taskIds = mysqlJdbc.queryForList(
-                "SELECT id FROM task WHERE status = 'submitted' AND del_flag = 0 " +
+                "SELECT id FROM task WHERE status = 'submitted' AND del_flag = 0 AND task_type = 'monthly' " +
                 "AND NOT EXISTS (SELECT 1 FROM inventory_difference d WHERE d.task_id = task.id AND d.del_flag = 0) " +
                 "ORDER BY id", Integer.class);
         log.info("批量计算 {} 个未计算任务", taskIds.size());
@@ -278,7 +278,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
             if (svStoreIds.isEmpty()) return Map.of("records", List.of(), "total", 0, "current", pageNum, "pages", 0);
             storeFilter += " AND t.store_id IN (" + svStoreIds.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")) + ")";
         }
-        String countSql = "SELECT COUNT(*) FROM task t WHERE t.status = 'submitted' AND t.submitted_at >= '2026-07-20' AND t.del_flag = 0 " + storeFilter;
+        String countSql = "SELECT COUNT(*) FROM task t WHERE t.status = 'submitted' AND t.submitted_at >= '2026-07-20' AND t.del_flag = 0 AND t.task_type = 'monthly' " + storeFilter;
         int total = mysqlJdbc.queryForObject(countSql, Integer.class);
 
         int offset = (pageNum - 1) * pageSize;
@@ -292,7 +292,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 "(SELECT ssa.admin_name FROM supervisor_store_access ssa WHERE ssa.store_id = t.store_id AND ssa.del_flag = 0 LIMIT 1) AS supervisorName, " +
                 "EXISTS(SELECT 1 FROM inventory_difference d3 WHERE d3.task_id = t.id AND d3.del_flag = 0) AS hasCalculated " +
                 "FROM task t " +
-                "WHERE t.status = 'submitted' AND t.submitted_at >= '2026-07-20' AND t.del_flag = 0 " + storeFilter +
+                "WHERE t.status = 'submitted' AND t.submitted_at >= '2026-07-20' AND t.del_flag = 0 AND t.task_type = 'monthly' " + storeFilter +
                 "ORDER BY largeDiffCount DESC, totalDiffQty DESC " +
                 "LIMIT " + pageSize + " OFFSET " + offset;
         List<Map<String, Object>> list = mysqlJdbc.queryForList(dataSql);
@@ -452,7 +452,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         }
 
         // 查询可用月份
-        String monthsSql = "SELECT DISTINCT t.task_month FROM task t WHERE t.status = 'submitted' AND t.submitted_at >= '2026-07-20' AND t.del_flag = 0 " + storeFilter + " ORDER BY t.task_month DESC";
+        String monthsSql = "SELECT DISTINCT t.task_month FROM task t WHERE t.status = 'submitted' AND t.submitted_at >= '2026-07-20' AND t.del_flag = 0 AND t.task_type = 'monthly' " + storeFilter + " ORDER BY t.task_month DESC";
         List<String> months = mysqlJdbc.queryForList(monthsSql, String.class);
 
         // 未传月份时只返回月份列表
@@ -469,7 +469,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 "AVG(d.diff_rate) AS avg_diff_rate " +
                 "FROM inventory_difference d " +
                 "JOIN task t ON d.task_id = t.id AND t.del_flag = 0 " +
-                "WHERE t.task_month = ? AND d.del_flag = 0 AND d.is_large = 1 " + storeFilter + " " +
+                "WHERE t.task_month = ? AND t.task_type = 'monthly' AND d.del_flag = 0 AND d.is_large = 1 " + storeFilter + " " +
                 "GROUP BY d.material_id, d.material_name, d.spec, d.unit " +
                 "ORDER BY store_count DESC, total_abs_diff_qty DESC";
         List<Map<String, Object>> materials = mysqlJdbc.queryForList(dataSql, taskMonth);
@@ -497,6 +497,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         try {
             Task t = taskMapper.selectOne(new LambdaQueryWrapper<Task>()
                     .eq(Task::getStoreId, storeId).eq(Task::getStatus, "submitted")
+                    .eq(Task::getTaskType, "monthly")
                     .lt(Task::getSubmittedAt, before)
                     .orderByDesc(Task::getSubmittedAt).last("LIMIT 1"));
             if (t != null && t.getSubmittedAt() != null) return t.getSubmittedAt();
@@ -510,6 +511,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         try {
             Task t = taskMapper.selectOne(new LambdaQueryWrapper<Task>()
                     .eq(Task::getStoreId, storeId).eq(Task::getStatus, "submitted")
+                    .eq(Task::getTaskType, "monthly")
                     .lt(Task::getSubmittedAt, before)
                     .orderByDesc(Task::getSubmittedAt).last("LIMIT 1"));
             return t != null ? t.getId() : null;
@@ -715,7 +717,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
             // 找上个月同门店已提交任务
             String sql = "SELECT sm.material_id, sm.adjusted_qty FROM task_material_summary sm " +
                     "JOIN task t ON sm.task_id = t.id AND t.del_flag = 0 " +
-                    "WHERE t.store_id = ? AND t.task_month = ? AND t.status = 'submitted' AND sm.del_flag = 0";
+                    "WHERE t.store_id = ? AND t.task_month = ? AND t.status = 'submitted' AND t.task_type = 'monthly' AND sm.del_flag = 0";
             List<Map<String, Object>> rows = mysqlJdbc.queryForList(sql, storeId, prevMonth);
             for (Map<String, Object> row : rows) {
                 String mid = (String) row.get("material_id");
@@ -1093,7 +1095,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         synchronized (calcLock) {
         List<Map<String, Object>> tasks = mysqlJdbc.queryForList(
                 "SELECT t.id, t.store_id, t.warehouse_code, t.task_month, t.submitted_at " +
-                "FROM task t WHERE t.status = 'submitted' AND t.del_flag = 0 " +
+                "FROM task t WHERE t.status = 'submitted' AND t.del_flag = 0 AND t.task_type = 'monthly' " +
                 "AND NOT EXISTS (SELECT 1 FROM inventory_difference d WHERE d.task_id = t.id AND d.del_flag = 0)");
 
         log.warn("doAutoCalc: 查询到 {} 个未计算任务", tasks.size());
@@ -1421,7 +1423,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
             String sql = "SELECT sm.material_id, t.store_id, t.task_month, COALESCE(SUM(sm.adjusted_qty), 0) AS qty " +
                     "FROM task_material_summary sm JOIN task t ON sm.task_id = t.id " +
                     "WHERE t.store_id IN (" + inStores + ") AND t.task_month IN (" + inMonths + ") " +
-                    "AND sm.material_id IN (" + inMats + ") AND t.status = 'submitted' AND sm.del_flag = 0 AND t.del_flag = 0 " +
+                    "AND sm.material_id IN (" + inMats + ") AND t.status = 'submitted' AND t.task_type = 'monthly' AND sm.del_flag = 0 AND t.del_flag = 0 " +
                     "GROUP BY sm.material_id, t.store_id, t.task_month";
             List<Map<String, Object>> rows = mysqlJdbc.queryForList(sql);
             for (Map<String, Object> row : rows) {

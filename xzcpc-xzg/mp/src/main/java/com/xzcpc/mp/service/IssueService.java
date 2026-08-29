@@ -33,6 +33,9 @@ public interface IssueService {
     /** 门店验收（仅 pending_acceptance 可验收 → resolved） */
     Issue accept(Long id, String remark);
 
+    /** 飞书卡片验收（无门店登录上下文，供卡片按钮回调；仅 pending_acceptance 可验收 → CLOSED） */
+    Issue acceptFromFeishu(Long id);
+
     /** 总部台账多条件分页 */
     Page<Issue> pageAll(String storeId, String supervisorName, String issueType, String urgency, String status,
                         String keyword, String startDate, String endDate, String source, int pageNum, int pageSize);

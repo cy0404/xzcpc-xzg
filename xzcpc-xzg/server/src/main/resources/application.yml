@@ -29,10 +29,10 @@ store:
     url: ${STORE_API_URL:http://119.45.162.160:5174/api/publish/entities/mendianxinxi/records}
     key: ${STORE_API_KEY}
 
-material:
+xinfo:
   api:
-    url: ${MATERIAL_API_URL:http://119.45.162.160:5174/api/publish/entities/yuancailiao/records}
-    key: ${STORE_API_KEY}
+    url: ${XINFO_API_URL:http://162.14.122.80:18088}
+    key: ${XINFO_API_KEY}
 
 mybatis-plus:
   configuration:
@@ -57,6 +57,8 @@ mp:
 feishu:
   app-id: cli_aa90f3d66d7adbb7
   app-secret: ${FEISHU_APP_SECRET}
+  # 未验收问题提醒：本地测试固定群 chat_id（local 环境配置后不按门店分组，只发该群；生产保持空走门店群）
+  issue-reminder-test-chat-id: ${FEISHU_ISSUE_REMINDER_TEST_CHAT_ID:}
   # 异常告警 → 飞书群自定义机器人 Webhook
   alert:
     enabled: ${FEISHU_ALERT_ENABLED:true}
@@ -79,3 +81,7 @@ xiangmu:
   enabled: false
   base-url: https://www.xzcpc-9pd.top
   records-api-key: wx3081dfa30167bb6e
+
+# 门店差评外部推送（复用象目 records-api-key）
+negative-review:
+  api-key: wx3081dfa30167bb6e

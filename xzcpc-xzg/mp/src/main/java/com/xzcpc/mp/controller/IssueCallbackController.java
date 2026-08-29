@@ -53,7 +53,7 @@ public class IssueCallbackController {
         String source = str(body.get("source"));
 
         if (!StringUtils.hasText(chatId)) {
-            throw new BusinessException("缺少 chatId");
+            throw new BusinessException(400, "缺少 chatId");
         }
         if (externalId == null) {
             throw new BusinessException("缺少 externalId");

@@ -26,7 +26,7 @@ public class DiffCalcJob {
         log.info("========== 月度差异计算开始 ==========");
         LocalDateTime cutoff = LocalDateTime.now();
         List<Integer> taskIds = jdbcTemplate.queryForList(
-                "SELECT id FROM task WHERE status = 'submitted' AND submitted_at < ? AND del_flag = 0 " +
+                "SELECT id FROM task WHERE status = 'submitted' AND submitted_at < ? AND del_flag = 0 AND task_type = 'monthly' " +
                 "AND NOT EXISTS (SELECT 1 FROM inventory_difference d WHERE d.task_id = task.id AND d.del_flag = 0) " +
                 "ORDER BY id", Integer.class, cutoff);
 

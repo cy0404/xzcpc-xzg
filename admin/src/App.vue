@@ -29,6 +29,9 @@
             <div class="nav-link" :class="{ active: menuKeyMap.issue }" v-if="canSeeTask" @click="go('/issue')">
               <QuestionCircleOutlined /><span>问题处理</span>
             </div>
+            <div class="nav-link" :class="{ active: menuKeyMap.feedback }" v-if="canSeeFeedback" @click="go('/feedback')">
+              <MessageOutlined /><span>问题反馈</span>
+            </div>
             <div class="nav-link" :class="{ active: menuKeyMap.loss }" v-if="canSeeTask" @click="go('/loss')">
               <ExclamationCircleOutlined /><span>报损管理</span>
             </div>
@@ -94,7 +97,7 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import zhCN from 'ant-design-vue/locale/zh_CN'
 import {
-  ContainerOutlined, ExclamationCircleOutlined, QuestionCircleOutlined,
+  ContainerOutlined, ExclamationCircleOutlined, QuestionCircleOutlined, MessageOutlined,
   SendOutlined, SwapOutlined, EnvironmentOutlined,
   SettingOutlined, PayCircleOutlined, UserOutlined, FileTextOutlined,
 } from '@ant-design/icons-vue'
@@ -108,6 +111,7 @@ const siderWidth = computed(() => collapsed.value ? '80px' : '220px')
 const canAccessAdmin = computed(() => { authRevision.value; return hasAdminAccess() })
 const isSupervisor = computed(() => { authRevision.value; return hasRole('supervisor_admin') })
 const canSeeTask = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('operation_admin') || isSupervisor.value) })
+const canSeeFeedback = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('operation_admin')) })
 const canSeeExpense = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('finance_admin') || isSupervisor.value) })
 const canSeePeople = computed(() => { authRevision.value; return canAccessAdmin.value && (hasRole('headquarters_admin') || hasRole('hr_admin') || isSupervisor.value) })
 const canSeeLogs = computed(() => { authRevision.value; return canAccessAdmin.value && hasRole('headquarters_admin') })
@@ -118,6 +122,7 @@ const menuKeyMap = computed(() => {
   return {
     tasks: p.startsWith('/tasks') || p.startsWith('/templates') || p.startsWith('/materials'),
     issue: p === '/issue',
+    feedback: p === '/feedback',
     loss: p.startsWith('/loss'),
     logistics: p === '/logistics',
     transfer: p === '/transfer',

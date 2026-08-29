@@ -18,6 +18,10 @@ public class AdminPermission {
     private Integer id;
 
     private String openId;
+
+    /** 飞书企业稳定ID(工号)，跨应用一致，外部接口对账键 */
+    private String userId;
+
     private String name;
     private String avatarUrl;
     private String email;

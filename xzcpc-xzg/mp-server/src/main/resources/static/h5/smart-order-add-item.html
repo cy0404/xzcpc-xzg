@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>添加物料</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;color:#1F2421;font-size:14px;display:flex;flex-direction:column;max-width:500px;margin:0 auto}
+
+.search-bar{display:flex;align-items:center;gap:8px;background:#fff;padding:8px 16px;flex-shrink:0;border-top:1px solid #EEF1EF}
+.search-input{flex:1;border:none;outline:none;background:#F5F6F4;border-radius:10px;padding:9px 12px;font-size:14px;color:#1F2421}
+.search-input::placeholder{color:#98A19C}
+.search-clear{border:none;background:#F5F6F4;color:#66706A;width:22px;height:22px;border-radius:50%;font-size:12px;line-height:1;cursor:pointer;padding:0;flex-shrink:0}
+
+.main{flex:1;display:flex;overflow:hidden}
+.cats{width:104px;overflow-y:auto;background:#F1F3F1;flex-shrink:0}
+.cat{padding:14px 8px;font-size:13px;color:#56605B;text-align:center;border-left:3px solid transparent;cursor:pointer;word-break:break-all}
+.cat.active{background:#fff;color:#2F8F57;font-weight:700;border-left-color:#2F8F57}
+.mats{flex:1;overflow-y:auto;padding:10px 12px 20px}
+
+.m-card{display:flex;flex-direction:column;gap:8px;background:#fff;border:1px solid #E8ECE9;border-radius:12px;padding:12px;margin-bottom:8px}
+.m-name{display:block;font-size:14px;font-weight:600;color:#1F2421;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-badge{font-size:10px;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:1px;font-weight:400;flex-shrink:0}
+.m-badge.in{color:#2F8F57;background:#F1F8F3}
+.m-badge.del{color:#E58A2D;background:#FFF8EE}
+.m-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.m-info{display:flex;align-items:baseline;gap:8px;flex:1;min-width:0}
+.m-spec{font-size:12px;color:#98A19C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.m-price{font-size:12px;font-weight:600;color:#E58A2D;flex-shrink:0}
+.m-stock{display:block;width:fit-content;font-size:11px;color:#66706A;background:#FAFBF9;border:1px solid #E8ECE9;border-radius:6px;padding:2px 8px;margin-top:4px}
+.m-stock.over{color:#E05A47;background:#FDEEEC;border-color:#F2C7BE;font-weight:600}
+.m-step{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.s-btn{width:28px;height:28px;border-radius:8px;border:1px solid #E8ECE9;background:#fff;color:#56605B;font-size:16px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center}
+.s-btn.plus{color:#2F8F57}
+.s-btn.disabled{opacity:.4;pointer-events:none}
+.s-btn:active{background:#F5F6F4}
+.s-input{width:44px;height:28px;border-radius:8px;border:1px solid #E8ECE9;text-align:center;font-size:14px;font-weight:600;color:#1F2421;outline:none;padding:0}
+.s-num{width:44px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#1F2421}
+.s-input:focus{border-color:#2F8F57;box-shadow:0 0 0 2px #E7F4EB}
+.hint{text-align:center;color:#98A19C;font-size:13px;padding:40px 0}
+
+.bbar{display:flex;align-items:center;gap:12px;padding:12px 16px;padding-bottom:calc(env(safe-area-inset-bottom)+12px);background:#fff;border-top:1px solid #EEF1EF;flex-shrink:0}
+.bb-cart{width:40px;height:40px;border-radius:50%;background:#F1F8F3;border:none;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
+.bb-cart:active{background:#E7F4EB}
+.bb-info{flex:1;min-width:0;cursor:pointer}
+.bb-count{display:block;font-size:12px;color:#66706A}
+.bb-amount{display:block;font-size:18px;font-weight:800;color:#E05A47;margin-top:2px}
+.bb-ok{height:44px;padding:0 26px;border-radius:12px;background:#2F8F57;color:#fff;font-size:15px;font-weight:700;border:none;cursor:pointer;flex-shrink:0}
+.bb-ok:active{opacity:.85}
+
+/* 已选物料抽屉 */
+.mask{position:fixed;inset:0;z-index:99;background:rgba(31,36,33,.4);display:flex;align-items:flex-end}
+.cart{width:100%;max-width:500px;margin:0 auto;background:#fff;border-radius:16px 16px 0 0;display:flex;flex-direction:column;max-height:70vh}
+.cart-handle{width:40px;height:4px;border-radius:999px;background:#D8DCD9;margin:8px auto 0;flex-shrink:0}
+.cart-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 6px;flex-shrink:0}
+.cart-title{font-size:16px;font-weight:700;color:#1F2421}
+.cart-close{border:none;background:none;font-size:18px;color:#66706A;cursor:pointer;padding:4px;line-height:1}
+.cart-list{flex:1;overflow-y:auto;padding:0 16px;min-height:120px}
+.cart-empty{text-align:center;color:#98A19C;font-size:13px;padding:40px 0}
+.cart-item{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #F5F6F4}
+.ci-info{flex:1;min-width:0}
+.ci-name{display:block;font-size:14px;font-weight:600;color:#1F2421;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci-detail{display:block;font-size:12px;color:#66706A;margin-top:2px}
+.ci-amt{font-size:13px;font-weight:700;color:#E05A47;flex-shrink:0}
+.cart-foot{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;padding-bottom:calc(env(safe-area-inset-bottom)+14px);border-top:1px solid #EEF1EF;flex-shrink:0}
+.cart-foot-label{font-size:14px;font-weight:600;color:#1F2421}
+.cart-foot-val{font-size:18px;font-weight:800;color:#E05A47}
+</style>
+</head>
+<body>
+<div class="search-bar">
+  <input id="search-input" class="search-input" type="text" placeholder="搜索物料名称/编码" oninput="onSearch(this.value)" />
+  <button id="search-clear" class="search-clear" onclick="clearSearch()" style="display:none">✕</button>
+</div>
+<div class="main">
+  <div class="cats" id="cats"><div class="hint">加载中...</div></div>
+  <div class="mats" id="mats"><div class="hint">加载中...</div></div>
+</div>
+<div class="bbar">
+  <button class="bb-cart" onclick="openCart()">🛒</button>
+  <div class="bb-info" onclick="openCart()">
+    <span class="bb-count" id="bb-count">已选 0 品项</span>
+    <span class="bb-amount" id="bb-amount">¥0.00</span>
+  </div>
+  <button class="bb-ok" onclick="done()">选好了</button>
+</div>
+
+<!-- 已选物料抽屉 -->
+<div class="mask" id="cart-mask" style="display:none" onclick="closeCart()">
+  <div class="cart" onclick="event.stopPropagation()">
+    <div class="cart-handle"></div>
+    <div class="cart-head">
+      <span class="cart-title">已选物料</span>
+      <button class="cart-close" onclick="closeCart()">✕</button>
+    </div>
+    <div class="cart-list" id="cart-list"></div>
+    <div class="cart-foot">
+      <span class="cart-foot-label">合计</span>
+      <span class="cart-foot-val" id="cart-total">¥0.00</span>
+    </div>
+  </div>
+</div>
+
+<script>
+var API=window.location.origin+window.location.pathname.split('/upload/')[0]+'/api/mp'
+var qs=new URLSearchParams(location.search)
+var TOKEN=qs.get('token')||'',ID=qs.get('id')||''
+
+var cats=[],curCat='',keyword='',mats=[],matMap={},sel={},existing={}
+var pending={deleted:{},qty:{}}
+var acting=false,loading=false,searchTimer=null
+
+function readJSON(k){
+  try{var v=sessionStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}
+}
+
+function showToast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:999;background:rgba(0,0,0,.85);color:#fff;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;max-width:80%;text-align:center';document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){document.body.contains(t)&&document.body.removeChild(t)},300)},2200)}
+
+function xhr(method,url,body,cb,onErr){
+  var x=new XMLHttpRequest();x.open(method,url);x.setRequestHeader('Content-Type','application/json')
+  if(TOKEN)x.setRequestHeader('Authorization','Bearer '+TOKEN)
+  x.onload=function(){
+    var txt=x.responseText||''
+    var d
+    try{d=JSON.parse(txt)}catch(e){
+      var m3='网络异常 HTTP'+x.status+': '+(e&&e.message||'解析失败')+' | '+txt.substring(0,100).replace(/\s+/g,' ')
+      if(onErr)onErr(m3);else showToast(m3)
+      return
+    }
+    if(d.code===401){var m1='登录已过期，请重新进入小程序';if(onErr)onErr(m1);else showToast(m1);return}
+    if(d.code!==200){var m2=d.message||d.msg||'操作失败';if(onErr)onErr(m2);else showToast(m2);return}
+    try{cb&&cb(d.data)}catch(e2){if(!onErr)showToast('页面处理出错: '+e2.message)}
+  }
+  x.onerror=function(){var m4='网络异常(网络层失败)';if(onErr)onErr(m4);else showToast(m4)}
+  x.send(body?JSON.stringify(body):null)
+}
+
+// 调试用：JS 运行错误直接弹出来，方便定位
+window.onerror=function(msg,src,line){try{showToast('JS错误 L'+line+': '+msg)}catch(e){}}
+
+function fmtMoney(n){return '¥'+(Number(n)||0).toLocaleString('zh-CN')}
+function fmtMoney2(n){
+  return '¥'+(Number(n)||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function fmtNum(n){
+  n=Number(n)
+  if(!isFinite(n))return '0'
+  if(Number.isInteger(n))return String(n)
+  var s=String(Math.round(n*100)/100)
+  return s.replace(/\.0+$/,'')
+}
+
+function goBack(){
+  try{history.back()}catch(e){}
+}
+
+/** 详情页暂存的编辑状态（删掉的、改过的数量） */
+function loadPending(){
+  var p=readJSON('sod_pending')
+  if(p){pending.deleted=p.deleted||{};pending.qty=p.qty||{}}
+}
+
+/** 在单物料当前应显示的数量：删了=0，改过=改的值，否则=服务端建议量 */
+function prefillOf(mid){
+  var ex=existing[mid]
+  if(!ex)return 0
+  if(pending.deleted[ex.id])return 0
+  if(pending.qty[ex.id]!=null)return Number(pending.qty[ex.id])||0
+  return ex.suggestQty||0
+}
+
+/** 在单物料：优先读详情页跳转前暂存的数据（避免大响应在部分 WebView 上解析失败） */
+var inOrder=readJSON('sod_items')||[]
+function buildExisting(){
+  existing={}
+  inOrder.forEach(function(it){
+    existing[it.materialId]={id:it.id,suggestQty:Number(it.suggestQty)||0}
+  })
+}
+function loadOrder(){
+  buildExisting()
+  if(inOrder.length)return // 有暂存就不请求
+  // 直接打开页面（无暂存）时静默拉取，失败不影响页面使用
+  xhr('GET',API+'/smart-order/'+ID+'?_t='+Date.now(),null,function(data){
+    inOrder=(data&&data.items)||[]
+    buildExisting()
+  },function(){})
+}
+
+function loadCats(){
+  xhr('GET',API+'/smart-order/materials/categories',null,function(data){
+    cats=data.list||[]
+    renderCats()
+  })
+}
+
+function renderCats(){
+  var el=document.getElementById('cats')
+  el.innerHTML='<div class="cat'+(curCat===''?' active':'')+'" data-c="" onclick="pickCat(this)">全部</div>'
+    +cats.map(function(c){
+      return '<div class="cat'+(curCat===c?' active':'')+'" data-c="'+esc(c)+'" onclick="pickCat(this)">'+esc(c)+'</div>'
+    }).join('')
+}
+
+function pickCat(el){
+  curCat=el.getAttribute('data-c')||''
+  renderCats()
+  loadMats()
+}
+
+function onSearch(val){
+  keyword=String(val||'').trim()
+  document.getElementById('search-clear').style.display=keyword?'block':'none'
+  clearTimeout(searchTimer)
+  searchTimer=setTimeout(loadMats,250)
+}
+
+function clearSearch(){
+  keyword=''
+  var inp=document.getElementById('search-input')
+  if(inp)inp.value=''
+  document.getElementById('search-clear').style.display='none'
+  loadMats()
+}
+
+function loadMats(){
+  loading=true
+  renderMats()
+  xhr('GET',API+'/smart-order/materials/search?keyword='+encodeURIComponent(keyword)+'&category='+encodeURIComponent(curCat),null,function(data){
+    mats=data.list||[]
+    mats.forEach(function(m){matMap[m.id]=m})
+    loading=false
+    renderMats()
+  })
+}
+
+function renderMats(){
+  var el=document.getElementById('mats')
+  if(loading){el.innerHTML='<div class="hint">加载中...</div>';return}
+  if(!mats.length){el.innerHTML='<div class="hint">'+(keyword||curCat?'无匹配物料':'暂无物料')+'</div>';return}
+  el.innerHTML=mats.map(function(m){
+    if(sel[m.id]===undefined)sel[m.id]=prefillOf(m.id)
+    var q=sel[m.id]
+    var ex=existing[m.id]
+    var soldOut=m.qmStock!=null&&Number(m.qmStock)<=0
+    var badge=ex?(q===0?'<span class="m-badge del" id="bd-'+m.id+'">已移除</span>':'<span class="m-badge in" id="bd-'+m.id+'">已在单中</span>'):''
+    // 只提示售罄，正常有库存的不展示数量（详情页才会展示库存）
+    var stockHtml=soldOut?'<span class="m-stock over">售罄 · 总仓无货</span>':''
+    return '<div class="m-card">'
+      +'<span class="m-name">'+esc(m.materialName||'')+badge+'</span>'
+      +'<div class="m-bottom">'
+      +'<div class="m-info">'
+      +(m.spec?'<span class="m-spec">'+esc(m.spec)+'</span>':'')
+      +'<span class="m-price">'+(m.unitPrice!=null?fmtMoney(m.unitPrice)+(m.stockUnit?'/'+esc(m.stockUnit):''):'--')+'</span>'
+      +'</div>'
+      +'<div class="m-step">'
+      +'<button class="s-btn'+(soldOut?' disabled':'')+'" onclick="chg('+m.id+',-1)">-</button>'
+      +'<input class="s-input" id="in-'+m.id+'" type="text" inputmode="numeric" value="'+q+'" oninput="typ('+m.id+',this)" onblur="blurQ('+m.id+',this)" />'
+      +'<button class="s-btn plus'+(soldOut?' disabled':'')+'" onclick="chg('+m.id+',1)">+</button>'
+      +'</div>'
+      +'</div>'
+      +stockHtml
+      +'</div>'
+  }).join('')
+  refreshBar()
+}
+
+/** ± 按钮 */
+function chg(mid,d){
+  var m=matMap[mid]
+  var q=Math.min(9999,Math.max(0,(sel[mid]||0)+d))
+  // 总仓库存约束：售罄不能加，数量不能超过可用库存（水果蔬菜类无 qmStock 不约束）
+  if(d>0&&m&&m.qmStock!=null){
+    if(Number(m.qmStock)<=0){showToast('「'+m.materialName+'」总仓已售罄，无法添加');return}
+    if(q>Number(m.qmStock)){showToast('「'+m.materialName+'」数量超过总仓库存（仅 '+fmtNum(m.qmStock)+(m.stockUnit?' '+m.stockUnit:'')+'）');return}
+  }
+  sel[mid]=q
+  var inp=document.getElementById('in-'+mid)
+  if(inp)inp.value=q
+  // 徽章同步：数量减到 0 = 已移除（等同删除）
+  var bd=document.getElementById('bd-'+mid)
+  if(bd){bd.className='m-badge '+(q===0?'del':'in');bd.textContent=q===0?'已移除':'已在单中'}
+  refreshBar()
+  renderCart() // 抽屉同步：数量为 1 点"-"即移出抽屉（=删除）
+}
+
+/** 键盘输入：只保留数字，最多 4 位 */
+function typ(mid,el){
+  var v=String(el.value).replace(/\D/g,'').slice(0,4)
+  if(el.value!==v)el.value=v
+  sel[mid]=v?parseInt(v,10):0
+  refreshBar()
+}
+
+function blurQ(mid,el){
+  el.value=sel[mid]||0
+}
+
+function refreshBar(){
+  var n=0,sum=0
+  for(var mid in sel){
+    var q=sel[mid]
+    if(q<=0)continue
+    n++
+    var m=matMap[mid]
+    if(m&&m.unitPrice!=null)sum+=q*Number(m.unitPrice)
+  }
+  document.getElementById('bb-count').textContent='已选 '+n+' 品项'
+  document.getElementById('bb-amount').textContent=fmtMoney2(sum)
+}
+
+/** 已选物料抽屉 */
+function selectedList(){
+  var list=[]
+  for(var mid in sel){
+    var q=sel[mid]
+    if(q<=0)continue
+    var m=matMap[mid]||{}
+    list.push({mid:parseInt(mid,10),qty:q,m:m})
+  }
+  list.sort(function(a,b){
+    return String(a.m.materialName||'').localeCompare(String(b.m.materialName||''),'zh')
+  })
+  return list
+}
+
+function openCart(){
+  renderCart()
+  document.getElementById('cart-mask').style.display='flex'
+}
+
+function closeCart(){
+  document.getElementById('cart-mask').style.display='none'
+}
+
+function renderCart(){
+  var list=selectedList()
+  var el=document.getElementById('cart-list')
+  if(!list.length){
+    el.innerHTML='<div class="cart-empty">暂无已选物料</div>'
+  }else{
+    el.innerHTML=list.map(function(e){
+      var unit=e.m.stockUnit?' '+esc(e.m.stockUnit):''
+      var amt=e.m.unitPrice!=null?fmtMoney2(e.qty*Number(e.m.unitPrice)):''
+      return '<div class="cart-item">'
+        +'<div class="ci-info">'
+        +'<span class="ci-name">'+esc(e.m.materialName||('物料'+e.mid))+'</span>'
+        +(unit?'<span class="ci-detail">'+unit.trim()+'</span>':'')
+        +'</div>'
+        +(amt?'<span class="ci-amt">'+amt+'</span>':'')
+        +'<div class="m-step">'
+        +'<button class="s-btn" onclick="chg('+e.mid+',-1)">-</button>'
+        +'<span class="s-num">'+e.qty+'</span>'
+        +'<button class="s-btn plus" onclick="chg('+e.mid+',1)">+</button>'
+        +'</div>'
+        +'</div>'
+    }).join('')
+  }
+  var sum=0
+  list.forEach(function(e){if(e.m.unitPrice!=null)sum+=e.qty*Number(e.m.unitPrice)})
+  document.getElementById('cart-total').textContent=fmtMoney2(sum)
+}
+
+/** 选好了：提交有变动的数量>0 物料（新物料插入、在单物料更新），再返回详情页 */
+function done(){
+  if(acting)return
+  var tasks=[]
+  for(var mid in sel){
+    var q=sel[mid]
+    if(q<=0)continue
+    if(existing[mid]&&q===prefillOf(mid))continue // 在单且数量未变，不提交
+    tasks.push({materialId:parseInt(mid,10),qty:q})
+  }
+  // 在单物料的最终数量（含改为 0 = 详情页恢复后标记删除），供详情页合并
+  var sodFinal={}
+  for(var mid2 in sel){
+    if(!existing[mid2])continue
+    var q2=sel[mid2]
+    if(q2!==prefillOf(mid2))sodFinal[mid2]=q2
+  }
+  // 总仓库存兜底校验：手动输入超过可用库存不允许提交（水果蔬菜类无 qmStock 不约束）
+  for(var mid3 in sel){
+    var q3=sel[mid3]
+    if(q3<=0)continue
+    var m3=matMap[mid3]
+    if(m3&&m3.qmStock!=null&&q3>Number(m3.qmStock)){
+      showToast('「'+m3.materialName+'」数量超过总仓库存（仅 '+fmtNum(m3.qmStock)+(m3.stockUnit?' '+m3.stockUnit:'')+'），请调整后再添加')
+      return
+    }
+  }
+  if(!tasks.length){
+    try{sessionStorage.setItem('sod_final',JSON.stringify(sodFinal))}catch(e){}
+    goBack()
+    return
+  }
+  acting=true
+  var i=0,newItems=[]
+  function next(){
+    if(i>=tasks.length){
+      acting=false
+      try{
+        sessionStorage.setItem('sod_final',JSON.stringify(sodFinal))
+        if(newItems.length)sessionStorage.setItem('sod_new',JSON.stringify(newItems))
+      }catch(e){}
+      goBack()
+      return
+    }
+    var t=tasks[i++]
+    xhr('POST',API+'/smart-order/'+ID+'/items',t,function(data){
+      // 后端返回插入/更新的明细行，带回详情页本地合并（真实 id），避免 GET 缓存看不到新物料
+      if(data&&data.id!=null)newItems.push(data)
+      next()
+    },function(err){
+      acting=false
+      if(err)showToast(err)
+      else showToast('添加失败，请重试')
+    })
+  }
+  next()
+}
+
+loadPending()
+loadOrder()
+loadCats()
+loadMats()
+</script>
+</body>
+</html>

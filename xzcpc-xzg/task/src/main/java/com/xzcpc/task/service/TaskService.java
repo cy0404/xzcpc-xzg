@@ -15,11 +15,17 @@ public interface TaskService {
     String getLatestMonth(); // 月盘任务服务接口
 
     Page<Task> page(String storeId, String supervisorName, String status, String keyword, String templateName,
-                    String taskMonth, int pageNum, int pageSize);
+                    String taskMonth, String taskType, int pageNum, int pageSize);
 
     void create(Task task); // 创建月盘任务（单门店）
 
     int batchCreate(TaskCreateRequest request); // 批量创建月盘任务（多门店）
+
+    /**
+     * 自动生成周盘任务（P2-A）：按门店配置的周盘点日，为盘点日在今天/明天的门店生成本周任务。
+     * 幂等：同店同周未提交任务已存在则跳过；无启用的 weekly 模板时全部跳过；暂停门店跳过。
+     */
+    Map<String, Object> autoGenerateWeekly();
 
     Task detail(Integer id); // 获取任务详情
 

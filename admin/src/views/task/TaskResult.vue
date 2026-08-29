@@ -66,9 +66,23 @@
             <a-tag v-if="formatUnitInputs(record.unitInputs)" color="processing">{{ formatUnitInputs(record.unitInputs) }}</a-tag>
             <a-tag v-else color="processing">{{ formatNumber(record.totalQuantity) }}{{ record.unit }}</a-tag>
           </template>
+          <template v-else-if="column.key === 'unitPrice'">
+            <span v-if="record.unitPrice != null">¥{{ formatNumber(record.unitPrice) }}</span>
+            <span v-else class="text-gray">--</span>
+          </template>
+          <template v-else-if="column.key === 'amount'">
+            <span v-if="record.amount != null" class="amount-cell">¥{{ (record.amount as number).toFixed(2) }}</span>
+            <span v-else class="text-gray">--</span>
+          </template>
           <template v-else>
             {{ record[column.dataIndex] }}
           </template>
+        </template>
+        <template #footer v-if="totalAmount > 0">
+          <div class="table-footer">
+            <span class="footer-label">盘点金额合计</span>
+            <span class="footer-amount">¥{{ totalAmount.toFixed(2) }}</span>
+          </div>
         </template>
       </a-table>
     </a-card>
@@ -98,12 +112,16 @@ const filteredSummary = computed(() => {
   return summaryData.value.filter((r: any) => (r.materialName || '').toLowerCase().includes(kw))
 })
 
+const totalAmount = ref(0)
+
 const summaryColumns = [
   { title: '物料名称', dataIndex: 'materialName', key: 'materialName', width: 120},
-  { title: '规格', dataIndex: 'spec', key: 'spec', width: 120 },
-  { title: '录入明细', key: 'multiUnit', width: 140 },
-  { title: '最小单位总量', key: 'totalQuantity', width: 110 },
-  { title: '单位', dataIndex: 'unit', key: 'unit', width: 72 },
+  { title: '规格', dataIndex: 'spec', key: 'spec', width: 100 },
+  { title: '录入明细', key: 'multiUnit', width: 130 },
+  { title: '单位', dataIndex: 'unit', key: 'unit', width: 60 },
+  { title: '单价', key: 'unitPrice', width: 72, align: 'right' as const },
+  { title: '最小单位总量', key: 'totalQuantity', width: 90 },
+  { title: '金额', key: 'amount', width: 88, align: 'right' as const },
 ]
 
 function statusLabel(s: string) { const m: any = { not_started: '未开始', in_progress: '进行中', submitted: '已提交' }; return m[s] || s || '-' }
@@ -132,6 +150,7 @@ async function fetchTaskResult() {
     const res: any = await getTaskResult(taskId)
     const d = res?.data
     if (d?.summary?.length) summaryData.value = d.summary
+    if (d?.totalAmount != null) totalAmount.value = Number(d.totalAmount)
   } catch { /* ignore */ }
 }
 
@@ -164,5 +183,10 @@ onMounted(initPage)
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
 .status-check { font-size: 11px; }
 .summary-table-card { border-radius: var(--radius, 8px); }
+.table-footer { display: flex; justify-content: flex-end; align-items: center; gap: 16px; }
+.footer-label { font-size: 14px; font-weight: 600; color: #374151; }
+.footer-amount { font-size: 16px; font-weight: 700; color: #e65c2e; }
+.amount-cell { font-weight: 600; color: #e65c2e; }
+.text-gray { color: #9ca3af; }
 @media (max-width: 992px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
 </style>

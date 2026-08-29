@@ -1,7 +1,9 @@
 package com.xzcpc.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.xzcpc.mp.entity.Issue;
 import com.xzcpc.mp.entity.LossReport;
+import com.xzcpc.mp.service.IssueService;
 import com.xzcpc.mp.service.LossReportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,7 +13,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * 飞书卡片回调：处理到货报损的确认/拒绝按钮
+ * 飞书卡片回调：处理到货报损的确认/拒绝按钮 + 未验收问题的已解决按钮
  */
 @Slf4j
 @RestController
@@ -20,6 +22,7 @@ import java.util.Map;
 public class FeishuCallbackController {
 
     private final LossReportService lossReportService;
+    private final IssueService issueService;
 
     /** 卡片回调：URL 验证 + 事件处理 */
     @PostMapping("/loss-callback")
@@ -37,12 +40,32 @@ public class FeishuCallbackController {
         try {
             JsonNode event = body.path("event");
             JsonNode action = event.path("action");
-            String rawValue = action.path("value").asText("");
-            if (rawValue.isEmpty()) return Map.of("code", 0);
 
-            String[] parts = rawValue.split(":", 2);
-            String act = parts[0];
-            long reportId = parts.length > 1 ? Long.parseLong(parts[1]) : 0;
+            // value 两种格式：新按钮 JSON 对象 {"action":"xxx","issue_id":1}；旧报损按钮字符串 "register:123"
+            String act = "";
+            long targetId = 0;
+            JsonNode vNode = action.path("value");
+            if (vNode != null && vNode.isObject()) {
+                act = vNode.path("action").asText("");
+                targetId = vNode.path("issue_id").asLong(0);
+            } else {
+                String rawValue = vNode.asText("");
+                if (!rawValue.isEmpty()) {
+                    String[] parts = rawValue.split(":", 2);
+                    act = parts[0];
+                    targetId = parts.length > 1 ? Long.parseLong(parts[1]) : 0;
+                }
+            }
+            if (act.isEmpty()) return Map.of("code", 0);
+
+            // ===== 未验收问题：已解决 =====
+            if ("issue_resolve".equals(act)) {
+                Issue i = issueService.acceptFromFeishu(targetId);
+                return Map.of("toast", Map.of("type", "success", "content", "已验收，问题已关闭"));
+            }
+
+            // ===== 到货报损：确认/拒绝 =====
+            long reportId = targetId;
             if (reportId == 0) return Map.of("code", 0);
 
             LossReport r = lossReportService.getById(reportId);
@@ -76,6 +99,8 @@ public class FeishuCallbackController {
             }
         } catch (Exception e) {
             log.error("飞书回调处理失败", e);
+            return Map.of("toast", Map.of("type", "error", "content",
+                    e.getMessage() != null ? e.getMessage() : "操作失败"));
         }
         return Map.of("code", 0);
     }

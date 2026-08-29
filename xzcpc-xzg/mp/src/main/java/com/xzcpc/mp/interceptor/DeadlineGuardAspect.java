@@ -29,6 +29,11 @@ public class DeadlineGuardAspect {
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         Method method = signature.getMethod();
 
+        // 智能订货：taskId 是生成入口的任务ID，非门店任务操作，不受盘点任务截止时间约束
+        if ("SmartOrderController".equals(signature.getDeclaringType().getSimpleName())) {
+            return;
+        }
+
         org.springframework.web.bind.annotation.RequestMapping reqMapping =
                 method.getAnnotation(org.springframework.web.bind.annotation.RequestMapping.class);
         if (reqMapping != null && isReadOnly(reqMapping.method())) {

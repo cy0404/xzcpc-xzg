@@ -16,6 +16,9 @@ public class Template {
     private String templateName;
     private Integer status;
 
+    /** 模板类型: monthly月盘|weekly周盘 */
+    private String templateType;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

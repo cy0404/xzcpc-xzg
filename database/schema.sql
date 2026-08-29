@@ -46,6 +46,8 @@ CREATE TABLE material_inventory_rule (
     inventory_units VARCHAR(500)  DEFAULT NULL COMMENT '盘点单位串（逗号分隔）',
     stock_unit      VARCHAR(50)   DEFAULT NULL COMMENT '库存单位',
     unit_price      DECIMAL(10,2) DEFAULT NULL COMMENT '单价',
+    purchase_price  DECIMAL(12,4) DEFAULT NULL COMMENT '采购单价（元，按采购单位，xinfo purchasePrice 同步）',
+    purchase_unit   VARCHAR(50)   DEFAULT NULL COMMENT '采购单位（xinfo purchaseUnit 同步）',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag        INT           DEFAULT 0 COMMENT '删除标记 0正常 1删除',
@@ -76,6 +78,7 @@ CREATE TABLE template (
     biz_code        VARCHAR(50)   NOT NULL DEFAULT '' COMMENT '业务编码',
     template_name   VARCHAR(200)  NOT NULL COMMENT '模板名称',
     status          TINYINT       NOT NULL DEFAULT 1 COMMENT '1启用 0停用 2草稿',
+    template_type   VARCHAR(20)   NOT NULL DEFAULT 'monthly' COMMENT '模板类型: monthly月盘|weekly周盘',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag        INT           DEFAULT 0 COMMENT '删除标记 0正常 1删除',
@@ -116,7 +119,7 @@ CREATE TABLE template_zone_material (
 -- 三、任务模块（Task）
 -- ============================================================
 
--- 3.1 月盘任务
+-- 3.1 盘点任务（月盘/周盘）
 CREATE TABLE task (
     id              INT AUTO_INCREMENT PRIMARY KEY,
     biz_code        VARCHAR(50)   NOT NULL DEFAULT '' COMMENT '业务编码',
@@ -127,8 +130,10 @@ CREATE TABLE task (
     warehouse_code  VARCHAR(50)   DEFAULT NULL COMMENT '仓库编码快照',
     template_id     INT           DEFAULT NULL COMMENT '关联模板ID',
     task_name       VARCHAR(200)  NOT NULL COMMENT '任务名称',
-    task_month      VARCHAR(20)   NOT NULL COMMENT '盘点月份',
-    deadline        DATETIME      NOT NULL COMMENT '截止时间',
+    task_month      VARCHAR(20)   NOT NULL COMMENT '盘点月份（周盘=周起始日所在月）',
+    task_type       VARCHAR(20)   NOT NULL DEFAULT 'monthly' COMMENT '任务类型: monthly月盘|weekly周盘',
+    task_week       VARCHAR(20)   DEFAULT NULL COMMENT '盘点周 YYYY-Www(仅周盘)',
+    deadline        DATETIME      NOT NULL COMMENT '截止时间（周盘=门店配置盘点日当天23:59:59）',
     status          VARCHAR(20)   NOT NULL DEFAULT 'not_started' COMMENT 'not_started|in_progress|pending_submit|submitted|overdue',
     created_by      VARCHAR(100)  NOT NULL DEFAULT '' COMMENT '创建人',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -136,8 +141,9 @@ CREATE TABLE task (
     submitted_at    DATETIME      DEFAULT NULL COMMENT '提交时间',
     del_flag        INT           DEFAULT 0 COMMENT '删除标记 0正常 1删除',
     version         INT           DEFAULT 0 COMMENT '乐观锁版本号',
-    INDEX idx_task_store_id (store_id)
-) COMMENT '月盘任务' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+    INDEX idx_task_store_id (store_id),
+    INDEX idx_task_type (task_type)
+) COMMENT '盘点任务（月盘/周盘）' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 3.2 任务分区快照
 CREATE TABLE task_zone (
@@ -244,6 +250,11 @@ CREATE TABLE store_info (
     owner_phone     VARCHAR(20)   DEFAULT NULL COMMENT '老板手机号（本地维护，用于绑定匹配）',
     owner_openid    VARCHAR(128)  DEFAULT NULL COMMENT '绑定的微信openid',
     chat_id         VARCHAR(128)  DEFAULT NULL COMMENT '外部问题表单系统门店标识（chat_id），用于上报页URL映射',
+    supervisor_name VARCHAR(50)   DEFAULT NULL COMMENT '督导姓名（本地维护，用于月度区域划分）',
+    qmai_store_id   BIGINT        DEFAULT NULL COMMENT '企迈门店ID（本地维护，用于调用企迈API）',
+    warehouse_id    VARCHAR(50)   DEFAULT NULL COMMENT '企迈控制台仓库ID（本地维护，用于查询入库单）',
+    weekly_inventory_day TINYINT  DEFAULT NULL COMMENT '周盘点日(1周一-7周日, 仅周盘用, NULL=不参与周盘)',
+    weekly_paused        TINYINT  NOT NULL DEFAULT 0 COMMENT '周盘暂停: 0参与 1暂停(暂停后自动生成跳过该店)',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag        TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除 0正常 1删除',
@@ -1009,6 +1020,83 @@ CREATE TABLE IF NOT EXISTS supervisor_store_access (
     INDEX idx_open_id (open_id),
     INDEX idx_store_id (store_id)
 ) COMMENT '督导门店访问权限映射' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ============================================================
+-- 十三、智能订货（V17）
+-- ============================================================
+
+-- 建议订货单
+CREATE TABLE smart_order (
+  id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+  biz_code        VARCHAR(50)   NOT NULL COMMENT '业务编码',
+  store_id        VARCHAR(50)   NOT NULL COMMENT '门店ID',
+  store_name      VARCHAR(200)  DEFAULT NULL COMMENT '门店名称快照',
+  week_start_date DATE          NOT NULL COMMENT '订货周周一(ISO周)',
+  week_label      VARCHAR(20)   NOT NULL COMMENT '周标签,如 2026-W34',
+  status          VARCHAR(20)   NOT NULL DEFAULT 'pending' COMMENT 'pending待确认|syncing同步中|success同步成功|submit_failed提交失败',
+  item_count      INT           NOT NULL DEFAULT 0 COMMENT '建议品项数',
+  total_qty       DECIMAL(12,4) NOT NULL DEFAULT 0 COMMENT '建议数量合计(订货单位)',
+  suggest_amount  DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT '建议金额合计(元)',
+  deadline        DATETIME      DEFAULT NULL COMMENT '截止时间(仅展示,不强制)',
+  generated_at    DATETIME      DEFAULT NULL COMMENT '生成时间',
+  confirmed_by    VARCHAR(100)  DEFAULT NULL COMMENT '确认人openid',
+  confirmed_at    DATETIME      DEFAULT NULL COMMENT '确认时间',
+  qmai_declare_no VARCHAR(100)  DEFAULT NULL COMMENT '企迈报货单号',
+  submit_error    VARCHAR(1000) DEFAULT NULL COMMENT '企迈提交错误信息',
+  sync_attempts   INT           NOT NULL DEFAULT 0 COMMENT '提交尝试次数',
+  created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  del_flag        INT           DEFAULT 0 COMMENT '删除标记',
+  version         INT           DEFAULT 0 COMMENT '乐观锁',
+  UNIQUE KEY uk_store_week (store_id, week_start_date),
+  INDEX idx_status (status),
+  INDEX idx_biz_code (biz_code)
+) COMMENT '智能订货建议单' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 建议订货单明细（生成时快照物料信息）
+CREATE TABLE smart_order_item (
+  id                BIGINT AUTO_INCREMENT PRIMARY KEY,
+  order_id          BIGINT        NOT NULL COMMENT '关联订货单ID',
+  material_id       BIGINT        DEFAULT NULL COMMENT '物料ID(关联material.id)',
+  material_name     VARCHAR(200)  NOT NULL COMMENT '物料名称快照',
+  spec              VARCHAR(100)  DEFAULT '' COMMENT '规格快照',
+  category          VARCHAR(100)  DEFAULT NULL COMMENT '分类快照',
+  qm_code           VARCHAR(100)  DEFAULT NULL COMMENT '企迈编码快照(productCode)',
+  stock_unit        VARCHAR(50)   NOT NULL COMMENT '订货单位(库存单位)',
+  base_unit         VARCHAR(50)   DEFAULT NULL COMMENT '基础盘点单位',
+  unit_price        DECIMAL(10,2) DEFAULT NULL COMMENT '单价快照(元)',
+  current_inventory DECIMAL(18,4) DEFAULT NULL COMMENT '当前库存(基础单位)',
+  daily_use         DECIMAL(18,4) DEFAULT NULL COMMENT '预测日均消耗(基础单位/天, 去年同期×趋势或降级值)',
+  last_year_qty     DECIMAL(12,4) DEFAULT NULL COMMENT '去年同周销量快照(基础单位)',
+  trend_factor      DECIMAL(6,3)  DEFAULT NULL COMMENT '趋势系数(近4周÷去年同4周, clamp 0.5~2.0)',
+  loss_qty          DECIMAL(12,4) DEFAULT NULL COMMENT '损耗修正(基础单位, 近4周报损周均)',
+  transfer_qty      DECIMAL(12,4) DEFAULT NULL COMMENT '调货净值修正(基础单位, 近4周周均, 净调出为正)',
+  return_qty        DECIMAL(12,4) DEFAULT NULL COMMENT '还货净值修正(基础单位, 近4周周均, 仅还货品goods, 净还出为正; 还钱不影响实物不计)',
+  in_transit_qty    DECIMAL(12,4) DEFAULT NULL COMMENT '在途量(基础单位, 累计订货-累计到货差值法)',
+  self_purchase_qty DECIMAL(12,4) DEFAULT NULL COMMENT '自购食材修正(基础单位, 近4周自购周均, 减项)',
+  cycle_days        INT           DEFAULT NULL COMMENT '配送周期天数',
+  safety_days       INT           DEFAULT NULL COMMENT '安全天数',
+  suggest_qty       DECIMAL(12,4) NOT NULL COMMENT '建议数量(订货单位)',
+  confirmed_qty     DECIMAL(12,4) DEFAULT NULL COMMENT '确认数量(订货单位)',
+  support_days      DECIMAL(10,2) DEFAULT NULL COMMENT '当前库存可支撑天数',
+  reason            VARCHAR(500)  DEFAULT NULL COMMENT '建议依据',
+  sort_no           INT           DEFAULT NULL COMMENT '排序号',
+  created_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  del_flag          INT           DEFAULT 0 COMMENT '删除标记',
+  version           INT           DEFAULT 0 COMMENT '乐观锁',
+  FOREIGN KEY (order_id) REFERENCES smart_order(id),
+  INDEX idx_order (order_id)
+) COMMENT '智能订货建议单明细' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 智能订货配置（一期总部统一配置，后续配送周期/安全天数改为企迈按店拉取）
+INSERT INTO sys_config (config_key, config_value, description)
+VALUES ('smart_order_delivery_cycle_days', '7', '智能订货配送周期天数(后续改为企迈按店)'),
+       ('smart_order_safety_days', '3', '智能订货安全天数(后续改为企迈按店)'),
+       ('smart_order_default_daily_use', '0.5', '智能订货默认日均消耗(基础单位/天,无两次盘点数据时兜底)'),
+       ('smart_order_online_pay', '0', '智能订货企迈支付方式 0线下 1线上'),
+       ('smart_order_deadline_time', '18:00:00', '智能订货截止时间(仅展示不强制)')
+ON DUPLICATE KEY UPDATE config_key = config_key;
 
 -- ============================================================
 -- 建表完成

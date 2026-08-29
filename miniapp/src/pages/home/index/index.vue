@@ -10,14 +10,17 @@ import { getLossList, getLossOverview } from '@/api/loss-report'
 import { fetchIssueOverview, fetchIssueOverviewStores } from '@/api/issue'
 import { fetchStaffOverview } from '@/api/staff'
 import { fetchSupervisorVisitOverview } from '@/api/supervisor-visit'
+import { fetchSmartOrderOverview } from '@/api/smart-order'
 import { fetchTaskDetail } from '@/api/task'
 import { fetchHomeOverview } from '@/api/business'
+import { fetchFeedbackOverview, fetchFeedbackOverviewStores } from '@/api/feedback'
+import { H5_BASE } from '@/utils/constants'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
 
 interface StoreOption { storeId: string; storeName: string }
-interface PendingItem { icon: string; title: string; desc: string; btn: string; url: string; warn?: boolean; storeId?: string }
+interface PendingItem { icon: string; title: string; desc: string; btn: string; url: string; warn?: boolean; storeId?: string; h5?: boolean }
 
 const scope = ref<'all' | string>('all')
 const myStores = ref<StoreOption[]>([])
@@ -32,11 +35,15 @@ const allIssueStores = ref<any[]>([])
 const allTransferStores = ref<any[]>([])
 const allLossStores = ref<any[]>([])
 const allStaffStores = ref<any[]>([])
+const smartOrderPending = ref(0)
+const allSmartOrderStores = ref<any[]>([])
 const staffApprovalPending = ref(0)
 const supervisorPendingConfirm = ref(0)
 const supervisorPendingTasks = ref(0)
 const firstPendingVisitId = ref<number>(0)
 const taskItems = ref<any[]>([])
+const complaintPending = ref(0)
+const allComplaintStores = ref<any[]>([])
 const switching = ref(false)
 const dataReady = ref(false)
 
@@ -91,17 +98,22 @@ async function loadDataForScope() {
       await taskStore.fetchTaskList(true)
       taskRemaining.value = taskStore.currentTasks.reduce((s, t) => s + Math.max((t.totalMaterials || 0) - (t.enteredMaterials || 0), 0), 0)
       const wrap = (p: Promise<any>) => p.then(v => v).catch(() => null)
-      const [tData, lData, sData, iData] = await Promise.all([
+      const [tData, lData, sData, iData, soData] = await Promise.all([
         wrap(fetchTransferOverview(true)),
         wrap(getLossOverview(true)),
         wrap(fetchStaffOverview(true)),
         wrap(fetchIssueOverviewStores()),
+        // 智能订货员工 403，仅店长/老板请求；暂隐藏智能订货，不请求
+        // isManagerOrOwner.value ? wrap(fetchSmartOrderOverview(true)) : Promise.resolve(null),
+        Promise.resolve(null),
       ])
       allTransferStores.value = Array.isArray(tData) ? tData : []
       allLossStores.value = Array.isArray(lData) ? lData : []
       allStaffStores.value = Array.isArray(sData) ? sData : []
       allIssueStores.value = Array.isArray(iData) ? iData : []
+      allSmartOrderStores.value = Array.isArray(soData) ? soData : []
       loadYesterdayOverview()
+      loadComplaintOverview()
     } else {
       await taskStore.fetchTaskList()
       taskRemaining.value = taskStore.currentTasks.reduce((s, t) => s + Math.max((t.totalMaterials || 0) - (t.enteredMaterials || 0), 0), 0)
@@ -113,6 +125,8 @@ async function loadDataForScope() {
         loadApprovalPending()
         loadIssuePending()
         loadSupervisorPending()
+        // loadSmartOrderPending()  // 暂隐藏智能订货，不请求待确认数
+        loadComplaintOverview()
       }
       try {
         const tData = await fetchTransferOverview(true)
@@ -191,6 +205,14 @@ async function loadApprovalPending() {
   } catch { staffApprovalPending.value = 0 }
 }
 
+async function loadSmartOrderPending() {
+  if (!isManagerOrOwner.value) { smartOrderPending.value = 0; return }
+  try {
+    const data = await fetchSmartOrderOverview()
+    smartOrderPending.value = (data?.pending || 0) + (data?.submitFailed || 0)
+  } catch { smartOrderPending.value = 0 }
+}
+
 async function loadSupervisorPending() {
   try {
     const data = await fetchSupervisorVisitOverview()
@@ -201,22 +223,40 @@ async function loadSupervisorPending() {
   } catch { supervisorPendingConfirm.value = 0; supervisorPendingTasks.value = 0 }
 }
 
+// 客诉卡片按门店联动：全部门店视图统计各店未处理客诉；单店视图只统计当前门店
+async function loadComplaintOverview() {
+  if (!isManagerOrOwner.value) { complaintPending.value = 0; allComplaintStores.value = []; return }
+  if (scopeAll.value) {
+    try {
+      const stores = await fetchFeedbackOverviewStores()
+      allComplaintStores.value = Array.isArray(stores) ? stores : []
+      complaintPending.value = allComplaintStores.value.reduce((s, x) => s + (x.pending || 0), 0)
+    } catch { allComplaintStores.value = []; complaintPending.value = 0 }
+  } else {
+    try {
+      const data = await fetchFeedbackOverview(false)
+      complaintPending.value = data?.pending || 0
+    } catch { complaintPending.value = 0 }
+  }
+}
+
 // Dynamic pending items for store view
 const storePendingItems = computed<PendingItem[]>(() => {
   const items: PendingItem[] = []
 
   if (scopeAll.value) {
     // 全部门店：按门店分组展示
-    const byStore: Record<string, { name: string; remaining: number; hasLoss: boolean }> = {}
+    const byStore: Record<string, { name: string; remaining: number; weekly: boolean; hasLoss: boolean }> = {}
     for (const t of taskStore.currentTasks) {
       const sid = t.storeId || ''
-      if (!byStore[sid]) byStore[sid] = { name: t.storeName || '', remaining: 0, hasLoss: false }
+      if (!byStore[sid]) byStore[sid] = { name: t.storeName || '', remaining: 0, weekly: false, hasLoss: false }
       byStore[sid].remaining += Math.max((t.totalMaterials || 0) - (t.enteredMaterials || 0), 0)
+      if (t.taskType === 'weekly') byStore[sid].weekly = true
     }
     for (const [sid, info] of Object.entries(byStore)) {
       if (info.remaining > 0) {
         items.push({
-          icon: '✅', title: '完成本月盘点',
+          icon: '✅', title: info.weekly ? '完成本周盘点' : '完成本月盘点',
           desc: `${info.name} · ${info.remaining} 项待录入`,
           btn: '去盘点', url: '/pages/task/list/index', storeId: sid,
         })
@@ -238,6 +278,14 @@ const storePendingItems = computed<PendingItem[]>(() => {
         btn: '查看', url: '/pages/transfer/list/index', storeId: s.storeId,
       })
     }
+    // 智能订货：有待确认单据才展示（仅店长/老板，数据源已按角色门控；H5 入口）——暂隐藏，需要时恢复
+    // for (const s of allSmartOrderStores.value) {
+    //   items.push({
+    //     icon: '🛒', title: '智能订货',
+    //     desc: `${s.storeName} · ${s.pending || 0} 张订货单待确认`,
+    //     btn: '去确认', url: '', h5: true, storeId: s.storeId,
+    //   })
+    // }
     // 员工审批：有 pending 才展示（仅店长/老板可见）
     for (const s of allStaffStores.value) {
       items.push({
@@ -257,8 +305,9 @@ const storePendingItems = computed<PendingItem[]>(() => {
   } else {
     // 单门店
     if (taskRemaining.value > 0) {
+      const hasWeekly = taskStore.currentTasks.some((t: any) => t.taskType === 'weekly')
       items.push({
-        icon: '✅', title: '完成本月盘点', desc: `${taskRemaining.value} 项待录入`, btn: '去盘点', url: '/pages/task/list/index',
+        icon: '✅', title: hasWeekly ? '完成本周盘点' : '完成本月盘点', desc: `${taskRemaining.value} 项待录入`, btn: '去盘点', url: '/pages/task/list/index',
       })
     }
     const tCount = transferActionCount()
@@ -267,6 +316,11 @@ const storePendingItems = computed<PendingItem[]>(() => {
         icon: '📦', title: '调货待处理', desc: `${tCount} 单需要操作`, btn: '去处理', url: '/pages/transfer/list/index',
       })
     }
+    // if (smartOrderPending.value > 0) {  // 暂隐藏智能订货，需要时恢复
+    //   items.push({
+    //     icon: '🛒', title: '智能订货', desc: `${smartOrderPending.value} 张订货单待确认`, btn: '去确认', url: '', h5: true,
+    //   })
+    // }
     if (lossPending.value > 0) {
       items.push({
         icon: '📋', title: '报损记录', desc: `${lossPending.value} 条报损记录`, btn: '查看', url: '/pages/loss-report/list/index',
@@ -335,6 +389,54 @@ async function go(url: string) {
   uni.navigateTo({ url })
 }
 
+// 客诉处理 H5 入口（web-view 打开，token 走 URL；导航时动态构建保证 token 最新）
+function goComplaint() {
+  const token = uni.getStorageSync('token') || userStore.token || ''
+  const storeName = userStore.storeName || ''
+  const h5url = H5_BASE + '/upload/h5/complaint.html?v=1&token=' + encodeURIComponent(token) + '&storeName=' + encodeURIComponent(storeName)
+  uni.navigateTo({ url: '/pages/common/webview/index?url=' + encodeURIComponent(h5url) + '&title=' + encodeURIComponent('客诉处理') })
+}
+
+// 客诉卡片入口（单店视图）：确保 token 切到当前门店再进客诉处理页
+async function goComplaintEntry() {
+  if (scope.value !== userStore.storeId) {
+    try {
+      const data: any = await switchStore(scope.value as string)
+      if (data?.token) {
+        uni.setStorageSync('token', data.token)
+        userStore.token = data.token
+      }
+      userStore.storeId = data?.storeId || scope.value
+      userStore.storeName = data?.storeName || userStore.storeName || ''
+      userStore.chatId = data?.chatId || ''
+    } catch { /* ignore */ }
+  }
+  goComplaint()
+}
+
+// 客诉卡片入口（全部门店视图）：按门店卡片直接切到该店并进客诉处理页
+async function goComplaintForStore(store: any) {
+  try {
+    const data: any = await switchStore(store.storeId)
+    if (data?.token) {
+      uni.setStorageSync('token', data.token)
+      userStore.token = data.token
+    }
+    userStore.storeId = data?.storeId || store.storeId
+    userStore.storeName = data?.storeName || store.storeName
+    userStore.chatId = data?.chatId || ''
+  } catch { /* ignore, use local switch */ }
+  goComplaint()
+}
+
+// 智能订货 H5 入口（goPendingItem 已先切门店，此处动态构建保证 token 最新）
+function buildSmartOrderUrl(): string {
+  const token = uni.getStorageSync('token') || userStore.token || ''
+  const storeName = userStore.storeName || ''
+  const h5url = H5_BASE + '/upload/h5/smart-order-list.html?v=3&token=' + encodeURIComponent(token) + '&storeName=' + encodeURIComponent(storeName)
+  return '/pages/common/webview/index?url=' + encodeURIComponent(h5url) + '&title=' + encodeURIComponent('智能订货待确认')
+}
+
 async function goPendingItem(item: PendingItem) {
   // 全部门店视图：先切到该门店再跳转
   if (item.storeId) {
@@ -361,19 +463,23 @@ async function goPendingItem(item: PendingItem) {
     } catch { /* ignore */ }
   }
   // 盘点待办：直接进入第一个未完成分区的物料录入页
-  if (item.url === '/pages/task/list/index' && taskStore.currentTasks.length) {
-    const task = taskStore.currentTasks[0]
-    try {
-      const detail = await fetchTaskDetail(task.id) as any
-      const zones = detail?.zones || []
-      const firstZone = zones.find((z: any) => !z.isComplete) || zones[0]
-      if (firstZone) {
-        uni.navigateTo({ url: `/pages/task/zone-entry/index?taskId=${task.id}&zoneId=${firstZone.taskZoneId || firstZone.id}` })
-        return
-      }
-    } catch { /* fall through */ }
+  if (item.url === '/pages/task/list/index') {
+    // 切换门店后刷新任务列表，确保 currentTasks 属于当前门店
+    await taskStore.fetchTaskList()
+    if (taskStore.currentTasks.length) {
+      const task = taskStore.currentTasks[0]
+      try {
+        const detail = await fetchTaskDetail(task.taskId) as any
+        const zones = detail?.zones || []
+        const firstZone = zones.find((z: any) => !z.isComplete) || zones[0]
+        if (firstZone) {
+          uni.navigateTo({ url: `/pages/task/zone-entry/index?taskId=${task.taskId}&zoneId=${firstZone.taskZoneId || firstZone.id}` })
+          return
+        }
+      } catch { /* fall through */ }
+    }
   }
-  uni.navigateTo({ url: item.url })
+  uni.navigateTo({ url: item.h5 ? buildSmartOrderUrl() : item.url })
 }
 </script>
 
@@ -441,6 +547,29 @@ async function goPendingItem(item: PendingItem) {
           </view>
           <text class="fc-btn">{{ item.btn }}</text>
         </view>
+      </view>
+    </section>
+
+    <!-- 客诉处理入口（仅店长/老板；与门店联动——有未处理客诉的门店各一张卡片） -->
+    <section v-if="isManagerOrOwner && (scopeAll ? allComplaintStores.length > 0 : complaintPending > 0)" class="section">
+      <text class="sec-title sec-title-block">客诉处理</text>
+      <!-- 全部门店视图：按门店一张卡片，点击直接带门店进客诉处理页 -->
+      <view v-if="scopeAll" v-for="s in allComplaintStores" :key="s.storeId" class="complaint-entry" @click="goComplaintForStore(s)">
+        <text class="ce-icon">💬</text>
+        <view class="ce-body">
+          <text class="ce-title">{{ s.storeName }}</text>
+          <text class="ce-desc">{{ s.pending }} 条待处理，点击跟进</text>
+        </view>
+        <text class="ce-arrow">›</text>
+      </view>
+      <!-- 单店视图：当前门店一张卡片 -->
+      <view v-else class="complaint-entry" @click="goComplaintEntry">
+        <text class="ce-icon">💬</text>
+        <view class="ce-body">
+          <text class="ce-title">处理顾客投诉</text>
+          <text class="ce-desc">{{ complaintPending }} 条待处理，请及时跟进</text>
+        </view>
+        <text class="ce-arrow">›</text>
       </view>
     </section>
 
@@ -532,4 +661,12 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .tool-green{border-color:#CBEED8;background:linear-gradient(135deg,#ECFBF3,#F7FFFA)}
 .tool-red{border-color:#EECFCA;background:linear-gradient(135deg,#FFF1F0,#FFFAFA)}
 .tool-purple{border-color:#D9D1F0;background:linear-gradient(135deg,#F5F2FF,#FBFAFF)}
+
+/* 客诉处理入口（独立卡片，全部门店/单店视图均显示；红色警示风格） */
+.complaint-entry{margin-top:24rpx;background:linear-gradient(135deg,#FFF1F0,#FFFAFA);border-radius:20rpx;border:1.5px solid #EECFCA;padding:28rpx 24rpx;display:flex;align-items:center;gap:20rpx;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}
+.ce-icon{font-size:44rpx;width:88rpx;height:88rpx;border-radius:20rpx;background:#FEEBEA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ce-body{flex:1;display:flex;flex-direction:column}
+.ce-title{font-size:30rpx;font-weight:700;color:#C0392B}
+.ce-desc{font-size:24rpx;color:#D96C61;margin-top:6rpx}
+.ce-arrow{font-size:44rpx;color:#D96C61;flex-shrink:0}
 </style>

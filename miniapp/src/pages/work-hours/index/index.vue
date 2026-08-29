@@ -6,7 +6,6 @@ import {
   fetchWorkHours,
   createWorkHours,
   updateWorkHours,
-  deleteWorkHours,
   type WorkHoursRecord,
 } from '@/api/workHours'
 import EmptyState from '@/components/EmptyState.vue'
@@ -112,25 +111,6 @@ async function submit() {
   }
 }
 
-function confirmDelete() {
-  if (!editId.value || saving.value) return
-  uni.showModal({
-    title: '确认删除',
-    content: `确定删除 ${yearMonth.value} 的工时记录吗？`,
-    success: async (res) => {
-      if (!res.confirm) return
-      saving.value = true
-      try {
-        await deleteWorkHours(editId.value)
-        uni.showToast({ title: '已删除', icon: 'success' })
-        resetForm()
-        await loadList()
-      } finally {
-        saving.value = false
-      }
-    },
-  })
-}
 </script>
 
 <template>
@@ -156,7 +136,6 @@ function confirmDelete() {
 
       <view class="form-actions">
         <view v-if="isEdit" class="btn ghost" @click="resetForm">取消编辑</view>
-        <view v-if="isEdit" class="btn danger" @click="confirmDelete">删除</view>
         <view class="btn primary" :class="{ full: !isEdit }" @click="submit">
           {{ saving ? '提交中...' : (isEdit ? '确认修改' : '确认录入') }}
         </view>
@@ -165,7 +144,7 @@ function confirmDelete() {
 
     <view class="section">
       <text class="sec-title">历史工时</text>
-      <text class="sec-hint">点击任意记录即可修改或删除</text>
+      <text class="sec-hint">点击任意记录即可修改</text>
       <Skeleton v-if="loading" :rows="4" />
       <template v-else-if="records.length">
         <view
@@ -191,7 +170,7 @@ function confirmDelete() {
 </template>
 
 <style lang="scss" scoped>
-$bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$d:#E05A47;
+$bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;
 .page{min-height:100vh;background:$bg;padding:24rpx 32rpx 48rpx}
 .form-card{padding:28rpx;border-radius:20rpx;background:$s;border:2rpx solid $b;box-shadow:0 4rpx 16rpx rgba(31,36,33,.04)}
 .form-title{display:block;font-size:36rpx;font-weight:700;color:$t1}
@@ -206,7 +185,6 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .btn{height:88rpx;border-radius:16rpx;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600;flex:1;min-width:0}
 .btn.primary{background:$p;color:#fff}.btn.primary.full{flex:1 1 100%}
 .btn.ghost{background:#FAFBF9;color:$t1;border:2rpx solid $b}
-.btn.danger{background:#FFF4F2;color:$d;border:2rpx solid #F5B8B2}
 .section{margin-top:40rpx}
 .sec-title{display:block;font-size:34rpx;font-weight:700;color:$t1;margin-bottom:8rpx}
 .sec-hint{display:block;font-size:24rpx;color:$t3;margin-bottom:20rpx}

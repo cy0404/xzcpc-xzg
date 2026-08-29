@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-03
+updated: 2026-08-29
 importance: 4
 ---
 
@@ -58,3 +58,51 @@ importance: 4
 - `application-dev.yml` — 开发环境
 - `application-prod.yml` — 生产环境（敏感信息 `${...}` 环境变量）
 - `application-local.yml` — ⚠️ 含明文密码，在 `.gitignore` 中，不可提交
+
+## P010 — 全选框回显集合必须与操作集合一致
+
+- 「全选」checkbox 的回显（勾/不勾）必须和全选实际操作的集合**完全相同**
+- ❌ 回显用「全页面所有元素」比较，操作只影响「当前 tab/过滤后可见」子集 → 点全选后回显立刻弹回未勾选 → 第二次点击被浏览器当成"勾选"，取消分支永远不可达
+- ✅ 回显按「当前可见」集合比较（`visibleCount > 0 && checkedCount === visibleCount`），toggleAll 按同一集合操作
+- 例：loss-daily-confirm.html onCheckChange（2026-08-17 修复，tab 结构下其他 tab 卡片本就不该被全选）
+
+## P011 — spring-boot:run 多模块必须带 -am
+
+- `mvn spring-boot:run -pl server` **不带 `-am`** 时，依赖模块（task/template/mp 等）解析 **m2 仓库旧 jar**，不是工作区源码
+- 旧 jar 与新源码不一致时启动崩：`Could not resolve placeholder 'material.api.url'`（template-1.0.0.jar 旧类里有废弃 @Value，源码已删除）
+- ✅ 必用：`mvn spring-boot:run -pl server -am -Dspring-boot.run.profiles=local`
+- 排查手段：看异常堆栈 `jar:file:/.../.m2/repository/com/xzcpc/...` 路径即旧 jar；`unzip -p jar | grep -ao 占位符` 验证
+
+## P012 — 外部接口数据同步的匹配键与本地主键
+
+- 外部接口（企迈/xinfo）的 `id` 是**业务编码**（如 171、353），不是本地主键
+- 匹配链：接口 id ↔ `store_info.store_code`（与企迈 code 同源）；本地主键 `store_id`（cmpz/cm 开头）**本地维护**，绝不可取接口 id
+- ⚠️ 新店建店时若 store_id NOT NULL 无默认值，INSERT 缺该字段报 1364/500——本地生成（`cm`+24 位查重）或逐行 UPDATE
+- 督导/员工类账号用**企业稳定 ID**（飞书 userId）对账，应用维度 open_id 不可跨应用使用
+- 同步写库的展示名取**本地名**（admin_permission.name），接口 displayName 仅做 mismatch 提醒；改本地名不影响权限（权限判断只用 open_id + roles）
+
+## P013 — 飞书消息 API 踩坑（撤回 / 群消息列表）
+
+- **撤回消息**：`DELETE /open-apis/im/v1/messages/{message_id}` —— ⚠️ **POST 打过去网关直接 404「page not found」**（不是飞书错误 JSON）
+- 撤回**仅 24 小时内**有效；必须用**发送方同一个应用**的 tenant token
+- **群消息列表** `im/v1/messages`：`start_time` **必须与 `end_time` 成对传**，单独传报 230001「end_time is earlier than start_time」；不传则从最早消息升序返回（第一页是建群消息，要翻页）
+- 按群筛卡片再撤：先拉全量消息 → 过滤 `body.content` 含目标链接 + `sender.sender_type == 'app'` → 只撤 app 消息（勿撤用户/系统消息）
+- 卡片按钮 URL 带动态参数：门店模式 `?chatId=群ID`，H5 按参数过滤数据（见 issue-accept.html CHAT_ID 模式）
+- 生产飞书应用凭据：`application-local.yml` 明文 FEISHU_APP_SECRET（本地直连飞书 API 可用），生产 jar 内是 `${FEISHU_APP_SECRET}` 占位
+
+## P014 — 多 Executor bean：final + @Qualifier + Lombok 构造注入 = 启动失败
+
+- 场景：`@Qualifier("xExecutor") private final Executor x;` + `@RequiredArgsConstructor`（Lombok 生成构造器）
+- **坑**：Lombok 生成的构造参数**不带字段上的 @Qualifier**；pom 若没配 `<parameters>true</parameters>`，参数名也丢 → Spring 按类型匹配 `Executor` 命中多个（logTaskExecutor/alertTaskExecutor/taskScheduler…）→ `No qualifying bean of type Executor ... found 3` 启动失败
+- **修复**：改 `@Autowired @Qualifier("xExecutor")` **字段注入**（去 final，Lombok 构造器不再包含该参数；@Qualifier 在字段上生效）
+- 排查：`grep -rl "RequiredArgsConstructor" --include="*.java" <模块>` 逐个看是否同时用 @Qualifier 注解字段
+- 根治可考虑：pom 配 `-parameters` + lombok.config `lombok.copyableAnnotations`（未实施）
+
+## P015 — 多模块构建：`-pl server` 打包引用 m2 旧 jar（工作区改动不进包）
+
+- **坑**：`mvn package -pl server`（不带 -am）时，server 依赖的 common/task/mp 等模块从**本地 m2 仓库**解析——工作区未提交改动**不会进 jar**，且新代码引用的新 bean/方法在旧 jar 里不存在 → 启动失败或 NoSuchMethodError
+- **修复**：先把有改动的模块 install 到 m2：`mvn install -pl common,template,task,expense,people -DskipTests`（reactor 自动排序），再 `mvn package -pl server`
+- **验证**：`unzip -l jar | grep BOOT-INF/lib/common` 看依赖 jar 时间戳是否当天；`javap -v` 验证类/注解已编译进
+- mp 编译错误挡全量构建时，先修 mp 或单独 install 其他模块；mp 修好后直接 `mvn clean package -DskipTests` 全量最稳（server/mp-server 两 jar 全最新）
+- 排查手段：启动异常 `jar:file:/.../.m2/repository/...` 路径 = 旧 jar；看报错 bean 名是否在工作区新增代码里
+

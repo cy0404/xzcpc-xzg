@@ -69,6 +69,7 @@ public class MpZoneServiceImpl implements MpZoneService {
             item.put("appendRecords", m.getAppendRecords() != null ? m.getAppendRecords() : "");
             com.xzcpc.template.dto.MaterialRuleResp rule = ruleMap.get(m.getMaterialId());
             item.put("category", rule != null && rule.getCategory() != null ? rule.getCategory() : "");
+            item.put("parentCategory", rule != null && rule.getParentCategory() != null ? rule.getParentCategory() : "");
             item.put("inventoryRule", rule != null ? rule : pendingFallback(m.getMaterialId()));
             result.add(item);
         }

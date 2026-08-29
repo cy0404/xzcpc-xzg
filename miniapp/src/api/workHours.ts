@@ -23,7 +23,3 @@ export function createWorkHours(data: { recordTime: string; hours: number }) {
 export function updateWorkHours(recordId: string, data: { recordTime: string; hours: number }) {
   return request({ url: `/work-hours/${recordId}`, method: 'PUT', data })
 }
-
-export function deleteWorkHours(recordId: string) {
-  return request({ url: `/work-hours/${recordId}`, method: 'DELETE' })
-}

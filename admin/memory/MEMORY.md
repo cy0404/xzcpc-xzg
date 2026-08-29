@@ -302,3 +302,7 @@ cd ../server && mvn spring-boot:run   # 启动 Spring Boot → localhost:4026
     - **后端**：`IssueCallbackController` 解析 `source` → `IssueServiceImpl.syncByCallback` 写入；`IssueManageController.list` + `pageAll` 新增 `source` 筛选
     - **前端**：`IssueList.vue` 列表新增"来源"列（绿色小程序/蓝色飞书群/橙色总部）、筛选区新增来源下拉、详情新增来源行
     - **API 文档**：`docs/task_platform-callback-api.md` 补充 `source` 字段说明及映射关系
+35. **后端改动（2026-08-11，无前端代码变更）**：
+    - 牛油果泥单位换算修复：仅 unit="件" 时 ×24→"包"，"包"不变
+    - 自动收货：`LossReportAutoReceiveJob`，补发后 4 天门店未收货自动确认
+    - 详见 [dateMemory/2026-08-11.md](dateMemory/2026-08-11.md)

@@ -65,8 +65,8 @@ textarea{height:90px;resize:none}
 </style>
 </head>
 <body>
-<!-- 搜索抽屉 -->
-<div class="search-drawer" id="search-drawer" onclick="closeSearch()"><div class="search-drawer-sheet" onclick="event.stopPropagation()"><div class="search-drawer-head"><span>搜索物料</span><span onclick="closeSearch()" style="font-size:20px;cursor:pointer">✕</span></div><div style="position:relative;margin-bottom:12px"><input id="search-input" placeholder="搜索物料名称" oninput="onSearch()" /><span onclick="var el=document.getElementById('search-input');el.value='';onSearch()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:18px;color:#98A19C;cursor:pointer;display:none" id="search-clear">✕</span></div><div class="results" id="results"></div></div></div>
+<!-- 统一搜索抽屉（物料+订单） -->
+<div class="search-drawer" id="search-drawer" onclick="closeSearch()"><div class="search-drawer-sheet" onclick="event.stopPropagation()"><div class="search-drawer-head"><span>搜索</span><span onclick="closeSearch()" style="font-size:20px;cursor:pointer">✕</span></div><div style="position:relative;margin-bottom:12px"><input id="search-input" placeholder="搜索物料名称或报货单号" oninput="onSearch()" /><span onclick="var el=document.getElementById('search-input');el.value='';onSearch()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:18px;color:#98A19C;cursor:pointer;display:none" id="search-clear">✕</span></div><div class="results" id="results"></div></div></div>
 <div class="loading-overlay" id="loading"><div class="spinner"></div><div class="loading-text" id="loading-msg">提交中...</div></div>
 <div class="video-modal" id="video-modal"><video id="guide-video-player" src="" playsinline controls webkit-playsinline x5-video-player-type="h5"></video><span class="video-close" onclick="closeVideo()">✕</span></div>
 <div class="page">
@@ -78,15 +78,35 @@ textarea{height:90px;resize:none}
     <div id="guide-content"></div>
   </div>
 
-  <!-- 物料 -->
+  <!-- 报损商品（统一选择） -->
   <div class="card">
-    <div class="card-title">物品名称 <span class="req">*</span></div>
-    <div id="search-tap" class="search-tap" onclick="showSearch()">点击搜索物料名称 ›</div>
-    <div class="selected" id="selected-mat" style="display:none"><span class="sel-name" id="sel-name"></span><span class="sel-clear" onclick="clearMaterial()">✕</span></div>
+    <div class="card-title">报损商品 <span class="req">*</span></div>
+    <div id="search-tap" class="search-tap" onclick="showSearch()">点击选择报货单中的商品 ›</div>
+    <div class="selected" id="selected-item" style="display:none">
+      <span class="sel-name" id="sel-name"></span>
+      <span class="sel-clear" onclick="clearItem()">✕</span>
+    </div>
+    <div id="order-info" style="margin-top:8px;display:none">
+      <div id="order-detail-card" style="background:#FAFBF9;border-radius:10px;padding:12px;font-size:13px;line-height:2;display:none">
+        <div><span style="color:#98A19C">单号</span> <span id="sel-order-no" style="color:#1F2421;font-weight:500;margin-left:8px"></span></div>
+        <div><span style="color:#98A19C">下单时间</span> <span id="sel-order-time" style="color:#1F2421;margin-left:8px"></span></div>
+        <div style="color:#66706A;margin-top:4px;padding-top:4px;border-top:1px dashed #E8ECE9"><span style="color:#98A19C">物品</span> <span id="sel-order-prod-name" style="color:#1F2421;font-weight:500;margin-left:8px"></span></div>
+        <div><span style="color:#98A19C">订货数量</span> <span id="sel-order-qty" style="color:#1F2421;margin-left:8px"></span></div>
+        <div><span style="color:#98A19C">订货金额</span> <span id="sel-order-amount" style="color:#2F8F57;margin-left:8px"></span></div>
+      </div>
+      <div id="order-products" style="max-height:200px;overflow-y:auto;margin-top:6px"></div>
+      <div id="order-product-hint" style="font-size:12px;color:#98A19C;margin-top:4px;display:none"></div>
+    </div>
   </div>
-
-  <!-- 企迈单号 -->
-  <div class="card" id="order-card"><div class="card-title">企迈单号 <span class="req">*</span></div><input id="order-no" placeholder="请输入企迈单号" /></div>
+  <!-- 牛油果泥厂家选择 -->
+  <div class="card" id="supplier-card" style="display:none">
+    <div class="card-title">厂家（牛油果泥专用）<span class="req">*</span></div>
+    <div id="supplier-warn" style="font-size:12px;color:#E58A2D;margin-bottom:8px">⚠ 牛油果泥有两个厂家供货，请区分厂家报损</div>
+    <div class="pills" id="supplier-pills">
+      <span class="pill" id="sup-hass" onclick="selectSupplier('hass牛油果')">hass牛油果</span>
+      <span class="pill" id="sup-lanwa" onclick="selectSupplier('蓝蛙牛油果')">蓝蛙牛油果</span>
+    </div>
+  </div>
   <!-- 加急 -->
   <div class="card"><div class="card-title">是否加急</div><div class="pills"><span class="pill on" id="urgent-no" onclick="setUrgent(false)">否</span><span class="pill" id="urgent-yes" onclick="setUrgent(true)">是</span></div></div>
   <!-- 单位+数量+金额 -->
@@ -115,6 +135,8 @@ function H(){var h={'Content-Type':'application/json'};if(TOKEN)h['Authorization
 var selected=null,unitPrice=0,inputUnit='',isUrgent=false,mediaList=[],submitting=false
 var reasons=['运输破损-外包装','运输破损-内包装','少货','错发','临期或变质','其他']
 var searchTimer=null,_searchCache=[],MAX_SIZE=200*1024*1024
+var _ordersWithProducts=[],_selectedOrder=null,_selectedOrderNo='',_selectedOrderProductIdx=-1,_ordersPreloaded=false,_instoreProductMap={}
+var _avocadoSupplier=''
 
 function showToast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:999;background:rgba(0,0,0,.85);color:#fff;padding:20px 32px;border-radius:12px;font-size:16px;font-weight:600';document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){document.body.contains(t)&&document.body.removeChild(t)},300)},3000)}
 
@@ -167,40 +189,319 @@ function previewMedia(idx){var m=mediaList[idx];if(!m.url)return
 function showSearch(){document.getElementById('search-drawer').classList.add('on');document.getElementById('search-input').focus();onSearch()}
 function closeSearch(){document.getElementById('search-drawer').classList.remove('on')}
 function onSearch(){clearTimeout(searchTimer);var kw=document.getElementById('search-input').value.trim();document.getElementById('search-clear').style.display=kw?'block':'none'
-  searchTimer=setTimeout(function(){document.getElementById('results').innerHTML='<div class="res-empty">搜索中...</div>';fetch(API+'/loss-report/materials/search?keyword='+encodeURIComponent(kw)+'&lossObject=finished',{headers:H()}).then(function(r){return r.json()}).then(function(d){var list=(d.data&&d.data.list)||[];if(!list.length){document.getElementById('results').innerHTML='<div class="res-empty">暂无物料</div>';return}
-  _searchCache=list;var h='';for(var i=0;i<list.length;i++){var cat=list[i].category||'';h+='<div class="res-item" onclick="selectMaterial('+i+')"><div class="res-name">'+esc(list[i].materialName)+'</div><div class="res-meta">'+esc(list[i].spec||'--')+' · <span style="background:#E7F4EB;color:#2F8F57;padding:2px 8px;border-radius:4px;font-size:11px">'+esc(cat)+'</span></div></div>'};document.getElementById('results').innerHTML=h}).catch(function(){document.getElementById('results').innerHTML='<div class="res-empty">搜索失败</div>'})},300)}
-function isAvocado(m){return m&&m.materialName&&m.materialName.indexOf('牛油果泥')>=0}
-function selectMaterial(idx){var m=_searchCache[idx];selected=m;inputUnit=m.stockUnit||m.baseUnit||'';if(isAvocado(m)&&m.units&&m.units.indexOf('包')>=0){inputUnit='包'}unitPrice=resolvePrice(m,inputUnit);closeSearch();document.getElementById('search-tap').style.display='none';document.getElementById('selected-mat').style.display='flex';document.getElementById('sel-name').textContent=m.materialName+(m.spec?' · '+m.spec:'');document.getElementById('unit-label').textContent=inputUnit;document.getElementById('qty').value='';renderUnits();calcAmount();updateHint();document.getElementById('order-card').style.display=isAvocado(m)?'none':'block'}
+  searchTimer=setTimeout(function(){
+    document.getElementById('results').innerHTML='<div class="res-empty">搜索中...</div>'
+    var isAvocadoSearch=kw.indexOf('牛油')>=0
+    if(!_ordersPreloaded&&!_ordersLoading)loadOrders()
 
-function renderGuideCard(){var el=document.getElementById('guide-content'),base=window.location.origin+window.location.pathname.split('/upload/')[0],gurl=base+'/upload/h5/loss-guide.html?v=2',imgBase=base+'/upload/h5/guide-img/'
+    if(isAvocadoSearch){
+      // 牛油果泥：仅搜物料库，不搜报货单
+      var matReady=false
+      fetch(API+'/loss-report/materials/search?keyword='+encodeURIComponent(kw)+'&lossObject=finished',{headers:H()}).then(function(r){return r.json()}).then(function(d){
+        matReady=true;_searchCache=(d.data&&d.data.list)||[];tryRenderAvocado()
+      }).catch(function(){matReady=true;_searchCache=[];tryRenderAvocado()})
+      function tryRenderAvocado(){
+        if(!matReady)return
+        var list=_searchCache||[],h=''
+        if(list.length>0){
+          h+='<div style="font-size:13px;color:#66706A;padding:4px 6px 8px">牛油果泥</div>'
+          for(var i=0;i<list.length;i++){
+            var cat=list[i].category||''
+            h+='<div class="res-item" onclick="selectMaterial('+i+')"><div class="res-name">'+esc(list[i].materialName)+'</div><div class="res-meta">'+esc(list[i].spec||'--')+' · <span style="background:#E7F4EB;color:#2F8F57;padding:2px 8px;border-radius:4px;font-size:11px">'+esc(cat)+'</span></div></div>'
+          }
+        }else{
+          h+='<div class="res-empty">暂无匹配物品</div>'
+        }
+        document.getElementById('results').innerHTML=h
+      }
+    }else{
+      // 非牛油果：仅搜索预加载报货单中的商品，不在单子里的物料不可报损
+      var ordersDone=false
+      setTimeout(function(){ordersDone=true;tryRenderOrders()},600)
+      function tryRenderOrders(){
+        if(!ordersDone)return
+        var h=''
+        // 空搜索：每个单号一条记录
+        if(!kw){
+          if(_ordersWithProducts.length>0){
+            // 统计总单号数
+            var totalNos=0;for(var tc=0;tc<_ordersWithProducts.length;tc++){totalNos+=getAllOrderNos(_ordersWithProducts[tc]).length}
+            h+='<div style="font-size:13px;color:#66706A;padding:4px 6px 8px">最近报货单（'+totalNos+'单）</div>'
+            for(var oi2=0;oi2<_ordersWithProducts.length;oi2++){
+              var o2=_ordersWithProducts[oi2],dt2=(o2.createdAt||'').substring(0,10),amt2=typeof o2.amount==='number'?o2.amount.toFixed(2):'--',si2=orderStatusInfo(o2.orderStatus)
+              var pn2=o2.products?o2.products.length:(o2.productCateNum||o2.productNum||0)
+              var nos2=getAllOrderNos(o2)
+              for(var ni2=0;ni2<nos2.length;ni2++){
+                h+='<div class="res-item" onclick="selectOrder('+oi2+',\''+esc(nos2[ni2])+'\')" style="cursor:pointer">'
+                h+='<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="res-name">'+esc(nos2[ni2])+'</div><div class="res-meta">'+dt2+' · <span style="color:'+si2.c+'">'+si2.t+'</span> · '+pn2+'种商品</div></div>'
+                h+='<div style="text-align:right"><span style="font-weight:600;font-size:15px">¥'+amt2+'</span></div></div>'
+                h+='</div>'
+              }
+            }
+          }else if(_ordersLoading){
+            h+='<div class="res-empty">报货单加载中...</div>'
+          }else{
+            h+='<div class="res-empty">暂无报货单，不支持搜索</div>'
+          }
+          document.getElementById('results').innerHTML=h;return
+        }
+        // 有关键词：按单号和物料分开匹配，每个单号对应自己的物料
+        var kwLow=kw.toLowerCase(),noGroups=[],matGroups=[]
+        for(var oi=0;oi<_ordersWithProducts.length;oi++){
+          var order=_ordersWithProducts[oi]
+          var allNos=getAllOrderNos(order)
+          for(var ni=0;ni<allNos.length;ni++){
+            var noProds=getProductsForNo(order,allNos[ni])
+            // 单号匹配
+            if(allNos[ni].toLowerCase().indexOf(kwLow)>=0){
+              noGroups.push({orderIdx:oi,order:order,displayNo:allNos[ni],products:noProds})
+            }else{
+              // 物料名匹配
+              var matchedIdxs=[]
+              for(var pi=0;pi<noProds.length;pi++){
+                if((noProds[pi].productName||'').toLowerCase().indexOf(kwLow)>=0)matchedIdxs.push(pi)
+              }
+              if(matchedIdxs.length>0){
+                matGroups.push({orderIdx:oi,order:order,displayNo:allNos[ni],prodIdxs:matchedIdxs,products:noProds})
+              }
+            }
+          }
+        }
+        if(noGroups.length>0||matGroups.length>0){
+          // 按单号匹配（每个单号一条记录）
+          if(noGroups.length>0){
+            h+='<div style="font-size:13px;color:#2F8F57;padding:4px 6px 6px">按单号匹配（'+noGroups.length+'）</div>'
+            for(var j=0;j<noGroups.length;j++){
+              var go=noGroups[j],o=go.order
+              var dt=(o.createdAt||'').substring(0,10),amt=typeof o.amount==='number'?o.amount.toFixed(2):'--',si=orderStatusInfo(o.orderStatus)
+              h+='<div style="font-size:13px;color:#66706A;padding:8px 6px 4px;border-top:1px solid #EEF1EF;margin-top:4px" onclick="selectOrder('+go.orderIdx+',\''+esc(go.displayNo)+'\')"><b>'+esc(go.displayNo)+'</b> · '+dt+' · <span style="color:'+si.c+'">'+si.t+'</span> · ¥'+amt+'</div>'
+              var allProds=go.products
+              for(var k=0;k<allProds.length;k++){
+                var p=allProds[k],price=typeof p.price==='number'?p.price.toFixed(2):'--'
+                h+='<div class="res-item" onclick="selectSearchProductByName('+go.orderIdx+',\''+esc(p.productName)+'\')" style="margin-left:8px;border-left:2px solid #E8ECE9;padding:8px 10px;line-height:1.9">'
+                h+='<div><span style="color:#98A19C;font-size:12px">物品名称</span> <span style="font-weight:500">'+esc(p.productName)+'</span>'+ (p.isGift?' <span style="color:#E05A47;font-size:11px">[赠品]</span>':'') +'</div>'
+                if(p.productSpec)h+='<div><span style="color:#98A19C;font-size:12px">规格</span> '+esc(p.productSpec)+'</div>'
+                h+='<div><span style="color:#98A19C;font-size:12px">订货数量</span> x'+(p.examineNum||p.productNum)+' '+(p.productUnit||'')+'</div>'
+                h+='<div><span style="color:#98A19C;font-size:12px">单价</span> ¥'+price+'/'+(p.productUnit||'')+'</div>'
+                h+='</div>'
+              }
+            }
+          }
+          // 按物料匹配（每个单号一条记录）
+          if(matGroups.length>0){
+            h+='<div style="font-size:13px;color:#2F8F57;padding:8px 6px 6px;border-top:1px solid #EEF1EF;margin-top:6px">按物料匹配（'+matGroups.length+'）</div>'
+            for(var m=0;m<matGroups.length;m++){
+              var gm=matGroups[m],mo=gm.order
+              var dt2=(mo.createdAt||'').substring(0,10),amt2=typeof mo.amount==='number'?mo.amount.toFixed(2):'--',si2=orderStatusInfo(mo.orderStatus)
+              h+='<div style="font-size:13px;color:#66706A;padding:8px 6px 4px;border-top:1px solid #EEF1EF;margin-top:4px" onclick="selectOrder('+gm.orderIdx+',\''+esc(gm.displayNo)+'\')"><b>'+esc(gm.displayNo)+'</b> · '+dt2+' · <span style="color:'+si2.c+'">'+si2.t+'</span> · ¥'+amt2+'</div>'
+              for(var n=0;n<gm.prodIdxs.length;n++){
+                var pi2=gm.prodIdxs[n],p2=gm.products[pi2],price2=typeof p2.price==='number'?p2.price.toFixed(2):'--'
+                h+='<div class="res-item" onclick="selectSearchProductByName('+gm.orderIdx+',\''+esc(p2.productName)+'\')" style="margin-left:8px;border-left:2px solid #E8ECE9;padding:8px 10px;line-height:1.9">'
+                h+='<div><span style="color:#98A19C;font-size:12px">物品名称</span> <span style="font-weight:500">'+esc(p2.productName)+'</span>'+ (p2.isGift?' <span style="color:#E05A47;font-size:11px">[赠品]</span>':'') +'</div>'
+                if(p2.productSpec)h+='<div><span style="color:#98A19C;font-size:12px">规格</span> '+esc(p2.productSpec)+'</div>'
+                h+='<div><span style="color:#98A19C;font-size:12px">订货数量</span> x'+(p2.examineNum||p2.productNum)+' '+(p2.productUnit||'')+'</div>'
+                h+='<div><span style="color:#98A19C;font-size:12px">单价</span> ¥'+price2+'/'+(p2.productUnit||'')+'</div>'
+                h+='</div>'
+              }
+            }
+          }
+        }else if(_ordersWithProducts.length>0){
+          h+='<div class="res-empty">报货单中无匹配"'+esc(kw)+'"</div>'
+        }else if(!_ordersPreloaded){
+          h+='<div class="res-empty">报货单加载中...</div>'
+        }else{
+          h+='<div class="res-empty">暂无结果</div>'
+        }
+        document.getElementById('results').innerHTML=h
+      }
+    }
+  },300)}
+function isAvocado(m){return m&&m.materialName&&m.materialName.indexOf('牛油果泥')>=0}
+function selectMaterial(idx){var m=_searchCache[idx];selected=m;inputUnit=m.stockUnit||m.baseUnit||'';if(isAvocado(m)&&m.units&&m.units.indexOf('包')>=0){inputUnit='包'}unitPrice=resolvePrice(m,inputUnit);closeSearch();document.getElementById('search-tap').style.display='none';document.getElementById('selected-item').style.display='flex';document.getElementById('sel-name').textContent=m.materialName+(m.spec?' · '+m.spec:'');document.getElementById('unit-label').textContent=inputUnit;document.getElementById('qty').value='';renderUnits();calcAmount();updateHint();_selectedOrder=null;_selectedOrderProductIdx=-1;if(isAvocado(m)){document.getElementById('order-info').style.display='none';document.getElementById('order-products').innerHTML='';document.getElementById('order-product-hint').style.display='none';_avocadoSupplier='';document.getElementById('supplier-card').style.display='block';document.getElementById('sup-hass').className='pill';document.getElementById('sup-lanwa').className='pill'}else{_avocadoSupplier='';document.getElementById('supplier-card').style.display='none';document.getElementById('order-info').style.display='block';document.getElementById('sel-order-no').textContent='';document.getElementById('sel-order-time').textContent='';document.getElementById('order-detail-card').style.display='none'}}function renderGuideCard(){var el=document.getElementById('guide-content'),base=window.location.origin+window.location.pathname.split('/upload/')[0],gurl=base+'/upload/h5/loss-guide.html?v=2',imgBase=base+'/upload/h5/guide-img/'
   var posterUrl=base+'/upload/h5/video/BS-poster.jpg'
   el.innerHTML='<div class="guide-video-thumb" onclick="playGuideVideo()"><img src="'+posterUrl+'" style="width:100%;display:block;border-radius:8px" /><div class="play-icon">▶</div></div><div onclick="openGuide()" style="cursor:pointer"><div style="display:flex;gap:6px;margin-bottom:8px"><img src="'+imgBase+'image10.jpeg" style="width:72px;height:72px;object-fit:cover;border-radius:6px" /><img src="'+imgBase+'image2.jpeg" style="width:72px;height:72px;object-fit:cover;border-radius:6px" /><img src="'+imgBase+'image3.jpeg" style="width:72px;height:72px;object-fit:cover;border-radius:6px" /></div><p style="font-size:13px;color:#66706A;line-height:1.6"><span style="display:flex;align-items:flex-start;gap:6px"><span style="font-size:16px;flex-shrink:0">📸</span> 使用水印相机拍照，拍清楚报损数量和褐变区域</span><br><span style="display:flex;align-items:flex-start;gap:6px"><span style="font-size:16px;flex-shrink:0">🎬</span> 录视频要剪开包装袋，拍完整销毁过程</span></p></div>'}
-function clearMaterial(){selected=null;inputUnit='';unitPrice=0;document.getElementById('search-tap').style.display='block';document.getElementById('selected-mat').style.display='none';document.getElementById('unit-card').style.display='none';document.getElementById('order-card').style.display='block';document.getElementById('qty').value='';document.getElementById('amount-display').textContent='¥0.00';document.getElementById('unit-price-display').textContent='单价：--';updateHint()}
+function clearItem(){selected=null;inputUnit='';unitPrice=0;_selectedOrder=null;_selectedOrderProductIdx=-1;document.getElementById('search-tap').style.display='block';document.getElementById('selected-item').style.display='none';document.getElementById('unit-card').style.display='none';_avocadoSupplier='';document.getElementById('supplier-card').style.display='none';document.getElementById('order-info').style.display='none';document.getElementById('order-products').innerHTML='';document.getElementById('order-product-hint').style.display='none';document.getElementById('qty').value='';document.getElementById('amount-display').textContent='¥0.00';document.getElementById('unit-price-display').textContent='单价：--';updateHint()}
 function resolvePrice(m,unit){if(!m||!m.unitPrice)return 0;if(!unit||unit===m.baseUnit)return Number(m.unitPrice);var infos=m.unitInfos||[];for(var i=0;i<infos.length;i++){if(infos[i].unit===unit&&infos[i].hint){var m2=infos[i].hint.match(/=(\d+\.?\d*)/);if(m2)return Number(m.unitPrice)*parseFloat(m2[1])}}return Number(m.unitPrice)}
 function renderUnits(){if(!selected||!selected.units)return;document.getElementById('unit-card').style.display='block';var h='';var allUnits=selected.units;if(isAvocado(selected)){allUnits=allUnits.filter(function(u){return u!=='g'&&u!=='kg'})};for(var i=0;i<allUnits.length;i++){var u=allUnits[i];h+='<span class="pill'+(u===inputUnit?' on':'')+'" onclick="selectUnit(\''+u+'\')">'+u+'</span>'}document.getElementById('unit-pills').innerHTML=h;if(inputUnit!==selected.baseUnit){var infos=selected.unitInfos||[];for(var j=0;j<infos.length;j++){if(infos[j].unit===inputUnit&&infos[j].hint){document.getElementById('unit-hint').textContent=infos[j].hint;document.getElementById('unit-hint').style.display='block';return}}}document.getElementById('unit-hint').style.display='none'}
 function selectUnit(u){inputUnit=u;unitPrice=resolvePrice(selected,u);document.getElementById('unit-label').textContent=u;document.getElementById('qty').value='';renderUnits();calcAmount()}
 function setUrgent(v){isUrgent=v;document.getElementById('urgent-yes').className=v?'pill on':'pill';if(v)document.getElementById('urgent-yes').style.cssText='border-color:#E05A47;color:#E05A47;background:#FEF0EF';else document.getElementById('urgent-yes').style.cssText='';document.getElementById('urgent-no').className=v?'pill':'pill on'}
 function calcAmount(){var qty=parseFloat(document.getElementById('qty').value)||0;var amt=unitPrice>0?(qty*unitPrice).toFixed(2):'0.00';document.getElementById('amount-display').textContent='¥'+amt;document.getElementById('unit-price-display').textContent=unitPrice>0?'单价：¥'+unitPrice:'单价：--';document.getElementById('amount-warn').style.display=unitPrice===0&&selected?'block':'none'}
+function selectSupplier(s){_avocadoSupplier=s;document.getElementById('sup-hass').className=s==='hass牛油果'?'pill on':'pill';document.getElementById('sup-lanwa').className=s==='蓝蛙牛油果'?'pill on':'pill'}
+// ====== 企迈报货单（预加载版） ======
+var _ordersLoading=false
+
+function loadOrders(){
+  if(_ordersLoading)return;_ordersLoading=true
+  fetch(API+'/loss-report/qmai-declare-orders',{headers:H()}).then(function(r){return r.json()}).then(function(d){
+    if(d.code!==200){_ordersLoading=false;showToast('加载报货单失败: '+(d.message||''));return}
+    var resp=d.data||{}
+    var list=resp.orders||[]
+    _instoreProductMap=resp.instoreProductMap||{}
+    if(list.length===0){_ordersLoading=false;showToast('近30天暂无报货单');return}
+    preloadOrderDetails(list,0,[])
+  }).catch(function(e){
+    _ordersLoading=false;showToast('加载报货单失败')
+  })
+}
+
+/** 逐条预加载订单详情（串行，避免令牌冲突） */
+function preloadOrderDetails(list,idx,result){
+  if(idx>=list.length){
+    _ordersWithProducts=result;_ordersPreloaded=true;_ordersLoading=false
+    return
+  }
+  var orderNo=list[idx].declareNo
+  fetch(API+'/loss-report/qmai-declare-orders?declareNo='+encodeURIComponent(orderNo),{headers:H()}).then(function(r){return r.json()}).then(function(d){
+    if(d.code===200&&d.data){
+      // 详情接口不返单号字段，从列表摘要合并过来
+      var merged=d.data
+      if(!merged.requireNoList||merged.requireNoList.length===0)merged.requireNoList=list[idx].requireNoList
+      if(!merged.purchaseApplyNoList||merged.purchaseApplyNoList.length===0)merged.purchaseApplyNoList=list[idx].purchaseApplyNoList
+      if(!merged.bizNoList||merged.bizNoList.length===0)merged.bizNoList=list[idx].bizNoList
+      if(!merged.bizNo)merged.bizNo=list[idx].bizNo
+      if(!merged.requireNo)merged.requireNo=list[idx].requireNo
+      result.push(merged)
+    }
+    else{result.push(list[idx])} // 详情失败则用摘要兜底
+    preloadOrderDetails(list,idx+1,result)
+  }).catch(function(){
+    result.push(list[idx])
+    preloadOrderDetails(list,idx+1,result)
+  })
+}
+
+/** 订单状态文本+颜色 */
+function orderDisplayNo(o){if(!o)return'';var all=getAllOrderNos(o);return all.length>0?all.join(','):''}
+function getAllOrderNos(o){if(!o)return[];var all=[];var rl=o.requireNoList;if(rl&&rl.length)all=all.concat(rl);var pl=o.purchaseApplyNoList;if(pl&&pl.length)all=all.concat(pl);var bl=o.bizNoList;if(bl&&bl.length)all=all.concat(bl);if(all.length>0)return all;var fb=o.bizNo||o.requireNo||o.declareNo||'';return fb?[fb]:[]}
+function primaryOrderNo(o){var all=getAllOrderNos(o);return all.length>0?all[0]:''}
+function getProductsForNo(order,orderNo){var prods=_instoreProductMap[orderNo];if(prods&&prods.length>0)return prods;return order.products||[]}
+function orderStatusInfo(s){
+  switch(s){case 0:return {t:'待支付',c:'#E58A2D'};case 1:return {t:'待接单',c:'#E58A2D'};case 2:return {t:'已接单',c:'#4A90D9'}
+    case 3:return {t:'履约中',c:'#4A90D9'};case 4:return {t:'已完成',c:'#2F8F57'};case 5:return {t:'已取消',c:'#98A19C'};case 6:return {t:'已驳回',c:'#E05A47'}
+    default:return {t:'未知',c:'#98A19C'}}
+}
+
+/** 空白搜索时点击订单：展开/收起商品列表 */
+function toggleOrderProducts(idx,el){
+  var prodsDiv=document.getElementById('order-prods-'+idx)
+  if(!prodsDiv)return
+  // 收起
+  if(prodsDiv.style.display==='block'){prodsDiv.style.display='none';return}
+  // 展开：如果还没渲染过，先渲染商品列表
+  if(!prodsDiv._rendered){
+    var o=_ordersWithProducts[idx],h=''
+    if(o.products&&o.products.length>0){
+      for(var i=0;i<o.products.length;i++){
+        var p=o.products[i],price=typeof p.price==='number'?p.price.toFixed(2):'--'
+        h+='<div class="res-item" onclick="event.stopPropagation();selectSearchProduct('+idx+','+i+')" style="padding:8px 10px;line-height:1.9">'
+        h+='<div><span style="color:#98A19C;font-size:12px">物品名称</span> <span style="font-weight:500">'+esc(p.productName)+'</span>'+ (p.isGift?' <span style="color:#E05A47;font-size:11px">[赠品]</span>':'') +'</div>'
+        if(p.productSpec)h+='<div><span style="color:#98A19C;font-size:12px">规格</span> '+esc(p.productSpec)+'</div>'
+        h+='<div><span style="color:#98A19C;font-size:12px">订货数量</span> x'+(p.examineNum||p.productNum)+' '+(p.productUnit||'')+'</div>'
+        h+='<div><span style="color:#98A19C;font-size:12px">单价</span> ¥'+price+'/'+(p.productUnit||'')+'</div>'
+        h+='</div>'
+      }
+    }else{h='<div class="res-empty">暂无商品明细</div>'}
+    prodsDiv.innerHTML=h;prodsDiv._rendered=true
+  }
+  prodsDiv.style.display='block'
+}
+
+/** 从预加载数据中选择订单（无需再调API） */
+function selectOrder(idx,orderNo){
+  _selectedOrder=_ordersWithProducts[idx];_selectedOrderProductIdx=-1
+  _selectedOrderNo=orderNo||''
+  renderSelectedOrder()
+  closeSearch()
+}
+
+function selectOrderProduct(idx){
+  if(!_selectedOrder)return;_selectedOrderProductIdx=idx
+  var p=_selectedOrder.products[idx]
+  // 优先使用本地匹配物料的信息（含单位换算）
+  var mm=p.matchedMaterial
+  if(mm){
+    selected={materialId:mm.materialId,materialName:mm.materialName,spec:mm.spec||'',baseUnit:mm.baseUnit||'',stockUnit:mm.stockUnit||'',
+      unitPrice:typeof mm.unitPrice==='number'?mm.unitPrice:(mm.unitPrice||0),
+      units:mm.units||[],unitInfos:mm.unitInfos||[]}
+    // 默认单位：优先用 stockUnit，否则 baseUnit
+    inputUnit=mm.stockUnit||mm.baseUnit||''
+    unitPrice=typeof mm.unitPrice==='number'?mm.unitPrice:(mm.unitPrice||0)
+  }else{
+    // 未匹配到本地物料，用企迈商品信息兜底
+    selected={materialId:'',materialName:p.productName,spec:p.productSpec||'',baseUnit:p.productUnit||'',stockUnit:p.productUnit||'',
+      unitPrice:typeof p.price==='number'?p.price:0,
+      units:p.productUnit?[p.productUnit]:[],unitInfos:[]}
+    inputUnit=p.productUnit||''
+    unitPrice=typeof p.price==='number'?p.price:0
+  }
+  document.getElementById('search-tap').style.display='none'
+  document.getElementById('selected-item').style.display='flex'
+  document.getElementById('sel-name').textContent=selected.materialName+(selected.spec?' · '+selected.spec:'')
+  document.getElementById('unit-label').textContent=inputUnit
+  document.getElementById('unit-card').style.display='block'
+  document.getElementById('qty').value=''
+  renderUnits()
+  calcAmount()
+  updateHint()
+  if(isAvocado(selected)){_avocadoSupplier='';document.getElementById('supplier-card').style.display='block';document.getElementById('sup-hass').className='pill';document.getElementById('sup-lanwa').className='pill'}
+  else{_avocadoSupplier='';document.getElementById('supplier-card').style.display='none'}
+  document.getElementById('order-product-hint').textContent='已选: '+selected.materialName+' · ¥'+(typeof unitPrice==='number'?unitPrice.toFixed(2):'--')
+  renderSelectedOrder()
+}
+
+function selectSearchProduct(orderIdx,productIdx){
+  _selectedOrder=_ordersWithProducts[orderIdx]
+  selectOrderProduct(productIdx)
+  closeSearch()
+}
+function selectSearchProductByName(orderIdx,prodName){
+  _selectedOrder=_ordersWithProducts[orderIdx]
+  var prods=_selectedOrder.products||[]
+  for(var i=0;i<prods.length;i++){
+    if(prods[i].productName===prodName){selectOrderProduct(i);closeSearch();return}
+  }
+  closeSearch()
+}
+
+function renderSelectedOrder(){
+  if(!_selectedOrder)return
+  document.getElementById('order-info').style.display='block'
+  document.getElementById('sel-order-no').textContent=_selectedOrderNo||primaryOrderNo(_selectedOrder)||''
+  document.getElementById('sel-order-time').textContent=(_selectedOrder.createdAt||'').substring(0,16)
+  var dcard=document.getElementById('order-detail-card')
+  if(_selectedOrderProductIdx>=0){
+    var sp=_selectedOrder.products[_selectedOrderProductIdx]
+    document.getElementById('sel-order-prod-name').textContent=sp.productName+(sp.productSpec?' · '+sp.productSpec:'')
+    document.getElementById('sel-order-qty').textContent='x'+(sp.examineNum||sp.productNum)+' '+(sp.productUnit||'')
+    document.getElementById('sel-order-amount').textContent='¥'+(typeof sp.amount==='number'?sp.amount.toFixed(2):'--')
+    dcard.style.display='block'
+  }else{
+    dcard.style.display='none'
+  }
+  document.getElementById('order-product-hint').style.display='none'
+}
+
+function clearOrder(){_selectedOrder=null;_selectedOrderNo='';_selectedOrderProductIdx=-1;document.getElementById('order-info').style.display='none';document.getElementById('order-products').innerHTML='';document.getElementById('order-product-hint').style.display='none'}
 function renderReasons(){var h='';for(var i=0;i<reasons.length;i++)h+='<span class="pill'+(i===0?' on':'')+'" onclick="selectReason(\''+reasons[i]+'\',this)">'+reasons[i]+'</span>';document.getElementById('reason-pills').innerHTML=h}
 function selectReason(r,el){var pills=document.getElementById('reason-pills').children;for(var i=0;i<pills.length;i++)pills[i].className='pill';el.className='pill on';document.getElementById('remark-required').style.display=r==='错发'?'inline':'none';updateHint()}
 function openGuide(){var base=window.location.origin+window.location.pathname.split('/upload/')[0];location.href=base+'/upload/h5/loss-guide.html?v=2'}
 function updateHint(){var r=document.querySelector('#reason-pills .pill.on'),reason=r?r.textContent:'',el=document.getElementById('upload-hint'),needsVideo=['运输破损-外包装','运输破损-内包装','临期或变质'];el.textContent=needsVideo.indexOf(reason)>=0?'请拍摄销毁过程视频作为凭证':''}
 
-async function submit(){if(submitting)return;if(!selected){showToast('请选择物料');return};var qty=parseFloat(document.getElementById('qty').value)||0;if(qty<=0){showToast('请填写报损数量');return};var orderNo=document.getElementById('order-no').value.trim();if(!isAvocado(selected)&&!orderNo){showToast('请填写企迈单号');return};var reasonEl=document.querySelector('#reason-pills .pill.on');if(!reasonEl){showToast('请选择报损原因');return};var reason=reasonEl.textContent,remark=document.getElementById('remark').value.trim();if(reason==='错发'&&!remark){showToast('请填写备注说明错发情况');return};if(!mediaList.length){showToast('请上传现场凭证');return};if(mediaList.some(function(m){return m.uploading})){showToast('有文件正在上传中');return};var videoCount=mediaList.filter(function(m){return m.isVideo}).length;if(['运输破损-外包装','运输破损-内包装','临期或变质'].indexOf(reason)>=0&&videoCount===0){showToast('该原因需至少拍摄1段视频');return};submitting=true;document.getElementById('submit-btn').disabled=true;showLoading('提交中...')
+async function submit(){if(submitting)return;if(!selected){showToast('请选择物料');return};var qty=parseFloat(document.getElementById('qty').value)||0;if(qty<=0){showToast('请填写报损数量');return};var orderNo=_selectedOrder?orderDisplayNo(_selectedOrder):'';if(!isAvocado(selected)&&!orderNo){showToast('请选择企迈报货单');return};if(isAvocado(selected)&&!_avocadoSupplier){showToast('请选择牛油果泥厂家');return};var reasonEl=document.querySelector('#reason-pills .pill.on');if(!reasonEl){showToast('请选择报损原因');return};var reason=reasonEl.textContent,remark=document.getElementById('remark').value.trim();if(reason==='错发'&&!remark){showToast('请填写备注说明错发情况');return};if(isAvocado(selected)&&_avocadoSupplier){remark='【'+_avocadoSupplier+'】'+(remark||'')};if(!mediaList.length){showToast('请上传现场凭证');return};if(mediaList.some(function(m){return m.uploading})){showToast('有文件正在上传中');return};var videoCount=mediaList.filter(function(m){return m.isVideo}).length;if(['运输破损-外包装','运输破损-内包装','临期或变质'].indexOf(reason)>=0&&videoCount===0){showToast('该原因需至少拍摄1段视频');return};submitting=true;document.getElementById('submit-btn').disabled=true;showLoading('提交中...')
   try{var body={lossType:'arrival',lossObject:'finished',materialId:selected.materialId||null,materialName:selected.materialName,spec:selected.spec||'',inputUnit:inputUnit,inputQty:qty,unitPrice:unitPrice||null,totalAmount:unitPrice>0?parseFloat((qty*unitPrice).toFixed(2)):null,qimaiOrderNo:orderNo,reason:reason,remark:remark,voucherUrl:mediaList.filter(function(m){return m.url}).map(function(m){return m.url}).join(','),urgent:isUrgent?1:0};var res=await fetch((RESUBMIT_ID?API+'/loss-report/'+RESUBMIT_ID+'/resubmit':API+'/loss-report'),{method:'POST',headers:H(),body:JSON.stringify(body)});var d=await res.json();if(d.code!==200)throw new Error(d.message||'提交失败');wx.miniProgram.postMessage({data:{type:'loss-submitted'}});showLoading('提交成功');setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},500)}catch(e){showToast('提交失败: '+e.message);submitting=false;document.getElementById('submit-btn').disabled=false;hideLoading()}}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function showLoading(msg){document.getElementById('loading-msg').textContent=msg;document.getElementById('loading').style.display='flex'}
 function hideLoading(){document.getElementById('loading').style.display='none'}
-renderReasons();initGuideVideoUrl();renderMedia();renderGuideCard();updateHint()
+renderReasons();initGuideVideoUrl();loadOrders();renderMedia();renderGuideCard();updateHint()
 if(RESUBMIT_ID){(async function prefill(){
   showLoading('加载报损信息...')
   try{var res=await fetch(API+'/loss-report/'+RESUBMIT_ID,{headers:H()});var d=await res.json()
     if(d.code!==200||!d.data){hideLoading();showToast('加载失败: '+(d.message||'无数据'));return}
     var r=d.data
     // 物料
-    if(r.materialId){selected={materialId:r.materialId,materialName:r.materialName,spec:r.spec||'',baseUnit:r.baseUnit||'',stockUnit:r.inputUnit||'',unitPrice:r.unitPrice||0};document.getElementById('search-tap').style.display='none';document.getElementById('selected-mat').style.display='flex';document.getElementById('sel-name').textContent=r.materialName+(r.spec?' · '+r.spec:'');document.getElementById('order-card').style.display=isAvocado(selected)?'none':'block'}
+    if(r.materialId){selected={materialId:r.materialId,materialName:r.materialName,spec:r.spec||'',baseUnit:r.baseUnit||'',stockUnit:r.inputUnit||'',unitPrice:r.unitPrice||0};document.getElementById('search-tap').style.display='none';document.getElementById('selected-item').style.display='flex';document.getElementById('sel-name').textContent=r.materialName+(r.spec?' · '+r.spec:'');if(isAvocado(selected)){document.getElementById('supplier-card').style.display='block';document.getElementById('order-info').style.display='none'}else{document.getElementById('supplier-card').style.display='none'}}
     // 企迈单号
-    document.getElementById('order-no').value=r.qimaiOrderNo||''
+    _selectedOrder={declareNo:r.qimaiOrderNo,requireNo:r.qimaiOrderNo,products:[],createdAt:''}; if(r.qimaiOrderNo){renderSelectedOrder()}
     // 加急
     if(r.urgent===1){isUrgent=true;document.getElementById('urgent-yes').className='pill on';document.getElementById('urgent-yes').style.cssText='border-color:#E05A47;color:#E05A47;background:#FEF0EF';document.getElementById('urgent-no').className='pill'}
     // 单位+数量+金额
@@ -213,7 +514,7 @@ if(RESUBMIT_ID){(async function prefill(){
     // 原因
     if(r.reason){var pills=document.getElementById('reason-pills').children;for(var j=0;j<pills.length;j++){if(pills[j].textContent===r.reason){pills[j].className='pill on'}else{pills[j].className='pill'}}}
     // 备注
-    document.getElementById('remark').value=r.remark||'';document.getElementById('remark-required').style.display=r.reason==='错发'?'inline':'none'
+    var displayRemark=r.remark||'';var supMatch=displayRemark.match(/^【(hass牛油果|蓝蛙牛油果)】/);if(supMatch){_avocadoSupplier=supMatch[1];displayRemark=displayRemark.replace(/^【(hass牛油果|蓝蛙牛油果)】/,'').trim();selectSupplier(_avocadoSupplier)}document.getElementById('remark').value=displayRemark;document.getElementById('remark-required').style.display=r.reason==='错发'?'inline':'none'
     // 凭证
     if(r.voucherUrl){var urls=r.voucherUrl.split(',').filter(Boolean);for(var u=0;u<urls.length;u++){mediaList.push({url:urls[u],isVideo:urls[u].match(/\.(mp4|mov|avi|mkv|webm)/i)?true:false,uploading:false,failed:false,size:0,progress:100})}}
     renderMedia();updateHint();renderGuideCard()

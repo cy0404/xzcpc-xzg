@@ -14,6 +14,8 @@ import com.xzcpc.task.dto.TaskUpdateRequest;
 import com.xzcpc.task.entity.Task;
 import com.xzcpc.task.entity.TaskZone;
 import com.xzcpc.task.entity.TaskZoneMaterial;
+import com.xzcpc.task.entity.StoreOrderCycle;
+import com.xzcpc.task.mapper.StoreOrderCycleMapper;
 import com.xzcpc.task.mapper.TaskMapper;
 import com.xzcpc.task.mapper.TaskZoneMapper;
 import com.xzcpc.task.mapper.TaskZoneMaterialMapper;
@@ -36,11 +38,17 @@ import com.xzcpc.task.entity.Store;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,6 +56,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TaskServiceImpl implements TaskService { // 月盘任务服务实现
@@ -65,6 +74,10 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
     private final ObjectMapper objectMapper;
     private final StoreAccessService storeAccessService;
     private final StoreMapper storeMapper;
+    private final StoreOrderCycleMapper storeOrderCycleMapper;
+
+    /** 星期名称（1周一-7周日），用于周盘任务名区分同周多次 */
+    private static final String[] WEEK_DAY_NAMES = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
 
     @Override
     public String getLatestMonth() {
@@ -75,7 +88,7 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
 
     @Override
     public Page<Task> page(String storeId, String supervisorName, String status, String keyword, String templateName,
-                           String taskMonth, int pageNum, int pageSize) {
+                           String taskMonth, String taskType, int pageNum, int pageSize) {
         LambdaQueryWrapper<Task> wrapper = new LambdaQueryWrapper<>();
 
         // 督导角色：按可访问门店过滤
@@ -114,6 +127,9 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         }
         if (StringUtils.hasText(taskMonth)) {
             wrapper.eq(Task::getTaskMonth, taskMonth);
+        }
+        if (StringUtils.hasText(taskType)) {
+            wrapper.eq(Task::getTaskType, taskType);
         }
         if (StringUtils.hasText(templateName)) {
             List<Integer> matchedIds = templateMapper.selectList(
@@ -191,21 +207,76 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         if (request.getStoreIds() == null || request.getStoreIds().isEmpty()) {
             throw new BusinessException("门店列表不能为空");
         }
+        String taskType = StringUtils.hasText(request.getTaskType()) ? request.getTaskType() : "monthly";
+        if (!"monthly".equals(taskType) && !"weekly".equals(taskType)) {
+            throw new BusinessException("任务类型非法: " + taskType);
+        }
+
+        // 周盘：校验周标签并推导周起始日（周一），周盘任务不传统一 deadline，逐门店按配置的周盘点日自动计算
+        LocalDateTime weekStart = null;
+        if ("weekly".equals(taskType)) {
+            if (!StringUtils.hasText(request.getTaskWeek())) {
+                throw new BusinessException("周盘任务必须选择盘点周");
+            }
+            weekStart = parseWeekStart(request.getTaskWeek());
+        } else if (!StringUtils.hasText(request.getTaskMonth())) {
+            throw new BusinessException("月盘任务必须选择盘点月份");
+        }
 
         Map<String, StoreInfo> storeMap = storeService.getStoreMap();
+        List<String> noDayStores = new java.util.ArrayList<>();
         int count = 0;
         for (String storeId : request.getStoreIds()) {
             StoreInfo storeInfo = storeMap.get(storeId);
+            LocalDateTime deadline = request.getDeadline();
+            if ("weekly".equals(taskType)) {
+                // 门店未配置订货周期 → 收集并报错，不创建
+                List<Integer> orderDays = parseOrderDays(storeOrderCycleMapper.selectOne(
+                        new LambdaQueryWrapper<StoreOrderCycle>()
+                                .eq(StoreOrderCycle::getStoreId, storeId)));
+                if (orderDays.isEmpty()) {
+                    noDayStores.add(storeInfo != null ? storeInfo.getMendianmingcheng() : storeId);
+                    continue;
+                }
+                // 订货日：请求指定（自动生成场景每订货日各一次）优先，缺省取配置第一个
+                int orderDay = request.getOrderDay() != null ? request.getOrderDay() : orderDays.get(0);
+                if (orderDay < 1 || orderDay > 7) {
+                    throw new BusinessException("订货日非法: " + orderDay);
+                }
+                // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；截止时间 = 盘点日 23:59:59
+                int inventoryDay = inventoryDayOfOrderDay(orderDay);
+                deadline = weekStart.plusDays(inventoryDay - 1L).toLocalDate().atTime(23, 59, 59);
+            }
+            // 存在未配置订货周期的门店：跳过创建，统一在最后报错（事务回滚保证原子性）
+
+            // 周盘防重：同门店同周同截止时间已有未提交（not_started/in_progress/overdue）的周盘任务则拒绝
+            // （同周多次周盘按 deadline 区分）
+            if ("weekly".equals(taskType)) {
+                Long dup = taskMapper.selectCount(
+                        new LambdaQueryWrapper<Task>()
+                                .eq(Task::getStoreId, storeId)
+                                .eq(Task::getTaskType, "weekly")
+                                .eq(Task::getTaskWeek, request.getTaskWeek())
+                                .eq(Task::getDeadline, deadline)
+                                .in(Task::getStatus, "not_started", "in_progress", "overdue"));
+                if (dup > 0) {
+                    throw new BusinessException("门店[" + (storeInfo != null ? storeInfo.getMendianmingcheng() : storeId)
+                            + "]本周该订货日已存在周盘任务，请勿重复创建");
+                }
+            }
+
             Task task = new Task();
             task.setTaskName(request.getTaskName());
             task.setTaskMonth(request.getTaskMonth());
+            task.setTaskType(taskType);
+            task.setTaskWeek("weekly".equals(taskType) ? request.getTaskWeek() : null);
             task.setStoreId(storeId);
             task.setStoreName(storeInfo != null ? storeInfo.getMendianmingcheng() : null);
             task.setStoreCode(storeInfo != null ? storeInfo.getBianma() : null);
             task.setXiaochengxuid(storeInfo != null ? storeInfo.getXiaochengxuid() : null);
             task.setWarehouseCode(storeInfo != null ? storeInfo.getCangkuid() : null);
             task.setTemplateId(request.getTemplateId());
-            task.setDeadline(request.getDeadline());
+            task.setDeadline(deadline);
             task.setStatus("not_started");
             task.setCreatedBy("admin");
             task.setId(null);
@@ -215,7 +286,117 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
             snapshotTemplate(task.getId(), task.getTemplateId());
             count++;
         }
+        if (!noDayStores.isEmpty()) {
+            throw new BusinessException("以下门店未配置订货周期，请先到门店订货周期配置设置："
+                    + String.join("、", noDayStores));
+        }
         return count;
+    }
+
+    /** ISO 周标签格式 YYYY-Www（Locale.ROOT 保证 ISO 周制） */
+    private static final DateTimeFormatter ISO_WEEK_FMT =
+            java.time.format.DateTimeFormatter.ofPattern("YYYY-'W'ww", java.util.Locale.ROOT);
+
+    @Override
+    public Map<String, Object> autoGenerateWeekly() {
+        // 1. 启用的 weekly 模板（全局一份，取最新启用的）
+        Template template = templateMapper.selectOne(new LambdaQueryWrapper<Template>()
+                .eq(Template::getTemplateType, "weekly")
+                .eq(Template::getStatus, 1)
+                .orderByDesc(Template::getUpdatedAt)
+                .last("LIMIT 1"));
+        if (template == null) {
+            log.warn("WEEKLY_GEN 无启用的周盘模板，未生成任务");
+            return Map.of("generated", 0, "skipped", 0, "failed", List.of(), "taskWeek", "", "warning", "无启用的周盘模板");
+        }
+
+        LocalDate today = LocalDate.now();
+        LocalDate weekStart = today.with(java.time.DayOfWeek.MONDAY);
+        String taskWeek = ISO_WEEK_FMT.format(weekStart);
+        int weekNo = Integer.parseInt(taskWeek.substring(taskWeek.indexOf('W') + 1));
+        String taskName = weekStart.getYear() + "年第" + weekNo + "周周盘";
+
+        int generated = 0, skipped = 0;
+        List<String> failed = new ArrayList<>();
+        Map<String, StoreInfo> storeMap = storeService.getStoreMap();
+        // 按门店订货周期表：每个订货日 → 盘点日=订货日-1，盘点日在今天或明天则生成
+        List<StoreOrderCycle> cycles = storeOrderCycleMapper.selectList(
+                new LambdaQueryWrapper<StoreOrderCycle>().orderByAsc(StoreOrderCycle::getId));
+        for (StoreOrderCycle cycle : cycles) {
+            // 暂停的门店不参与周盘
+            if (cycle.getPaused() != null && cycle.getPaused() == 1) { skipped++; continue; }
+            List<Integer> orderDays = parseOrderDays(cycle);
+            if (orderDays.isEmpty()) { skipped++; continue; }
+            StoreInfo store = storeMap.get(cycle.getStoreId());
+            if (store == null) { skipped++; continue; }
+            for (int orderDay : orderDays) {
+                // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；窗口：今天/明天
+                LocalDate inventoryDate = weekStart.plusDays(inventoryDayOfOrderDay(orderDay) - 1L);
+                if (inventoryDate.isBefore(today) || inventoryDate.isAfter(today.plusDays(1))) { skipped++; continue; }
+                // 幂等：同店同周同截止时间（同周多次周盘按 deadline 区分）
+                LocalDateTime deadline = inventoryDate.atTime(23, 59, 59);
+                Long dup = taskMapper.selectCount(new LambdaQueryWrapper<Task>()
+                        .eq(Task::getStoreId, store.getId())
+                        .eq(Task::getTaskType, "weekly")
+                        .eq(Task::getTaskWeek, taskWeek)
+                        .eq(Task::getDeadline, deadline)
+                        .in(Task::getStatus, "not_started", "in_progress", "overdue"));
+                if (dup != null && dup > 0) { skipped++; continue; }
+                try {
+                    TaskCreateRequest req = new TaskCreateRequest();
+                    // 任务名带盘点日，同周多次可辨认
+                    req.setTaskName(taskName + "·" + WEEK_DAY_NAMES[inventoryDayOfOrderDay(orderDay)]);
+                    req.setTaskType("weekly");
+                    req.setTaskWeek(taskWeek);
+                    req.setOrderDay(orderDay);
+                    req.setStoreIds(List.of(store.getId()));
+                    req.setTemplateId(template.getId());
+                    batchCreate(req);
+                    generated++;
+                } catch (Exception e) {
+                    log.warn("WEEKLY_GEN 门店生成失败 storeId={} orderDay={}: {}", store.getId(), orderDay, e.getMessage());
+                    failed.add(store.getId());
+                }
+            }
+        }
+        log.info("WEEKLY_GEN done: taskWeek={} generated={} skipped={} failed={}", taskWeek, generated, skipped, failed);
+        return Map.of("generated", generated, "skipped", skipped, "failed", failed, "taskWeek", taskWeek);
+    }
+
+    /** 订货日 → 盘点日（订货日前一天）：周一(1)订货 → 上周日(7)盘点 */
+    private static int inventoryDayOfOrderDay(int orderDay) {
+        return orderDay == 1 ? 7 : orderDay - 1;
+    }
+
+    /** 解析订货日配置 "1,4" → [1,4]（去重、过滤非法值） */
+    private static List<Integer> parseOrderDays(StoreOrderCycle cycle) {
+        List<Integer> list = new ArrayList<>();
+        if (cycle == null || !StringUtils.hasText(cycle.getOrderDays())) return list;
+        for (String s : cycle.getOrderDays().split(",")) {
+            try {
+                int d = Integer.parseInt(s.trim());
+                if (d >= 1 && d <= 7 && !list.contains(d)) list.add(d);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return list;
+    }
+
+    /** 解析周标签 YYYY-Www → 该周周一 00:00:00 */
+    private LocalDateTime parseWeekStart(String taskWeek) {
+        if (!taskWeek.matches("\\d{4}-W\\d{2}")) {
+            throw new BusinessException("盘点周格式非法: " + taskWeek + "（应为 YYYY-Www，如 2026-W34）");
+        }
+        DateTimeFormatter fmt = new DateTimeFormatterBuilder()
+                .appendPattern("YYYY-'W'ww")
+                .parseDefaulting(ChronoField.DAY_OF_WEEK, 1) // ISO 周内补周一
+                .toFormatter();
+        try {
+            LocalDate weekStart = LocalDate.parse(taskWeek, fmt);
+            return weekStart.atStartOfDay();
+        } catch (Exception e) {
+            throw new BusinessException("盘点周无效: " + taskWeek);
+        }
     }
 
     @Override
@@ -376,16 +557,18 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         Map<String, Map<String, Object>> summaryMap = new java.util.LinkedHashMap<>();
         for (TaskZoneMaterial m : allMaterials) {
             String materialId = m.getMaterialId();
+            MaterialInventoryRule rule = ruleMap.get(materialId);
+            BigDecimal unitPrice = rule != null ? rule.getUnitPrice() : null;
+            BigDecimal addQty = snapshotQty(m);
             if (!summaryMap.containsKey(materialId)) {
                 Map<String, Object> sm = new java.util.LinkedHashMap<>();
                 sm.put("materialId", materialId);
                 sm.put("materialName", m.getMaterialName());
                 sm.put("spec", m.getSpec() != null ? m.getSpec() : "");
                 sm.put("zoneCount", 1);
-                sm.put("totalQuantity", snapshotQty(m));
+                sm.put("totalQuantity", addQty);
                 sm.put("unit", snapshotUnit(m));
                 // 多单位链：优先快照，快照为空则从盘点规则兜底
-                MaterialInventoryRule rule = ruleMap.get(materialId);
                 String invUnit = m.getInventoryUnit();
                 if ((invUnit == null || invUnit.isEmpty()) && rule != null && rule.getInventoryUnits() != null) {
                     invUnit = rule.getInventoryUnits();
@@ -393,21 +576,38 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
                 sm.put("inventoryUnit", invUnit != null ? invUnit : "");
                 sm.put("unitInputs", m.getUnitInputs() != null ? m.getUnitInputs() : "");
                 sm.put("remark", m.getRemark() != null ? m.getRemark() : "");
+                sm.put("unitPrice", unitPrice);
+                sm.put("amount", unitPrice != null ? addQty.multiply(unitPrice) : null);
                 summaryMap.put(materialId, sm);
             } else {
                 Map<String, Object> sm = summaryMap.get(materialId);
                 sm.put("zoneCount", (int) sm.get("zoneCount") + 1);
                 BigDecimal current = (BigDecimal) sm.get("totalQuantity");
-                sm.put("totalQuantity", current.add(snapshotQty(m)));
+                BigDecimal newTotal = current.add(addQty);
+                sm.put("totalQuantity", newTotal);
+                // 合并多条记录的 amount
+                BigDecimal curAmount = (BigDecimal) sm.getOrDefault("amount", BigDecimal.ZERO);
+                if (curAmount == null) curAmount = BigDecimal.ZERO;
+                if (unitPrice != null) {
+                    sm.put("amount", curAmount.add(addQty.multiply(unitPrice)));
+                }
                 String merged = mergeUnitInputs((String) sm.get("unitInputs"), m.getUnitInputs());
                 sm.put("unitInputs", merged);
             }
         }
         List<Map<String, Object>> summary = new java.util.ArrayList<>(summaryMap.values());
 
+        // 计算总金额
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        for (Map<String, Object> sm : summary) {
+            BigDecimal amt = (BigDecimal) sm.getOrDefault("amount", BigDecimal.ZERO);
+            if (amt != null) totalAmount = totalAmount.add(amt);
+        }
+
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("zones", zoneList);
         result.put("summary", summary);
+        result.put("totalAmount", totalAmount);
         return result;
     }
 

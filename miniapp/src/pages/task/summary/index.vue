@@ -159,6 +159,12 @@ function goBack() {
           </view>
           <view v-else class="empty-text">暂无物料数据</view>
         </view>
+
+        <!-- 盘点金额 -->
+        <view v-if="summary.totalAmount > 0" class="amount-card">
+          <text class="amount-label">盘点金额</text>
+          <text class="amount-value">¥{{ summary.totalAmount.toFixed(2) }}</text>
+        </view>
       </view>
 
       <!-- 加载中 -->
@@ -398,6 +404,27 @@ function goBack() {
   font-size: 24rpx;
   color: #98A19C;
   margin-left: 4rpx;
+}
+
+/* 盘点金额 */
+.amount-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin-top: 24rpx;
+}
+.amount-label {
+  font-size: 30rpx;
+  color: #66706A;
+  font-weight: 500;
+}
+.amount-value {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #E65C2E;
 }
 
 /* 底部操作栏 */

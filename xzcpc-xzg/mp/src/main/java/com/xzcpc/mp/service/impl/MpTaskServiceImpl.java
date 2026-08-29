@@ -7,6 +7,7 @@ import com.xzcpc.mp.entity.StoreManagerSession;
 import com.xzcpc.mp.mapper.StoreManagerSessionMapper;
 import com.xzcpc.mp.service.MpStaffService;
 import com.xzcpc.mp.service.MpTaskService;
+import com.xzcpc.mp.service.SmartOrderService;
 import com.xzcpc.task.entity.*;
 import com.xzcpc.task.mapper.*;
 import com.xzcpc.task.service.StoreService;
@@ -20,6 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -43,6 +46,7 @@ public class MpTaskServiceImpl implements MpTaskService {
     private final StoreManagerSessionMapper sessionMapper;
     private final MaterialRuleService materialRuleService;
     private final MpStaffService staffService;
+    private final SmartOrderService smartOrderService;
 
     @Override
     public Map<String, Object> list(String storeId) {
@@ -270,6 +274,59 @@ public class MpTaskServiceImpl implements MpTaskService {
             taskMaterialSummaryMapper.insertBatch(summaryList);
         }
 
+        // 计算盘点金额 = sum(baseQty × 单价)
+        BigDecimal totalAmount = calcTotalAmount(allMaterials);
+        task.setTotalAmount(totalAmount);
+        taskMapper.updateById(task);
+
+        // P2B: 周盘提交 → 事务提交后触发生成智能订货单（先盘后订；生成失败不影响盘点提交）
+        final Task submittedTask = task;
+        try {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    if ("weekly".equals(submittedTask.getTaskType())) {
+                        try {
+                            smartOrderService.generateByWeeklyTask(submittedTask.getId());
+                        } catch (Exception e) {
+                            log.warn("SMART_ORDER_GEN 周盘提交触发生成失败 taskId={}: {}", submittedTask.getId(), e.getMessage());
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            log.warn("SMART_ORDER_GEN 注册周盘提交回调失败 taskId={}: {}", taskId, e.getMessage());
+        }
+    }
+
+    /** 计算盘点金额：遍历物料，baseQty × unitPriceSnapshot，单价缺失则从规则兜底 */
+    private BigDecimal calcTotalAmount(List<TaskZoneMaterial> allMaterials) {
+        BigDecimal total = BigDecimal.ZERO;
+        if (allMaterials.isEmpty()) return total;
+        Set<String> materialIds = allMaterials.stream().map(TaskZoneMaterial::getMaterialId).collect(Collectors.toSet());
+        Map<String, MaterialRuleResp> ruleMap = materialIds.isEmpty() ? Map.of()
+                : materialRuleService.batchDetail(new ArrayList<>(materialIds));
+        for (TaskZoneMaterial m : allMaterials) {
+            BigDecimal qty = snapshotQty(m);
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal price = m.getUnitPriceSnapshot();
+            if (price == null) {
+                MaterialRuleResp rule = ruleMap.get(m.getMaterialId());
+                price = rule != null ? rule.getUnitPrice() : null;
+            }
+            if (price != null) {
+                total = total.add(qty.multiply(price));
+            }
+        }
+        return total;
+    }
+
+    private BigDecimal calcSummaryTotalAmount(Task task, List<TaskZoneMaterial> allMaterials) {
+        // 已提交且已有存储金额则直接返回
+        if ("submitted".equals(task.getStatus()) && task.getTotalAmount() != null) {
+            return task.getTotalAmount();
+        }
+        return calcTotalAmount(allMaterials);
     }
 
     @Override
@@ -345,6 +402,8 @@ public class MpTaskServiceImpl implements MpTaskService {
         result.put("totalMaterials", totalMaterials);
         result.put("enteredMaterials", (int) enteredMaterials);
         result.put("materialSummary", materialSummary);
+        result.put("totalAmount", calcSummaryTotalAmount(task, allMaterials));
+        result.put("status", task.getStatus());
         return result;
     }
 
@@ -367,17 +426,35 @@ public class MpTaskServiceImpl implements MpTaskService {
         result.put("warehouseCode", task.getWarehouseCode());
         result.put("status", task.getStatus());
         result.put("submittedAt", task.getSubmittedAt() != null ? task.getSubmittedAt().toString() : null);
-        result.put("submittedBy", resolveSubmitterName(task.getSubmittedBy()));
+        result.put("submittedBy", resolveSubmitterName(task.getSubmittedBy(), task.getStoreId()));
         result.put("submittedByOpenid", task.getSubmittedBy() != null ? task.getSubmittedBy() : "");
         result.put("zones", raw.get("zones"));
         result.put("summary", raw.get("summary"));
+        // 盘点金额：优先用已存储值，旧任务未存储则实时计算
+        BigDecimal totalAmount = task.getTotalAmount();
+        if (totalAmount == null) {
+            List<TaskZoneMaterial> allMaterials = taskZoneMaterialMapper.selectList(
+                    new LambdaQueryWrapper<TaskZoneMaterial>().eq(TaskZoneMaterial::getTaskId, taskId));
+            totalAmount = calcTotalAmount(allMaterials);
+        }
+        result.put("totalAmount", totalAmount);
         return result;
     }
 
-    private String resolveSubmitterName(String openid) {
+    private String resolveSubmitterName(String openid, String storeId) {
         if (!StringUtils.hasText(openid)) {
             return "";
         }
+        // 优先：Employee 表中的真实姓名
+        if (StringUtils.hasText(storeId)) {
+            try {
+                Map<String, Object> profile = staffService.currentStaffProfile(openid, storeId);
+                if (profile != null && StringUtils.hasText((String) profile.get("employeeName"))) {
+                    return (String) profile.get("employeeName");
+                }
+            } catch (Exception ignored) { /* fall through */ }
+        }
+        // 其次：微信昵称
         StoreManagerSession session = sessionMapper.selectOne(
                 new LambdaQueryWrapper<StoreManagerSession>().eq(StoreManagerSession::getOpenid, openid));
         if (session != null && StringUtils.hasText(session.getWxNickname())) {
@@ -657,6 +734,8 @@ public class MpTaskServiceImpl implements MpTaskService {
         m.put("taskId", task.getId());
         m.put("taskName", task.getTaskName());
         m.put("taskMonth", task.getTaskMonth());
+        m.put("taskType", task.getTaskType());
+        m.put("taskWeek", task.getTaskWeek());
         m.put("storeId", task.getStoreId());
         m.put("storeName", task.getStoreName());
         m.put("storeCode", task.getStoreCode());

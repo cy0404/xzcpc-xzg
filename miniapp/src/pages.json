@@ -253,6 +253,12 @@
       }
     },
     {
+      "path": "pages/common/webview/index",
+      "style": {
+        "navigationBarTitleText": "入库管理"
+      }
+    },
+    {
       "path": "pages/agreement/service",
       "style": {
         "navigationBarTitleText": "用户服务协议"

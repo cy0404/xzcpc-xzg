@@ -62,6 +62,12 @@ const router = createRouter({
       meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
     },
     {
+      path: '/stores/weekly-config',
+      name: 'StoreWeeklyConfig',
+      component: () => import('../views/store/StoreWeeklyConfig.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
       path: '/tasks/differences',
       name: 'DifferenceList',
       component: () => import('../views/task/DifferenceList.vue'),
@@ -102,6 +108,12 @@ const router = createRouter({
       name: 'IssueLedger',
       component: () => import('../views/issue/IssueList.vue'),
       meta: { roles: ['headquarters_admin', 'operation_admin', 'supervisor_admin'] },
+    },
+    {
+      path: '/feedback',
+      name: 'FeedbackLedger',
+      component: () => import('../views/feedback/FeedbackList.vue'),
+      meta: { roles: ['headquarters_admin', 'operation_admin'] },
     },
     {
       path: '/supervisor',

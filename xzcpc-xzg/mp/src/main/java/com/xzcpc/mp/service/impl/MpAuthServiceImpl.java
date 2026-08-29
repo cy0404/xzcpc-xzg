@@ -72,9 +72,16 @@ public class MpAuthServiceImpl implements MpAuthService {
         List<Map<String, Object>> stores = staffService.findStoresByOpenid(openid);
 
         if (!stores.isEmpty()) {
-            Map<String, Object> primary = stores.get(0);
-            session.setStoreId((String) primary.get("storeId"));
-            session.setStoreName((String) primary.get("storeName"));
+            // 多门店用户：保留上次绑定/切换的门店（bindStore 写入），
+            // 避免每次登录被重置到 id 最小（最早绑定）的那家门店
+            String curStoreId = session.getStoreId();
+            boolean keepCurrent = StringUtils.hasText(curStoreId)
+                    && stores.stream().anyMatch(s -> curStoreId.equals(s.get("storeId")));
+            if (!keepCurrent) {
+                Map<String, Object> primary = stores.get(0);
+                session.setStoreId((String) primary.get("storeId"));
+                session.setStoreName((String) primary.get("storeName"));
+            }
         } else if (session.getId() != null) {
             // 已有会话但 findStoresByOpenid 返回空 → 员工已离职，清除旧的门店绑定
             session.setStoreId(null);

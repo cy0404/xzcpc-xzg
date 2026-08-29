@@ -226,6 +226,111 @@ mysql -uroot -pxzcpc2026 < database/schema.sql
 
 ---
 
+## 到货验收报损 · 飞书通知系统
+
+### 架构概览
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| 消息服务 | `common/.../feishu/FeishuMessageService.java` | Token 管理、卡片发送（sendToUser/sendToChat）、配置查询 |
+| 每日汇总 | `server/.../job/LossReportDailySummaryJob.java` | 每天 9:30 发送卡片 A/B/E/G/F |
+| 每月发券 | `server/.../job/LossReportMonthlyVoucherJob.java` | 月末发券汇总 |
+| 自动收货 | `server/.../job/LossReportAutoReceiveJob.java` | 每天凌晨 3 点，补发超 4 天自动收货 |
+| H5 页面 | `server/.../controller/LossReportH5Controller.java` | 审核/补发确认 + 视频下载 + Excel 导出 |
+| 管理后台 | `server/.../controller/LossReportManageController.java` | 总部端报损管理 API |
+| 小程序端 | `mp/.../controller/MpLossController.java` 等 | 门店报损登记/审批 |
+
+### 配置表 `loss_notify_card_config`
+
+| 字段 | 说明 |
+|------|------|
+| `category` | 分类分组 key（如"水果蔬菜""其他类"），或逗号分隔的子分类列表 |
+| `card_type` | `pending` / `damage_audit` / `other_audit` / `other_resend` / `avocado_audit` / `avocado_resend` 等 |
+| `feishu_user_id` | 收件人 open_id，逗号分隔多人 |
+| `status` | 1=启用 0=停用 |
+
+### 每日卡片发送清单（`doSend()`）
+
+| 卡片 | 内容 | 收件人（card_type） | 发送方式 |
+|------|------|---------------------|----------|
+| A | 水果蔬菜待审核 | `pending` | 个人 |
+| B1a | 外包装破损审核 | `damage_audit` | 个人 |
+| B1b | 其他原因审核 | `other_audit` | 个人 |
+| B2 | 其他原因补发（含外包装，不含牛油果泥） | `other_resend` | 个人 |
+| E | 牛油果泥审核 | `avocado_audit` | 个人 |
+| G | 牛油果泥补发 | `avocado_resend` | 个人 |
+| F | 群统计日报 | — | 群（`feishu_loss_chat_id`） |
+
+> 牛油果泥独立走卡片 E（审核）/G（补发），卡片 B 系列排除牛油果泥；审核按原因分卡（外包装 / 其他）；补发合并为一张。
+
+### 报损状态流转
+
+```
+pending（待审核）
+  → registered（审核通过，待补发）
+      → confirmed_resend（厂家已补发，待门店收货）
+          → received（门店已收货）或 not_received（门店未收到）
+          → 4 天后自动 → received（LossReportAutoReceiveJob）
+  → rejected（审核拒绝）
+```
+
+### 牛油果泥特殊处理
+
+- 牛油果泥（material_id 从 sys_config `feishu_avocado_material_id` 读取）独立走卡片 E（审核）和 G（补发）
+- 卡片 B 系列（审核+补发）中排除牛油果泥（avoFilter，`sendOtherAuditOrResend`）
+- 卡片 G 链接带 `materialId=牛油果泥ID`，H5 补发页据此拆分"牛油果泥补发"和"其他类补发"两张卡片
+- **单位换算**：`convertAvocadoQty(材料ID, 数量, 单位)` 和 `convertAvocadoUnit(材料ID, 单位)`
+  - 仅当 `input_unit = "件"` 时：数量 ×24，单位改为 "包"
+  - `input_unit = "包"` 时：保持不变
+  - 非牛油果泥材料：原值返回，不受影响
+- H5 页面牛油果泥统计表同理："件"的加总 ×24 再汇总
+- H5 补发页按入口区分：卡片 G 链接带 `materialId=牛油果泥ID`，只展示牛油果泥卡片（按门店合计包数分档「24包及以上 / 24包以下」，统计表 tab 与待补发列表联动，默认 24包及以上）；卡片 B2 链接不带 materialId，只展示其他类卡片；蔬菜水果不进补发页（走月度发券）；搜索框支持多门店/物料关键字过滤，搜索词存 sessionStorage（按日期 `sgSearch_<date>`），切换待补发/已补发 tab（页面刷新）后 `restoreSearch()` 自动恢复，两个 tab 均生效
+- H5 审核页「下载视频(ZIP)」拆分下载：前端先请求 `/api/public/loss-report/download-videos-plan`（只统计大小 + 打 download 日志），视频总大小超过 990MB（`ZIP_SPLIT_SIZE`）时拆分为多个分包，文件名加 `-partNofM` 后缀；前端按 `plan.parts` 每隔 3 秒依次下载 `download-videos?ids=..&supplier=..&part=N`（`part=0` 保持旧的单包行为，分包文件与单包 ZIP 均缓存在 `upload/zips/`）
+- **确认登记修改数量**：牛油果泥审核「确认报损登记」弹窗显示原始数量（只读）+ 确认数量（可改，默认预填）；确认后修改值**直接写回 `input_qty`**（`input_unit` 改为"包"），下游补发/群日报/导出/台账全部沿用原逻辑无需改动；新增单列 `orig_qty` 记录修改前原始数量（按包，NULL=未修改，迁移脚本 `database/migration-add-confirm-qty.sql`）；卡片 h3 红色标注「数量修改：原始X包」（dailySummary 返回 `origQtyStr`）；日志记「数量修改：原始X包 → 确认Y包」；与原始一致不写 orig_qty 也不改 input_qty
+- **视频缩略图（首屏加载优化）**：上传视频时服务端已生成 `<原名>_thumb.jpg`（ffmpeg，`thumbUrl()` 规则）；审核页卡片 `<video>` 加 `poster` 指向缩略图 + 新增 `thumbOf()`——iOS 微信 WKWebView 无视 `preload="none"`，进页面会为每个 `<video>` 拉视频数据导致首屏很慢，加 poster 后只拉小图；到货登记页（upload/h5/loss-arrival.html）编辑已有报损单时旧视频也用 `thumbOf()` 显示缩略图（新上传视频本来就有）
+- **视频 faststart（点击即播）**：上传入口（MpUploadController.uploadVoucher / completeChunkUpload）存盘后对 mp4/mov 做 `-c copy -movflags +faststart` 重排（`faststartRemux`，失败保留原文件）——手机原片 moov 在文件尾，iOS 点击播放要拉完整文件，重排后能边看边下载；存量视频用户拍板不处理，`upload/faststart-all.sh` 脚本保留备用
+
+### 手动触发接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/public/loss-report/trigger-summary` | 触发每日汇总（全部卡片） |
+| POST | `/api/public/loss-report/trigger-avocado` | 仅重发牛油果泥审核卡片 E |
+| GET | `/api/public/loss-report/trigger-avocado-urgent` | 触发牛油果泥加急卡片 |
+| POST | `/api/public/loss-report/trigger-monthly-voucher` | 触发月度发券汇总 |
+| POST | `/api/public/loss-report/trigger-weekly-warning` | 触发每周门店操作预警 |
+| POST | `/api/public/issue/trigger-acceptance-reminder` | 触发未验收问题提醒：无参=完整逻辑（测试群/全部门店群）；`?chatId=群ID`=单群（只发指定群） |
+
+### IssueAcceptanceReminderJob（未验收问题提醒）
+
+- **文件**：`server/.../job/IssueAcceptanceReminderJob.java`
+- **定时**：每天 9:00（cron `0 0 9 * * ?`）
+- **数据源**：`issue` 表 `status='pending_acceptance'` 的问题，JOIN `store_info` 取门店群
+- **测试/门店模式切换（运行时）**：`sys_config.feishu_issue_reminder_test_chat_id` 非空 = 测试模式（固定发该测试群，按钮**无** chatId，H5 全量）；**为空 = 门店模式**（按 `store_info.chat_id` 分组发，按钮带 `?chatId=`，H5 只显示本店问题；**无待验收问题的群不发卡片**）。改库即生效，无需重启（yml 兜底 `issue-reminder-test-chat-id`）
+- **卡片**：黄色 header「⚠️ 未验收问题提醒（N 条）」+ 表格三列（问题标题 lark_md 链接直达 H5 / 类型 / 提交时间，无序号列）+ 底部按钮「👀 查看详情并验收」跳 `/h5/issue-accept.html`（**jar 内 static/，非 /upload/**）
+- **H5 页面**：`static/h5/issue-accept.html` — URL 参数 `chatId` 过滤 + 20 秒自动轮询（指纹 diff，无变化不重渲染）+ 已解决/未解决弹窗按钮复位（防卡「提交中」）
+- **记录**：每次发送写 `issue_reminder_send_log`（chat_id/store_name/message_id/issue_count），供已读回执查询（`GET /api/public/issue/reminder-read?date=`）
+
+### LossReportAutoReceiveJob
+
+- cron: `0 0 3 * * ?`（每天凌晨 3 点）
+- 查找 `status='confirmed_resend'` 且 `confirmed_at <= NOW() - 4天` 的记录
+- 更新 `status='received'`，写入 log（`action='auto_receive'`）
+
+### WeeklyStoreWarningJob（门店操作预警）
+
+- **文件**：`server/.../job/WeeklyStoreWarningJob.java`
+- **触发**：每周一 8:00（`@Scheduled(cron = "0 0 8 ? * MON")`，当前已注释关闭）
+- **手动测试**：`POST /api/public/loss-report/trigger-weekly-warning`
+- **数据源**：`expense_record`（支出）+ `loss_report`（报损），按 `occurred_date` 查上周范围
+- **逻辑**：活跃门店 - (上周有支出的 ∪ 上周有报损的) = 预警门店，按 `store_info.supervisor_name` 分组
+- **发送**：
+  - 督导个人：`fms.sendToUser()`，仅发自己名下预警门店
+  - 督导群：`fms.sendToChat()`，汇总全部督导预警情况，群 chat_id 配置在 `sys_config.feishu_supervisor_group_chat_id`
+- **卡片**：橙色 header，标题"门店操作预警通知--日期范围"，markdown 展示督导名（粗体）+ 家数 + 门店列表
+
+---
+
 ## 分层记忆系统
 
 项目使用分层记忆架构，详见 `memory/README.md`：

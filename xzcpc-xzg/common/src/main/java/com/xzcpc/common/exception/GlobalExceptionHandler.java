@@ -12,10 +12,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
@@ -48,6 +53,23 @@ public class GlobalExceptionHandler {
         return R.fail(e.getCode(), e.getMessage());
     }
 
+    // multipart 解析失败（超限 / 客户端中断 / 请求体损坏）：统一 400，客户端可重试，不推飞书
+    // MaxUploadSizeExceededException 是 MultipartException 的子类，Spring 会优先命中本 handler
+    @ExceptionHandler(MultipartException.class)
+    public R<Void> handleMultipartException(MultipartException e, HttpServletRequest request) {
+        if (isSizeExceeded(e)) {
+            log.warn("上传文件超过大小限制 - {} {}", request.getMethod(), request.getRequestURI());
+            return R.fail(400, "文件大小超过限制");
+        }
+        if (isClientDisconnect(e)) {
+            log.warn("客户端断开连接(上传中断) - {} {}", request.getMethod(), request.getRequestURI());
+            return R.fail(400, "上传数据不完整，请重试");
+        }
+        log.warn("multipart 解析失败 - {} {} → {}: {}",
+                request.getMethod(), request.getRequestURI(), e.getClass().getSimpleName(), e.getMessage());
+        return R.fail(400, "上传数据不完整，请重试");
+    }
+
     // 静态资源不存在（如 favicon.ico），静默返回 404
     @ExceptionHandler(NoResourceFoundException.class)
     public R<Void> handleNoResource(NoResourceFoundException e, HttpServletResponse response) {
@@ -60,6 +82,16 @@ public class GlobalExceptionHandler {
     public R<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
         log.warn("参数类型转换失败: {}", e.getMessage());
         return R.fail(400, "参数格式错误");
+    }
+
+    // 请求体参数校验失败（@NotBlank/@NotNull/@Valid 等），客户端问题：返回 400，不推飞书
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public R<Void> handleValidation(MethodArgumentNotValidException e, HttpServletRequest request) {
+        String msg = e.getBindingResult().getFieldErrors().stream()
+                .map(f -> f.getField() + " " + f.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        log.warn("参数校验失败 - {} {} → {}", request.getMethod(), request.getRequestURI(), msg);
+        return R.fail(400, org.springframework.util.StringUtils.hasText(msg) ? msg : "参数校验失败");
     }
 
     // 请求方法不匹配（如 GET 访问 POST 接口），记录 URL 方便排查
@@ -77,16 +109,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public R<Void> handleException(Exception e, HttpServletRequest request) {
         // 客户端断开连接（视频流中断等），降级为 WARN，不推送飞书
-        Throwable cause = e;
-        while (cause != null) {
-            if (cause instanceof java.io.IOException &&
-                ("Connection reset by peer".equals(cause.getMessage()) ||
-                 "断开的管道".equals(cause.getMessage()) ||
-                 "你的主机中的软件中止了一个已建立的连接。".equals(cause.getMessage()))) {
-                log.warn("客户端断开连接 - {} {}", request.getMethod(), request.getRequestURI());
-                return R.fail("系统错误，请稍后重试");
-            }
-            cause = cause.getCause();
+        if (isClientDisconnect(e)) {
+            log.warn("客户端断开连接 - {} {}", request.getMethod(), request.getRequestURI());
+            return R.fail("系统错误，请稍后重试");
         }
 
         log.error("系统异常 - {} {} → {}: {}",
@@ -102,6 +127,46 @@ public class GlobalExceptionHandler {
         }
 
         return R.fail("系统错误，请稍后重试");
+    }
+
+    /**
+     * 异常链是否为上传大小超限。
+     * 覆盖 Spring 的 MaxUploadSizeExceededException 与 Tomcat maxPostSize 超限
+     * 抛出的 IllegalStateException("...maxPostSize exceeded...")。
+     */
+    private static boolean isSizeExceeded(Throwable e) {
+        Throwable t = e;
+        while (t != null) {
+            if (t instanceof MaxUploadSizeExceededException) return true;
+            if (t instanceof IllegalStateException && t.getMessage() != null
+                    && t.getMessage().toLowerCase().contains("maxpostsize")) return true;
+            t = t.getCause();
+        }
+        return false;
+    }
+
+    /**
+     * 异常链是否为客户端断开连接（移动网络波动/用户取消/上传超时等不可控 IO 中断）。
+     * 用类名字符串判断 ClientAbortException，避免 common 模块编译期硬依赖 tomcat 类。
+     */
+    private static boolean isClientDisconnect(Throwable e) {
+        Throwable t = e;
+        while (t != null) {
+            String cls = t.getClass().getSimpleName();
+            if ("ClientAbortException".equals(cls) || "EOFException".equals(cls)) return true;
+            if (t instanceof java.io.IOException && t.getMessage() != null) {
+                String m = t.getMessage().toLowerCase();
+                if (m.contains("connection reset") || m.contains("broken pipe")
+                        || m.contains("unexpected eof") || m.contains("eof read")
+                        || m.contains("forcibly closed") || m.contains("closed by remote")
+                        || m.contains("stream closed") || m.contains("aborted by the software")
+                        || m.contains("断开的管道") || m.contains("中止了一个已建立的连接")) {
+                    return true;
+                }
+            }
+            t = t.getCause();
+        }
+        return false;
     }
 
     /**

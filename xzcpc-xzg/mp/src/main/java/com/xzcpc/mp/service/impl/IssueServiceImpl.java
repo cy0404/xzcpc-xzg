@@ -1,6 +1,7 @@
 package com.xzcpc.mp.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xzcpc.common.context.AdminContextHolder;
 import com.xzcpc.common.context.AdminUser;
@@ -199,6 +200,20 @@ public class IssueServiceImpl implements IssueService {
     }
 
     @Override
+    public Issue acceptFromFeishu(Long id) {
+        Issue issue = issueMapper.selectById(id);
+        if (issue == null || !"PENDING_ACCEPTANCE".equalsIgnoreCase(issue.getStatus())) {
+            throw new BusinessException("仅待验收的问题可验收");
+        }
+        issue.setStatus("CLOSED");
+        issue.setReplyText("飞书卡片验收");
+        issue.setUpdatedAt(LocalDateTime.now());
+        issueMapper.updateById(issue);
+        log.info("[issue] 飞书卡片验收通过：id={} bizCode={}", id, issue.getBizCode());
+        return issue;
+    }
+
+    @Override
     public Page<Issue> pageAll(String storeId, String supervisorName, String issueType, String urgency, String status,
                                String keyword, String startDate, String endDate, String source, int pageNum, int pageSize) {
         var qw = new LambdaQueryWrapper<Issue>()
@@ -272,7 +287,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setStatus(extStatus);
         issue.setSyncStatus("synced");
         issue.setUpdatedAt(LocalDateTime.now());
-        issueMapper.updateById(issue);
+        updateWithRetry(issue);
         return issue;
     }
 
@@ -323,7 +338,7 @@ public class IssueServiceImpl implements IssueService {
             if (StringUtils.hasText(source)) existing.setSource(source);
             existing.setSyncStatus("synced");
             existing.setUpdatedAt(LocalDateTime.now());
-            issueMapper.updateById(existing);
+            updateWithRetry(existing);
             return existing;
         }
         // 新问题 → 插入
@@ -370,9 +385,30 @@ public class IssueServiceImpl implements IssueService {
             log.warn("[issue] saveRecords: issue not found for externalId={}", externalId);
             return;
         }
-        issue.setRecordsData(recordsJson);
-        issue.setUpdatedAt(LocalDateTime.now());
-        issueMapper.updateById(issue);
+        // 只更新 records_data + updated_at：不更新整个实体 → 不触发乐观锁、不写回旧字段，
+        // 与状态回调并发时不会占掉 version 位，也不覆盖对方刚写入的状态
+        issueMapper.update(null,
+                new LambdaUpdateWrapper<Issue>()
+                        .eq(Issue::getId, issue.getId())
+                        .set(Issue::getRecordsData, recordsJson)
+                        .set(Issue::getUpdatedAt, LocalDateTime.now()));
+    }
+
+    /**
+     * updateById 乐观锁冲突时静默影响 0 行（并发回调场景），重读最新 version 重试，最多 3 次。
+     */
+    private void updateWithRetry(Issue issue) {
+        for (int i = 0; i < 3; i++) {
+            if (issueMapper.updateById(issue) > 0) {
+                return;
+            }
+            Issue fresh = issueMapper.selectById(issue.getId());
+            if (fresh == null) {
+                return;
+            }
+            issue.setVersion(fresh.getVersion());
+        }
+        log.warn("[issue] updateWithRetry failed after 3 attempts, id={}", issue.getId());
     }
 
     @Override
