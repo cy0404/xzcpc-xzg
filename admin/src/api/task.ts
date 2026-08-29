@@ -8,9 +8,11 @@ export function getLatestMonth() {
 // 分页查询任务列表，支持按门店/状态/关键词(全局搜索)/模板名称/月份/任务类型筛选
 export function getTasks(params: {
   storeId?: string
+  storeIds?: string
   status?: string
   keyword?: string
   templateName?: string
+  supervisorName?: string
   taskMonth?: string
   taskType?: string
   pageNum?: number

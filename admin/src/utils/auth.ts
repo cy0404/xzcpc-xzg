@@ -75,6 +75,14 @@ export function parseRoles(role?: string): string[] {
   return role.split(',').map(r => r.trim()).filter(r => r)
 }
 
+/** 是否"仅督导"角色（含 supervisor_admin 且不含任何总部 full-access 角色，语义对齐后端 AdminRole.isSupervisorOnly） */
+export function isSupervisorOnlyRole(roles?: string): boolean {
+  const rs = parseRoles(roles)
+  if (!rs.includes('supervisor_admin')) return false
+  const fullAccess = ['headquarters_admin', 'operation_admin', 'finance_admin', 'hr_admin']
+  return !rs.some(r => fullAccess.includes(r))
+}
+
 /** 判断当前用户是否拥有某个角色 */
 export function hasRole(roleName: string): boolean {
   return parseRoles(getUser()?.role).includes(roleName)

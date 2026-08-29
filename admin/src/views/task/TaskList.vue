@@ -18,11 +18,36 @@
       <a-tab-pane key="report" tab="统计报表" />
     </a-tabs>
 
+    <!-- 统计报表：督导筛选行 -->
+    <a-card :bordered="false" class="report-filter-card" v-if="tabKey === 'report'">
+      <a-row :gutter="[16, 12]" align="middle">
+        <a-col :xs="24" :sm="12" :md="8">
+          <div class="filter-label">督导</div>
+          <template v-if="isSupervisorLocked">
+            <a-tag color="blue" style="font-size:13px;padding:4px 12px">{{ lockedSupervisorName }}</a-tag>
+            <span class="report-lock-hint">仅查看本人负责门店</span>
+          </template>
+          <a-select
+            v-else
+            v-model:value="reportSupervisor"
+            placeholder="全部督导"
+            style="width:100%"
+            allow-clear
+            :options="supervisorOptions"
+            @change="fetchReport"
+          />
+        </a-col>
+        <a-col :xs="24" :sm="12" :md="16" style="text-align:right">
+          <span class="report-month-hint">统计月份：{{ filters.month ? filters.month.format('YYYY年M月') : '未选择' }}</span>
+        </a-col>
+      </a-row>
+    </a-card>
+
     <!-- 指标卡片 -->
     <a-row :gutter="12" class="metric-row" v-if="tabKey === 'report'">
-      <a-col :xs="8" :md="8"><a-card :bordered="false" class="metric-card"><a-statistic title="未开始" :value="stats.notStarted" value-style="font-size:24px;font-weight:700;color:#909399" /></a-card></a-col>
-      <a-col :xs="8" :md="8"><a-card :bordered="false" class="metric-card"><a-statistic title="进行中" :value="stats.inProgress" value-style="font-size:24px;font-weight:700;color:#1989fa" /></a-card></a-col>
-      <a-col :xs="8" :md="8"><a-card :bordered="false" class="metric-card"><a-statistic title="已提交" :value="stats.submitted" value-style="font-size:24px;font-weight:700;color:#07c160" /></a-card></a-col>
+      <a-col :xs="8" :md="8"><a-card :bordered="false" class="metric-card"><a-statistic title="未开始" :value="reportTotals.notStarted" value-style="font-size:24px;font-weight:700;color:#98A19C" /></a-card></a-col>
+      <a-col :xs="8" :md="8"><a-card :bordered="false" class="metric-card"><a-statistic title="进行中" :value="reportTotals.inProgress" value-style="font-size:24px;font-weight:700;color:#5B9BC7" /></a-card></a-col>
+      <a-col :xs="8" :md="8"><a-card :bordered="false" class="metric-card"><a-statistic title="已提交" :value="reportTotals.submitted" value-style="font-size:24px;font-weight:700;color:#2F8F57" /></a-card></a-col>
     </a-row>
 
     <a-card class="filter-card" :bordered="false" v-if="tabKey === 'list'">
@@ -150,8 +175,51 @@
       </a-table>
     </a-card>
 
-    <!-- 统计报表 Tab -->
-    <a-card :bordered="false" v-if="tabKey === 'report'" title="督导完成度统计" :loading="reportLoading">
+    <!-- 统计报表 Tab：任务状态分布（饼图 + 状态门店列表） -->
+    <a-card :bordered="false" class="report-donut-card" v-if="tabKey === 'report'" title="任务状态分布" :loading="reportLoading">
+      <div class="report-body-row">
+        <div class="report-col report-col--donut">
+          <div class="donut-wrap">
+            <div class="donut" :style="donutStyle">
+              <div class="donut-hole">
+                <span class="donut-total">{{ donutTotal }}</span>
+                <span class="donut-caption">门店任务</span>
+              </div>
+            </div>
+            <div class="status-chips">
+              <button class="chip" :class="{ 'chip--active': activeReportStatus === 'not_started' }" @click="activeReportStatus = 'not_started'">
+                <span class="chip-dot" style="background:#98A19C" />未开始 <b>{{ reportTotals.notStarted }}</b>
+              </button>
+              <button class="chip" :class="{ 'chip--active': activeReportStatus === 'in_progress' }" @click="activeReportStatus = 'in_progress'">
+                <span class="chip-dot" style="background:#5B9BC7" />进行中 <b>{{ reportTotals.inProgress }}</b>
+              </button>
+              <button class="chip" :class="{ 'chip--active': activeReportStatus === 'submitted' }" @click="activeReportStatus = 'submitted'">
+                <span class="chip-dot" style="background:#2F8F57" />已提交 <b>{{ reportTotals.submitted }}</b>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="report-col report-col--store">
+          <div class="store-panel">
+            <div class="store-panel-title">{{ storeListTitle }}</div>
+            <div v-if="activeStatusStores.length" class="store-list">
+              <div class="store-row" v-for="s in activeStatusStores" :key="s.storeId || s.storeName">
+                <span class="store-name" :title="s.storeName">{{ s.storeName }}</span>
+                <span class="store-sup" :title="s.supervisorName">{{ s.supervisorName }}</span>
+                <span class="store-meta">
+                  {{ s.deadline ? '截止 ' + formatDate(s.deadline).slice(5) : '' }}
+                  <template v-if="s.count > 1"> · {{ s.count }} 个任务</template>
+                </span>
+              </div>
+            </div>
+            <div v-else class="report-empty">该状态下暂无门店</div>
+          </div>
+        </div>
+      </div>
+    </a-card>
+
+    <!-- 督导完成度统计（仅全部督导视图展示） -->
+    <a-card :bordered="false" v-if="tabKey === 'report' && !reportSupervisor && !isSupervisorLocked" title="督导完成度统计" :loading="reportLoading" style="margin-top:12px">
       <div v-if="reportData.length === 0" style="text-align:center;padding:40px;color:#98A19C">暂无数据</div>
       <div v-else>
         <template v-for="item in reportData" :key="item.name">
@@ -164,13 +232,13 @@
               <span class="bar-seg bar-notstart" :style="{ width: pct(item.notStarted, item.total) }" />
             </span>
           </div>
-          <span class="report-nums"><span style="color:#07c160;font-weight:600">{{ item.submitted }}</span>/<span style="color:#1989fa;font-weight:600">{{ item.inProgress }}</span>/<span style="color:#909399;font-weight:600">{{ item.notStarted }}</span> ({{ item.total }}总)</span>
+          <span class="report-nums"><span style="color:#2F8F57;font-weight:600">{{ item.submitted }}</span>/<span style="color:#5B9BC7;font-weight:600">{{ item.inProgress }}</span>/<span style="color:#98A19C;font-weight:600">{{ item.notStarted }}</span> ({{ item.total }}总)</span>
         </div>
         </template>
         <div class="report-legend">
-          <span class="legend-dot" style="background:#07c160" /> 已提交
-          <span class="legend-dot" style="background:#1989fa" /> 进行中
-          <span class="legend-dot" style="background:#909399" /> 未开始
+          <span class="legend-dot" style="background:#2F8F57" /> 已提交
+          <span class="legend-dot" style="background:#5B9BC7" /> 进行中
+          <span class="legend-dot" style="background:#98A19C" /> 未开始
         </div>
       </div>
     </a-card>
@@ -199,6 +267,7 @@ import PageModuleTabs from '../../components/PageModuleTabs.vue'
 import { getTasks, getLatestMonth, deleteTask, updateTask } from '../../api/task'
 import { getStores } from '../../api/store'
 import { getSupervisorOptions } from '../../api/supervisor'
+import { getUser, isSupervisorOnlyRole } from '../../utils/auth'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -215,10 +284,54 @@ const filters = reactive({
   taskType: '' as string,
 })
 const supervisorOptions = ref<{ label: string; value: string }[]>([])
-const stats = reactive({ notStarted: 0, inProgress: 0, submitted: 0 })
 const tabKey = ref('list')
 const reportLoading = ref(false)
 const reportData = ref<any[]>([])
+
+// —— 统计报表：督导锁定与选择（与列表 tab 的 filters.supervisorName 完全隔离）
+const isSupervisorOnly = computed(() => isSupervisorOnlyRole(getUser()?.role))
+const reportSupervisor = ref('')            // '' = 全部督导；否则 admin_name
+const isSupervisorLocked = computed(() => isSupervisorOnly.value)
+const lockedSupervisorName = computed(() => getUser()?.name || '')
+// 查询用：锁定不传姓名（后端已按 openId 强制过滤），总部选择才传
+const reportQuerySupervisor = computed(() => isSupervisorLocked.value ? '' : reportSupervisor.value)
+
+// —— 统计报表：聚合数据（一次全量请求出 指标卡 + 饼图 + 门店列表）
+const reportTotals = reactive({ notStarted: 0, inProgress: 0, submitted: 0 })
+const storesByStatus = reactive<Record<string, Map<string, any>>>({
+  not_started: new Map(),
+  in_progress: new Map(),
+  submitted: new Map(),
+})
+const activeReportStatus = ref('not_started')
+
+const donutTotal = computed(() => reportTotals.notStarted + reportTotals.inProgress + reportTotals.submitted)
+const donutStyle = computed(() => {
+  const { notStarted, inProgress, submitted } = reportTotals
+  const total = donutTotal.value
+  if (total === 0) return { background: '#EDF0EE' }
+  const pa = (notStarted / total) * 360
+  const pb = (inProgress / total) * 360
+  const segs: string[] = []
+  if (notStarted > 0) segs.push(`#98A19C 0 ${pa}deg`)
+  if (inProgress > 0) segs.push(`#5B9BC7 ${pa}deg ${pa + pb}deg`)
+  if (submitted > 0) segs.push(`#2F8F57 ${pa + pb}deg 360deg`)
+  return { background: `conic-gradient(${segs.join(',')})` }
+})
+
+const activeStatusStores = computed(() => {
+  const rows = [...(storesByStatus[activeReportStatus.value]?.values() || [])]
+  // 未开始/进行中按截止时间升序（最紧迫在前），无截止排后；已提交按门店名
+  return rows.sort((a, b) => {
+    if (activeReportStatus.value === 'submitted') return (a.storeName || '').localeCompare(b.storeName || '')
+    return (a.deadline || '9999-99').localeCompare(b.deadline || '9999-99')
+  })
+})
+
+const storeListTitle = computed(() => {
+  const map: Record<string, string> = { not_started: '未开始门店', in_progress: '进行中门店', submitted: '已提交门店' }
+  return map[activeReportStatus.value] || '门店列表'
+})
 const storeModalOpen = ref(false)
 const storeModalTitle = ref('')
 const storeModalNot = ref<string[]>([])
@@ -338,23 +451,7 @@ async function fetchData() {
     const res = (await getTasks(params)) as any
     dataSource.value = res.data?.records || []
     pagination.total = res.data?.total || 0
-    fetchStats()
   } finally { loading.value = false }
-}
-
-async function fetchStats() {
-  if (!filters.month) { stats.notStarted = 0; stats.inProgress = 0; stats.submitted = 0; return }
-  try {
-    const m = filters.month.format('YYYY-MM')
-    const [ns, ip, sb] = await Promise.all([
-      getTasks({ taskMonth: m, status: 'not_started', pageNum: 1, pageSize: 1, taskType: 'monthly' }),
-      getTasks({ taskMonth: m, status: 'in_progress', pageNum: 1, pageSize: 1, taskType: 'monthly' }),
-      getTasks({ taskMonth: m, status: 'submitted', pageNum: 1, pageSize: 1, taskType: 'monthly' }),
-    ])
-    stats.notStarted = (ns as any).data?.total || 0
-    stats.inProgress = (ip as any).data?.total || 0
-    stats.submitted = (sb as any).data?.total || 0
-  } catch { /* ignore */ }
 }
 
 function handleSearch() {
@@ -398,21 +495,72 @@ function showStoreDetail(item: any) {
 async function fetchReport() {
   reportLoading.value = true
   try {
-    // 督导完成度统计默认只看月盘，跟随任务类型筛选（未选时按 monthly）
-    const params: any = { taskType: filters.taskType || 'monthly' }
-    if (filters.month) params.taskMonth = filters.month.format('YYYY-MM')
-    const res: any = await getTasks({ ...params, pageNum: 1, pageSize: 10000 })
+    // 月份为空 → 统一空态
+    if (!filters.month) {
+      reportData.value = []
+      reportTotals.notStarted = 0; reportTotals.inProgress = 0; reportTotals.submitted = 0
+      storesByStatus.not_started.clear(); storesByStatus.in_progress.clear(); storesByStatus.submitted.clear()
+      return
+    }
+    const params: any = {
+      taskType: filters.taskType || 'monthly',
+      taskMonth: filters.month.format('YYYY-MM'),
+      pageNum: 1,
+      pageSize: 10000,
+    }
+    // 总部选督导 → 后端按 admin_name 转门店过滤；督导锁定 → 后端已按 openId 强制过滤，不传姓名
+    if (reportQuerySupervisor.value) params.supervisorName = reportQuerySupervisor.value
+    const res: any = await getTasks(params)
     const records = res.data?.records || []
+
+    // 聚合1：督导分组（现状结构，补 submittedStores 门店明细）
     const agg: Record<string, any> = {}
+    // 聚合2/3：三状态计数 + 门店聚合（白名单只计 not_started/in_progress/submitted）
+    const totals = { notStarted: 0, inProgress: 0, submitted: 0 }
+    const storeMaps: Record<string, Map<string, any>> = {
+      not_started: new Map(),
+      in_progress: new Map(),
+      submitted: new Map(),
+    }
+    const statusKey: Record<string, string> = {
+      not_started: 'notStarted',
+      in_progress: 'inProgress',
+      submitted: 'submitted',
+    }
+    const statusStoreKey: Record<string, string> = {
+      not_started: 'not_started',
+      in_progress: 'in_progress',
+      submitted: 'submitted',
+    }
     for (const r of records) {
       const sv = r.supervisorName || '未分配'
-      if (!agg[sv]) agg[sv] = { name: sv, notStarted: 0, inProgress: 0, submitted: 0, total: 0, notStartedStores: [] as string[], inProgressStores: [] as string[] }
+      if (!agg[sv]) agg[sv] = { name: sv, notStarted: 0, inProgress: 0, submitted: 0, total: 0, notStartedStores: [] as string[], inProgressStores: [] as string[], submittedStores: [] as string[] }
       if (r.status === 'not_started') { agg[sv].notStarted++; agg[sv].notStartedStores.push(r.storeName || r.storeId) }
       else if (r.status === 'in_progress') { agg[sv].inProgress++; agg[sv].inProgressStores.push(r.storeName || r.storeId) }
-      else if (r.status === 'submitted') agg[sv].submitted++
+      else if (r.status === 'submitted') { agg[sv].submitted++; agg[sv].submittedStores.push(r.storeName || r.storeId) }
       agg[sv].total++
+
+      const tk = statusStoreKey[r.status]
+      if (!tk) continue
+      totals[statusKey[r.status] as keyof typeof totals]++
+      const key = r.storeId || r.storeName
+      if (!key) continue
+      const map = storeMaps[tk]
+      const prev = map.get(key)
+      if (prev) {
+        prev.count++
+        if (r.deadline && (!prev.deadline || r.deadline > prev.deadline)) prev.deadline = r.deadline
+      } else {
+        map.set(key, { storeId: r.storeId, storeName: r.storeName || r.storeId, supervisorName: r.supervisorName || '-', deadline: r.deadline || '', count: 1 })
+      }
     }
     reportData.value = Object.values(agg).sort((a: any, b: any) => b.total - a.total)
+    reportTotals.notStarted = totals.notStarted
+    reportTotals.inProgress = totals.inProgress
+    reportTotals.submitted = totals.submitted
+    storesByStatus.not_started = storeMaps.not_started
+    storesByStatus.in_progress = storeMaps.in_progress
+    storesByStatus.submitted = storeMaps.submitted
   } catch { /* ignore */ }
   finally { reportLoading.value = false }
 }
@@ -593,13 +741,48 @@ onMounted(async () => {
 .report-bar-wrap{flex:1;height:20px;background:#F0F2F0;border-radius:6px;overflow:hidden;min-width:60px}
 .report-bar{display:flex;height:100%;border-radius:6px}
 .bar-seg{height:100%}
-.bar-submitted{background:#07c160}
-.bar-progress{background:#1989fa}
-.bar-notstart{background:#909399}
+.bar-submitted{background:#2F8F57}
+.bar-progress{background:#5B9BC7}
+.bar-notstart{background:#98A19C}
 .report-nums{font-size:12px;color:#66706A;width:120px;flex-shrink:0}
 .report-legend{display:flex;gap:16px;margin-top:12px;font-size:12px;color:#66706A}
 .legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
 .report-stores{font-size:12px;color:#66706A;margin-left:112px;margin-bottom:4px}
-.store-tag-not{color:#909399}
-.store-tag-ing{color:#1989fa}
+.store-tag-not{color:#98A19C}
+.store-tag-ing{color:#5B9BC7}
+.report-filter-card{margin-bottom:12px;border-radius:var(--radius,8px)}
+.report-lock-hint{margin-left:8px;font-size:13px;color:#98A19C}
+.report-month-hint{font-size:13px;color:#98A19C}
+.report-donut-card{border-radius:var(--radius,8px)}
+/* 卡片内容区固定高度：切换状态列表行数变化时页面不跳动 */
+.report-body-row{display:flex;gap:24px;height:340px}
+.report-col{display:flex;min-width:0}
+.report-col--donut{flex:0 0 330px}
+.report-col--store{flex:1;min-width:0}
+.donut-wrap{flex:1;min-height:0;justify-content:center}
+.store-panel{flex:1;min-height:0;display:flex;flex-direction:column}
+.store-panel-title{font-size:14px;font-weight:600;color:#1F2421;margin-bottom:8px}
+.donut-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0 4px}
+.donut{width:160px;height:160px;border-radius:50%;position:relative}
+.donut-hole{position:absolute;inset:0;margin:auto;width:88px;height:88px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.donut-total{font-size:24px;font-weight:700;color:#1F2421;line-height:1.2}
+.donut-caption{font-size:12px;color:#98A19C}
+.status-chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid #E3E7E3;border-radius:999px;background:#fff;font-size:13px;color:#66706A;cursor:pointer;transition:all .15s}
+.chip:hover{border-color:#2F8F57;color:#1F2421}
+.chip--active{border-color:#2F8F57;background:#E7F4EB;color:#1F2421;font-weight:600}
+.chip b{margin-left:2px;font-weight:700}
+.chip-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.store-list{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
+.store-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:10px 4px;border-bottom:1px solid #F3F5F3}
+.store-row:last-child{border-bottom:none}
+.store-name{flex:1;min-width:0;font-size:14px;font-weight:500;color:#1F2421;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.store-sup{flex-shrink:0;max-width:110px;font-size:12px;color:#5B9BC7;background:#F0F6FB;border-radius:4px;padding:2px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.store-meta{flex-shrink:0;max-width:170px;font-size:12px;color:#98A19C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.report-empty{text-align:center;padding:40px;color:#98A19C}
+@media (max-width: 768px) {
+  .report-body-row{flex-direction:column;height:auto}
+  .report-col--donut{flex:0 0 auto}
+  .store-list{max-height:300px}
+}
 </style>
