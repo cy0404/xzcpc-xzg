@@ -1,2 +1,0 @@
-/*! Date: Mon Aug 17 2026 22:32:20 GMT+0800 (China Standard Time) */
-"use strict";(self["webpackChunkconsole_vue_"]=self["webpackChunkconsole_vue_"]||[]).push([[894],{12894:function(e,n,u){u.r(n),u.d(n,{default:function(){return f}});var r=function(){var e=this,n=e.$createElement,u=e._self._c||n;return u("div")},t=[],l={beforeRouteEnter:(e,n,u)=>u((e=>e.$router.replace({...n})))},c=l,o=u(40222),s=(0,o.A)(c,r,t,!1,null,null,null),f=s.exports}}]);
