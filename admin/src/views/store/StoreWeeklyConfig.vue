@@ -17,9 +17,18 @@
     </div>
 
     <a-card :bordered="false" class="config-card">
+      <div class="table-toolbar">
+        <a-input-search
+          v-model:value="searchText"
+          placeholder="搜索门店名称"
+          allow-clear
+          style="width: 260px"
+        />
+        <span class="table-toolbar-tip">共 {{ dataSource.length }} 家门店</span>
+      </div>
       <a-table
         :columns="columns"
-        :data-source="dataSource"
+        :data-source="filteredDataSource"
         :loading="loading"
         :pagination="false"
         row-key="id"
@@ -76,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { SaveOutlined, BulbOutlined } from '@ant-design/icons-vue'
 import PageModuleTabs from '../../components/PageModuleTabs.vue'
@@ -97,6 +106,14 @@ const saving = ref(false)
 const dataSource = ref<any[]>([])
 const orderDaysMap = reactive<Record<string, number[]>>({})
 const pausedMap = reactive<Record<string, number>>({})
+const searchText = ref('')
+
+/** 按门店名称过滤（本地过滤，门店总数不大） */
+const filteredDataSource = computed(() => {
+  const kw = searchText.value.trim()
+  if (!kw) return dataSource.value
+  return dataSource.value.filter((s: any) => (s.mendianmingcheng || '').includes(kw))
+})
 
 const columns = [
   { title: '门店', dataIndex: 'mendianmingcheng', key: 'storeName', width: 260, ellipsis: true },
@@ -196,6 +213,18 @@ onMounted(fetchStores)
 
 .config-card {
   border-radius: var(--radius, 8px);
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.table-toolbar-tip {
+  font-size: 13px;
+  color: #6b7280;
 }
 
 .days-group {
