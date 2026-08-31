@@ -7,10 +7,15 @@
         <h1 class="page-title">盘点列表</h1>
         <p class="page-subtitle">监控和管理全门店盘点进度</p>
       </div>
-      <a-button type="primary" size="large" class="btn-create" @click="$router.push('/tasks/create')">
-        <template #icon><PlusOutlined /></template>
-        新建盘点任务
-      </a-button>
+      <div class="header-actions">
+        <a-button size="large" class="btn-config" @click="$router.push('/stores/weekly-config')">
+          门店订货周期配置
+        </a-button>
+        <a-button type="primary" size="large" class="btn-create" @click="$router.push('/tasks/create')">
+          <template #icon><PlusOutlined /></template>
+          新建盘点任务
+        </a-button>
+      </div>
     </div>
 
     <a-tabs v-model:activeKey="tabKey" @change="onTabChange" style="margin-bottom:8px">
@@ -601,11 +606,21 @@ onMounted(async () => {
   color: #6b7280;
 }
 
+.header-actions {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.btn-config,
 .btn-create {
   height: 44px;
   padding: 0 24px;
   font-weight: 500;
   border-radius: 8px;
+}
+
+.btn-create {
   box-shadow: 0 4px 12px rgba(13, 122, 61, 0.25);
 }
 

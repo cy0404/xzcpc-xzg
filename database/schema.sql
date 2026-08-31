@@ -263,6 +263,19 @@ CREATE TABLE store_info (
     INDEX idx_store_del_updated (del_flag, updated_at)
 ) COMMENT '门店信息本地表';
 
+-- 门店订货周期配置（周盘按订货周期下发：订货日前一天自动生成周盘任务 → 周盘提交后自动生成智能订货单）
+CREATE TABLE store_order_cycle (
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id    VARCHAR(64) NOT NULL COMMENT '门店ID',
+    order_days  VARCHAR(20) NOT NULL COMMENT '订货日(1-7逗号分隔,1=周一)',
+    paused      TINYINT DEFAULT 0 COMMENT '暂停周盘 0参与 1暂停',
+    version     INT DEFAULT 0 COMMENT '乐观锁',
+    del_flag    TINYINT DEFAULT 0 COMMENT '逻辑删除 0正常 1删除',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_store (store_id)
+) COMMENT '门店订货周期配置';
+
 -- ============================================================
 -- 五、认证与会话
 -- ============================================================
@@ -1033,6 +1046,7 @@ CREATE TABLE smart_order (
   store_name      VARCHAR(200)  DEFAULT NULL COMMENT '门店名称快照',
   week_start_date DATE          NOT NULL COMMENT '订货周周一(ISO周)',
   week_label      VARCHAR(20)   NOT NULL COMMENT '周标签,如 2026-W34',
+  task_id         BIGINT        DEFAULT NULL COMMENT '来源周盘任务ID',
   status          VARCHAR(20)   NOT NULL DEFAULT 'pending' COMMENT 'pending待确认|syncing同步中|success同步成功|submit_failed提交失败',
   item_count      INT           NOT NULL DEFAULT 0 COMMENT '建议品项数',
   total_qty       DECIMAL(12,4) NOT NULL DEFAULT 0 COMMENT '建议数量合计(订货单位)',
@@ -1049,6 +1063,7 @@ CREATE TABLE smart_order (
   del_flag        INT           DEFAULT 0 COMMENT '删除标记',
   version         INT           DEFAULT 0 COMMENT '乐观锁',
   UNIQUE KEY uk_store_week (store_id, week_start_date),
+  UNIQUE KEY uk_store_task (store_id, task_id),
   INDEX idx_status (status),
   INDEX idx_biz_code (biz_code)
 ) COMMENT '智能订货建议单' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

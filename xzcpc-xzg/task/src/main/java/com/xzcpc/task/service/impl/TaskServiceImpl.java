@@ -267,7 +267,10 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
 
             Task task = new Task();
             task.setTaskName(request.getTaskName());
-            task.setTaskMonth(request.getTaskMonth());
+            // weekly：task_month 存周起始日所在月（满足 NOT NULL + 月筛选语义）
+            task.setTaskMonth("weekly".equals(taskType)
+                    ? weekStart.toLocalDate().format(DateTimeFormatter.ofPattern("yyyy-MM"))
+                    : request.getTaskMonth());
             task.setTaskType(taskType);
             task.setTaskWeek("weekly".equals(taskType) ? request.getTaskWeek() : null);
             task.setStoreId(storeId);

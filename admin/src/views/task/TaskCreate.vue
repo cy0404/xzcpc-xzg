@@ -116,7 +116,8 @@
                   <template v-else-if="column.key === 'deadlineText'">
                     <span v-if="record.unconfigured" class="unconfigured-tip">请先到门店订货周期配置设置</span>
                     <template v-else>
-                      <div v-for="(t, i) in record.deadlineText" :key="i" class="deadline-line">{{ t }}</div>
+                      <div class="deadline-line">{{ record.deadlineText }}</div>
+                      <div v-if="record.multiDay" class="multi-day-tip">仅首个订货日创建，其余由自动生成覆盖</div>
                     </template>
                   </template>
                 </template>
@@ -301,15 +302,16 @@ const weeklyDeadlines = computed(() => {
       }
     }
     // 盘点日 = 订货日 - 1（订货日周一 → 盘点日上周日）
-    const deadlines = orderDays.map((d: number) => {
-      const invDay = d === 1 ? 7 : d - 1
-      return monday.add(invDay - 1, 'day').endOf('day').format('YYYY-MM-DD HH:mm')
-    })
+    // 手动创建只按首个订货日生成（其余订货日由每日自动生成覆盖），与后端 batchCreate orderDays.get(0) 保持一致
+    const firstDay = orderDays[0]
+    const invDay = firstDay === 1 ? 7 : firstDay - 1
+    const deadline = monday.add(invDay - 1, 'day').endOf('day').format('YYYY-MM-DD HH:mm')
     return {
       storeId: s.id,
       storeName: s.mendianmingcheng,
       dayText: orderDays.map((d: number) => WEEK_DAY_TEXT[d]).join('、'),
-      deadlineText: deadlines,
+      deadlineText: deadline,
+      multiDay: orderDays.length > 1,
       unconfigured: false,
     }
   })
@@ -537,6 +539,12 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.7;
   white-space: nowrap;
+}
+
+.multi-day-tip {
+  font-size: 12px;
+  color: #8c8c8c;
+  line-height: 1.6;
 }
 
 .preview-name {

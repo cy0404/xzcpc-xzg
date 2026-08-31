@@ -239,12 +239,26 @@ CREATE TABLE store_info (
     qmai_store_id   BIGINT        DEFAULT NULL COMMENT '企迈门店ID',
     warehouse_id    VARCHAR(50)   DEFAULT NULL COMMENT '企迈控制台仓库ID',
     weekly_inventory_day TINYINT  DEFAULT NULL COMMENT '周盘点日(1周一-7周日, 仅周盘用)',
+    weekly_paused        TINYINT  NOT NULL DEFAULT 0 COMMENT '周盘暂停: 0参与 1暂停(暂停后自动生成跳过该店)',
     created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     del_flag        TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除',
     UNIQUE KEY uk_store_id (store_id),
     INDEX idx_store_name (store_name)
 ) COMMENT '门店信息本地表';
+
+-- 门店订货周期配置（周盘按订货周期下发：订货日前一天自动生成周盘任务 → 周盘提交后自动生成智能订货单）
+CREATE TABLE store_order_cycle (
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    store_id    VARCHAR(64) NOT NULL COMMENT '门店ID',
+    order_days  VARCHAR(20) NOT NULL COMMENT '订货日(1-7逗号分隔,1=周一)',
+    paused      TINYINT DEFAULT 0 COMMENT '暂停周盘 0参与 1暂停',
+    version     INT DEFAULT 0 COMMENT '乐观锁',
+    del_flag    TINYINT DEFAULT 0 COMMENT '逻辑删除 0正常 1删除',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_store (store_id)
+) COMMENT '门店订货周期配置';
 
 -- ============================================================
 -- 五、认证与会话
