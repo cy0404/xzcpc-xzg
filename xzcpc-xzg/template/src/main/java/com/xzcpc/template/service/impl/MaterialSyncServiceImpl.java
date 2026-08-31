@@ -444,6 +444,11 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                 countSegments(src.unitConversion()) + countSegments(src.weighingConversion())
                         - unitEntries.size() - weightEntries.size();
 
+        // 换算归一化：只保留"单位 → 基础单位"直接行，中间链折叠（路径系数累乘），
+        // 保证落库的换算行与精简口径一致（录入时每个盘点单位一步换算到 base）
+        unitEntries = ConversionTextParser.foldToBase(src.materialId(), src.name(), unitEntries, baseUnit);
+        weightEntries = ConversionTextParser.foldToBase(src.materialId(), src.name(), weightEntries, baseUnit);
+
         // 已存在规则且不覆盖 → 跳过刷新（仅补齐缺失）
         MaterialInventoryRule rule = ruleMapper.selectOne(new LambdaQueryWrapper<MaterialInventoryRule>()
                 .eq(MaterialInventoryRule::getMaterialId, src.materialId()));
@@ -525,6 +530,8 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         // 规格自动解析换算：1000g/kg → 1000g=1kg；50g/包 → 50g=1包；纯单位规格（kg/kg 等）无换算
         List<ConversionTextParser.ConversionEntry> specEntries =
                 ConversionTextParser.parseSpec(sp.getId(), sp.getName(), sp.getSpecification());
+        // 换算归一化：与原料一致，只落"单位 → 基础单位"直接行（规格方向通常是 小→大，由反向折叠处理）
+        specEntries = ConversionTextParser.foldToBase(sp.getId(), sp.getName(), specEntries, unit);
         if (rule == null) {
             rule = new MaterialInventoryRule();
             rule.setRuleId("TMP");

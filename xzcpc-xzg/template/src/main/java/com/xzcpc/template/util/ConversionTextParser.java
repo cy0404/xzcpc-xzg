@@ -4,8 +4,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -113,4 +121,94 @@ public final class ConversionTextParser {
         }
         return entries;
     }
+
+    /**
+     * 归一化换算条目：只保留"每个盘点单位 → 基础单位"的直接行，中间链折叠掉。
+     * 1) to_unit == baseUnit 的条目原样保留（已是直接行，保持原顺序）
+     * 2) 其余单位沿换算边双向 BFS 折叠到 baseUnit（反向边系数取倒数），路径系数累乘生成直接行
+     * 3) 找不到路径的单位丢弃并 warn（录入了也无法换算，不落无效行）
+     *
+     * 例：件→包(6)、包→g(1000)，base=g → 折叠出 件→g(6000)
+     * 例：1条=5卷，base=条 → 反向折叠出 卷→条(0.2)
+     *
+     * @return 归一化后的条目列表；无换算或 baseUnit 为空时原样返回
+     */
+    public static List<ConversionEntry> foldToBase(String materialId, String materialName,
+                                                   List<ConversionEntry> entries, String baseUnit) {
+        if (entries == null || entries.isEmpty() || !StringUtils.hasText(baseUnit)) {
+            return entries;
+        }
+        List<ConversionEntry> result = new ArrayList<>();
+        Set<String> covered = new HashSet<>();
+        for (ConversionEntry e : entries) {
+            if (baseUnit.equals(e.toUnit())) {
+                result.add(e);
+                covered.add(e.fromUnit());
+            }
+        }
+        // 双向邻接表：1 from = factor to
+        Map<String, List<Edge>> graph = new HashMap<>();
+        for (ConversionEntry e : entries) {
+            BigDecimal factor = e.toQuantity().divide(e.fromQuantity(), 10, RoundingMode.HALF_UP);
+            graph.computeIfAbsent(e.fromUnit(), k -> new ArrayList<>())
+                    .add(new Edge(e.toUnit(), factor));
+            graph.computeIfAbsent(e.toUnit(), k -> new ArrayList<>())
+                    .add(new Edge(e.fromUnit(), BigDecimal.ONE.divide(factor, 10, RoundingMode.HALF_UP)));
+        }
+        Set<String> allUnits = new LinkedHashSet<>();
+        for (ConversionEntry e : entries) {
+            allUnits.add(e.fromUnit());
+            allUnits.add(e.toUnit());
+        }
+        for (String unit : allUnits) {
+            if (baseUnit.equals(unit) || covered.contains(unit)) {
+                continue;
+            }
+            List<BigDecimal> path = bfs(graph, unit, baseUnit);
+            if (path == null) {
+                log.warn("物料 {}[{}] 单位 [{}] 无法换算到基础单位 [{}]，换算行已丢弃",
+                        materialId, materialName, unit, baseUnit);
+                continue;
+            }
+            BigDecimal k = BigDecimal.ONE;
+            for (BigDecimal factor : path) {
+                k = k.multiply(factor);
+            }
+            result.add(new ConversionEntry(BigDecimal.ONE, unit, k.stripTrailingZeros(), baseUnit));
+        }
+        return result;
+    }
+
+    /** BFS 求 from → to 的边系数路径（最短），无路径返回 null */
+    private static List<BigDecimal> bfs(Map<String, List<Edge>> graph, String from, String to) {
+        if (from.equals(to)) {
+            return List.of();
+        }
+        Queue<String> queue = new ArrayDeque<>();
+        Map<String, List<BigDecimal>> pathMap = new HashMap<>();
+        Set<String> visited = new HashSet<>();
+        queue.add(from);
+        pathMap.put(from, new ArrayList<>());
+        visited.add(from);
+        while (!queue.isEmpty()) {
+            String cur = queue.poll();
+            for (Edge edge : graph.getOrDefault(cur, List.of())) {
+                if (visited.contains(edge.to)) {
+                    continue;
+                }
+                List<BigDecimal> path = new ArrayList<>(pathMap.get(cur));
+                path.add(edge.factor);
+                if (edge.to.equals(to)) {
+                    return path;
+                }
+                pathMap.put(edge.to, path);
+                visited.add(edge.to);
+                queue.add(edge.to);
+            }
+        }
+        return null;
+    }
+
+    /** 换算边：1 from = factor to */
+    private record Edge(String to, BigDecimal factor) {}
 }
