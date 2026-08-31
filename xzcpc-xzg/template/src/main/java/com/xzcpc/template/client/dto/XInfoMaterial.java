@@ -1,7 +1,10 @@
 package com.xzcpc.template.client.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 
@@ -56,4 +59,31 @@ public class XInfoMaterial {
 
     /** 状态：ENABLED / DISABLED */
     private String status;
+
+    /** 图片 URL 列表（服务端序列化为 JSON 字符串数组：[{"url":...,"fileName":...,"uploadedAt":...}]），无图为 null */
+    private String imageUrls;
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * 解析 imageUrls（JSON 字符串数组）取第一张图 URL；无图/解析失败返回 null。
+     * 企迈 CDN 链接（images.qmai.cn），直接存 URL 不下载。
+     */
+    public String firstImageUrl() {
+        if (!StringUtils.hasText(imageUrls)) {
+            return null;
+        }
+        try {
+            JsonNode arr = MAPPER.readTree(imageUrls);
+            if (arr.isArray() && !arr.isEmpty()) {
+                JsonNode first = arr.get(0);
+                if (first.hasNonNull("url") && StringUtils.hasText(first.get("url").asText())) {
+                    return first.get("url").asText().trim();
+                }
+            }
+        } catch (Exception e) {
+            // 图片是辅助展示信息，解析失败不阻断同步
+        }
+        return null;
+    }
 }

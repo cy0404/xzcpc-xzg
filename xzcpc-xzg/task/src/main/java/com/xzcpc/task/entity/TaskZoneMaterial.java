@@ -22,6 +22,7 @@ public class TaskZoneMaterial { // 任务分区物料快照实体，记录录入
     private String spec;
     private String unit;
     private String inventoryUnit;
+    private String imageUrl;    // 物料图片快照（创建任务时从模板复制）
     private Integer sortNo;
     private BigDecimal inputQty;
     private String remark;

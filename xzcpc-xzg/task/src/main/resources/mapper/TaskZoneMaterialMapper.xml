@@ -4,11 +4,11 @@
     <insert id="insertBatch">
         INSERT INTO task_zone_material
             (task_id, task_zone_id, material_id, material_name, spec, unit,
-             inventory_unit, sort_no, input_status, biz_code)
+             inventory_unit, image_url, sort_no, input_status, biz_code)
         VALUES
         <foreach collection="list" item="item" separator=",">
             (#{item.taskId}, #{item.taskZoneId}, #{item.materialId}, #{item.materialName},
-             #{item.spec}, #{item.unit}, #{item.inventoryUnit}, #{item.sortNo},
+             #{item.spec}, #{item.unit}, #{item.inventoryUnit}, #{item.imageUrl}, #{item.sortNo},
              #{item.inputStatus}, #{item.bizCode})
         </foreach>
     </insert>

@@ -53,6 +53,7 @@ public class MpZoneServiceImpl implements MpZoneService {
             item.put("taskZoneMaterialId", m.getId());
             item.put("materialId", m.getMaterialId());
             item.put("materialName", m.getMaterialName());
+            item.put("imageUrl", m.getImageUrl() != null ? m.getImageUrl() : "");
             item.put("spec", m.getSpec() != null ? m.getSpec() : "");
             item.put("unit", m.getInventoryUnit() != null ? m.getInventoryUnit() : "");
             item.put("inputQty", m.getInputQty());

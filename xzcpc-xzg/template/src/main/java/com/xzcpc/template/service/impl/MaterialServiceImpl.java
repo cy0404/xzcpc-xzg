@@ -310,6 +310,7 @@ public class MaterialServiceImpl implements MaterialService {
         info.setYuancailiaomingcheng(m.getMaterialName());
         info.setGuige(m.getSpec());
         info.setPandiandanwei(null); // 由 searchMaterials 批量填充
+        info.setImageUrl(m.getImageUrl());
         return info;
     }
 

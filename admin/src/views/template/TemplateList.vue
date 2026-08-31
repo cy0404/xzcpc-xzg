@@ -520,6 +520,7 @@ interface ZoneMaterial {
   spec?: string
   unit?: string
   inventoryUnit?: string
+  imageUrl?: string
   leibie?: string
   parentCategory?: string
   category?: string
@@ -532,6 +533,7 @@ interface MaterialItem {
   spec?: string
   unit?: string
   inventoryUnit?: string
+  imageUrl?: string
   leibie?: string
   parentCategory?: string
   category?: string
@@ -1004,6 +1006,7 @@ async function saveAllChanges() {
               materialName: mat.materialName || '',
               spec: mat.spec || '',
               inventoryUnit: mat.inventoryUnit || '',
+              imageUrl: mat.imageUrl || '',
             }),
           ))
         }
@@ -1030,6 +1033,7 @@ async function saveAllChanges() {
                 spec: lm.spec || '',
                 unit: lm.unit || '',
                 inventoryUnit: lm.inventoryUnit || '',
+                imageUrl: lm.imageUrl || '',
               })),
             ])
           }

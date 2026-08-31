@@ -25,6 +25,9 @@ public class Material {
     private String spec;
     private Integer lossVisible;
 
+    /** 物料图片（xinfo imageUrls 首图，企迈 CDN URL） */
+    private String imageUrl;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

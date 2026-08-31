@@ -11,4 +11,5 @@ public class MaterialInfo {
     private String yuancailiaomingcheng;
     private String guige;
     private String pandiandanwei;
+    private String imageUrl;    // 物料图片（企迈 CDN URL）
 }

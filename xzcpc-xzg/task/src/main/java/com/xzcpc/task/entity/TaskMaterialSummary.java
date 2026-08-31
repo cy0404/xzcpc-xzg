@@ -15,6 +15,7 @@ public class TaskMaterialSummary { // 物料跨分区汇总实体，提交时自
     private String materialId;
     private String materialName;
     private String spec;
+    private String imageUrl;    // 物料图片快照（提交汇总时从任务快照复制）
     private String baseUnit;
     private BigDecimal totalQty;
     private BigDecimal originalQty;

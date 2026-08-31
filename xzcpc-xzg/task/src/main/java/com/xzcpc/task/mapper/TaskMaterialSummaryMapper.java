@@ -17,9 +17,9 @@ public interface TaskMaterialSummaryMapper extends BaseMapper<TaskMaterialSummar
 
     /** 真正批量插入——单条 INSERT ... VALUES (...),(...),(...) */
     @Insert("<script>" +
-        "INSERT INTO task_material_summary (task_id, material_id, material_name, spec, base_unit, total_qty, original_qty, adjusted_qty, zone_count, unit_breakdown) VALUES " +
+        "INSERT INTO task_material_summary (task_id, material_id, material_name, spec, image_url, base_unit, total_qty, original_qty, adjusted_qty, zone_count, unit_breakdown) VALUES " +
         "<foreach collection='list' item='item' separator=','>" +
-        "(#{item.taskId}, #{item.materialId}, #{item.materialName}, #{item.spec}, #{item.baseUnit}, #{item.totalQty}, #{item.originalQty}, #{item.adjustedQty}, #{item.zoneCount}, #{item.unitBreakdown})" +
+        "(#{item.taskId}, #{item.materialId}, #{item.materialName}, #{item.spec}, #{item.imageUrl}, #{item.baseUnit}, #{item.totalQty}, #{item.originalQty}, #{item.adjustedQty}, #{item.zoneCount}, #{item.unitBreakdown})" +
         "</foreach>" +
         "</script>")
     int insertBatch(@Param("list") List<TaskMaterialSummary> list);

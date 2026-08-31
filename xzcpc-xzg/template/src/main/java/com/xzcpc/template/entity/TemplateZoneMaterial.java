@@ -17,6 +17,7 @@ public class TemplateZoneMaterial {
     private String materialName;
     private String spec;
     private String inventoryUnit;
+    private String imageUrl;    // 物料图片快照（分派时从 material 复制）
     private Integer sortNo;
 
     @Version

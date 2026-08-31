@@ -258,6 +258,7 @@ public class MpTaskServiceImpl implements MpTaskService {
                 sm.setMaterialId(materialId);
                 sm.setMaterialName(m.getMaterialName());
                 sm.setSpec(m.getSpec() != null ? m.getSpec() : "");
+                sm.setImageUrl(m.getImageUrl() != null ? m.getImageUrl() : "");
                 sm.setBaseUnit(snapshotUnit(m));
                 sm.setTotalQty(qty);
                 sm.setOriginalQty(qty);
@@ -372,6 +373,7 @@ public class MpTaskServiceImpl implements MpTaskService {
                 m.put("materialId", sm.getMaterialId());
                 m.put("materialName", sm.getMaterialName());
                 m.put("spec", sm.getSpec());
+                m.put("imageUrl", sm.getImageUrl() != null ? sm.getImageUrl() : "");
                 m.put("baseUnit", sm.getBaseUnit());
                 m.put("totalQty", sm.getTotalQty());
                 m.put("zoneCount", sm.getZoneCount());
@@ -540,6 +542,7 @@ public class MpTaskServiceImpl implements MpTaskService {
                 sm.put("materialId", materialId);
                 sm.put("materialName", m.getMaterialName());
                 sm.put("spec", m.getSpec() != null ? m.getSpec() : "");
+                sm.put("imageUrl", m.getImageUrl() != null ? m.getImageUrl() : "");
                 sm.put("totalQty", addQty);
                 sm.put("zoneCount", 1);
                 msMap.put(materialId, sm);
@@ -720,6 +723,7 @@ public class MpTaskServiceImpl implements MpTaskService {
             item.put("materialId", m.getMaterialId());
             item.put("materialName", m.getMaterialName());
             item.put("spec", m.getSpec() != null ? m.getSpec() : "");
+            item.put("imageUrl", m.getImageUrl() != null ? m.getImageUrl() : "");
             item.put("unit", m.getUnit() != null ? m.getUnit() : "");
             item.put("sortNo", m.getSortNo());
             MaterialRuleResp rule = ruleMap.get(m.getMaterialId());

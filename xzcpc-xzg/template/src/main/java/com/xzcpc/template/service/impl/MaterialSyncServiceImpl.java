@@ -208,7 +208,8 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             if (existing != null) {
                 upsertMaterial(existing.getMaterialId(), m.getCode(), m.getName(),
                         mapParentCategory(m.getPrimaryCategory()), m.getSecondaryCategory(),
-                        m.getSpecification(), STATUS_DISABLED.equals(m.getStatus()), stats);
+                        m.getSpecification(), m.firstImageUrl(),
+                        STATUS_DISABLED.equals(m.getStatus()), stats);
                 // 规则归属存量行 material_id（接口 id 可能已换新体系，挂接口 id 会建孤儿规则、
                 // 存量规则更新不到——与 upsertSemiRule 的处理一致）
                 upsertRules(RuleSource.of(existing.getMaterialId(), m), stats);
@@ -222,7 +223,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             boolean disabled = STATUS_DISABLED.equals(m.getStatus());
             UpsertOutcome outcome = upsertMaterial(m.getId(), m.getCode(), m.getName(),
                     mapParentCategory(m.getPrimaryCategory()), m.getSecondaryCategory(),
-                    m.getSpecification(), disabled, stats);
+                    m.getSpecification(), m.firstImageUrl(), disabled, stats);
             if (outcome.needRules()) {
                 upsertRules(RuleSource.of(m.getId(), m), stats);
             }
@@ -257,7 +258,8 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
                 }
                 boolean disabled = STATUS_DISABLED.equals(sp.getStatus());
                 upsertMaterial(sp.getId(), sp.getCode(), sp.getName(),
-                        SEMI_PARENT_CATEGORY, SEMI_CATEGORY, sp.getSpecification(), disabled, stats);
+                        SEMI_PARENT_CATEGORY, SEMI_CATEGORY, sp.getSpecification(),
+                        null /* 半成品接口无图片 */, disabled, stats);
                 upsertSemiRule(sp, sp.getId(), disabled, stats);
                 continue;
             }
@@ -362,7 +364,7 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
      */
     private UpsertOutcome upsertMaterial(String materialId, String code, String name,
                                          String parentCategory, String category, String spec,
-                                         boolean disabled, SyncStats stats) {
+                                         String imageUrl, boolean disabled, SyncStats stats) {
         Material material = materialMapper.selectAnyByMaterialId(materialId);
         if (material == null) {
             material = new Material();
@@ -372,6 +374,9 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
             material.setCategory(category);
             material.setMaterialName(name);
             material.setSpec(spec);
+            if (imageUrl != null) {
+                material.setImageUrl(imageUrl);
+            }
             // 不覆盖人工配置的 loss_visible
             material.setDelFlag(disabled ? 1 : 0);
             materialMapper.insert(material);
@@ -384,6 +389,10 @@ public class MaterialSyncServiceImpl implements MaterialSyncService {
         material.setCategory(category);
         material.setMaterialName(name);
         material.setSpec(spec);
+        // 图片：接口有图才覆盖（图变更自动同步），无图不清空（保护存量回填/手工维护）
+        if (imageUrl != null) {
+            material.setImageUrl(imageUrl);
+        }
         material.setDelFlag(disabled ? 1 : 0);
         materialMapper.upsertSyncFields(material);
         stats.updated++;

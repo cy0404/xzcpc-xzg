@@ -51,6 +51,7 @@ public class MpMaterialServiceImpl implements MpMaterialService {
             item.put("qmCode", m.getPinxiangbianma() != null ? m.getPinxiangbianma() : "");
             item.put("parentCategory", m.getLeibie() != null ? m.getLeibie() : "");
             item.put("category", m.getLeibie2() != null ? m.getLeibie2() : "");
+            item.put("imageUrl", m.getImageUrl() != null ? m.getImageUrl() : "");
             item.put("spec", m.getGuige() != null ? m.getGuige() : "");
             item.put("inventoryUnit", m.getPandiandanwei() != null ? m.getPandiandanwei() : "");
             item.put("unit", m.getPandiandanwei() != null ? m.getPandiandanwei() : "");
@@ -79,6 +80,7 @@ public class MpMaterialServiceImpl implements MpMaterialService {
         item.put("qmCode", material.getPinxiangbianma() != null ? material.getPinxiangbianma() : "");
         item.put("parentCategory", material.getLeibie() != null ? material.getLeibie() : "");
         item.put("category", material.getLeibie2() != null ? material.getLeibie2() : "");
+        item.put("imageUrl", material.getImageUrl() != null ? material.getImageUrl() : "");
         item.put("spec", material.getGuige() != null ? material.getGuige() : "");
         item.put("inventoryUnit", material.getPandiandanwei() != null ? material.getPandiandanwei() : "");
         item.put("unit", material.getPandiandanwei() != null ? material.getPandiandanwei() : "");
@@ -110,6 +112,7 @@ public class MpMaterialServiceImpl implements MpMaterialService {
         String materialName = material.getYuancailiaomingcheng() != null ? material.getYuancailiaomingcheng() : "";
         String spec = material.getGuige() != null ? material.getGuige() : "";
         String unit = material.getPandiandanwei() != null ? material.getPandiandanwei() : "";
+        String imageUrl = material.getImageUrl() != null ? material.getImageUrl() : "";
 
         int maxSort = taskZoneMaterialMapper.selectList(
                 new LambdaQueryWrapper<TaskZoneMaterial>()
@@ -125,7 +128,7 @@ public class MpMaterialServiceImpl implements MpMaterialService {
         if (deleted != null) {
             // 复活旧记录：将 del_flag 改为 0，同时刷新物料快照字段
             taskZoneMaterialMapper.reactivateByKey(
-                    deleted.getId(), materialName, spec, unit, unit, maxSort + 1);
+                    deleted.getId(), materialName, spec, unit, unit, imageUrl, maxSort + 1);
         } else {
             // 3. 全新的物料 → 正常新增
             TaskZoneMaterial tzm = new TaskZoneMaterial();
@@ -136,6 +139,7 @@ public class MpMaterialServiceImpl implements MpMaterialService {
             tzm.setSpec(spec);
             tzm.setUnit(unit);
             tzm.setInventoryUnit(unit);
+            tzm.setImageUrl(imageUrl);
             tzm.setSortNo(maxSort + 1);
             tzm.setInputStatus("not_entered");
             tzm.setBizCode(BizCodeUtil.of("TZM"));

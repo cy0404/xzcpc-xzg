@@ -450,6 +450,7 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
                 tzm.setSpec(tm.getSpec() != null ? tm.getSpec() : "");
                 tzm.setUnit("");
                 tzm.setInventoryUnit(tm.getInventoryUnit() != null ? tm.getInventoryUnit() : "");
+                tzm.setImageUrl(tm.getImageUrl() != null ? tm.getImageUrl() : "");
                 tzm.setSortNo(tm.getSortNo());
                 tzm.setInputStatus("not_entered");
                 tzm.setBizCode(BizCodeUtil.of("TZM"));

@@ -23,11 +23,12 @@ public interface TaskZoneMaterialMapper extends BaseMapper<TaskZoneMaterial> {
      * 复活已逻辑删除的记录：将 del_flag 置为 0 并刷新物料快照字段。
      * 绕过 @TableLogic，使 WHERE id = #{id} 不受 del_flag 过滤影响。
      */
-    @Update("UPDATE task_zone_material SET del_flag = 0, material_name = #{materialName}, spec = #{spec}, unit = #{unit}, inventory_unit = #{inventoryUnit}, sort_no = #{sortNo}, input_qty = NULL, input_status = 'not_entered', remark = NULL, version = version + 1 WHERE id = #{id}")
+    @Update("UPDATE task_zone_material SET del_flag = 0, material_name = #{materialName}, spec = #{spec}, unit = #{unit}, inventory_unit = #{inventoryUnit}, image_url = #{imageUrl}, sort_no = #{sortNo}, input_qty = NULL, input_status = 'not_entered', remark = NULL, version = version + 1 WHERE id = #{id}")
     int reactivateByKey(@Param("id") Integer id,
                         @Param("materialName") String materialName,
                         @Param("spec") String spec,
                         @Param("unit") String unit,
                         @Param("inventoryUnit") String inventoryUnit,
+                        @Param("imageUrl") String imageUrl,
                         @Param("sortNo") Integer sortNo);
 }

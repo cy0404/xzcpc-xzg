@@ -77,7 +77,7 @@ function formatUnitInputs(mat: any) {
         <view class="summary-card">
           <text class="summary-card-title">物料汇总（跨分区合并）</text>
           <view v-for="item in result.summary" :key="item.materialId" class="summary-row">
-            <MaterialIcon :name="item.materialName" :size="70" />
+            <MaterialIcon :name="item.materialName" :size="70" :image-url="item.imageUrl" />
             <view class="row-left">
               <text class="row-name">{{ item.materialName }}</text>
                           </view>

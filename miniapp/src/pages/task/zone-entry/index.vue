@@ -1077,7 +1077,8 @@ async function confirmExtDrawer() {
         <view class="material-list">
           <template v-if="showPending">
             <view v-for="m in filteredPending" :key="m.materialId" class="m-row" @click="handlePendingClick(m)">
-              <view class="mr-icon" :class="{green:isMultiUnit(m), gray:!isMultiUnit(m)}">
+              <image v-if="m.imageUrl" class="mr-img" :src="m.imageUrl" mode="aspectFill" />
+              <view v-else class="mr-icon" :class="{green:isMultiUnit(m), gray:!isMultiUnit(m)}">
                 <text>{{ isMultiUnit(m)?'📦':'📝' }}</text>
               </view>
               <view class="mr-info">
@@ -1099,7 +1100,8 @@ async function confirmExtDrawer() {
           </template>
           <template v-if="showDone">
             <view v-for="m in filteredCompleted" :key="'c-'+m.materialId" class="m-row done" @click="handleCompletedClick(m)">
-              <view class="mr-icon check">✓</view>
+              <image v-if="m.imageUrl" class="mr-img" :src="m.imageUrl" mode="aspectFill" />
+              <view v-else class="mr-icon check">✓</view>
               <view class="mr-info">
                 <text class="mr-name done-name">{{ materialDisplayName(m) }}</text>
                 <view class="mr-sub">
@@ -1151,6 +1153,7 @@ async function confirmExtDrawer() {
           <view class="ext-not-found">未在本区域的物料</view>
           <view class="ext-list">
             <view v-for="m in extResults" :key="m.materialId" class="ext-row" :class="{added:m.inCurrentZone}">
+              <image v-if="m.imageUrl" class="ext-img" :src="m.imageUrl" mode="aspectFill" />
               <view class="ext-info">
                 <text class="ext-name">{{ materialDisplayName(m) }}</text>
                 <text class="ext-meta">{{ m.spec||'--' }} · {{ '盘点单位：'+(m.inventoryUnit||m.inventory_unit||m.unit||'--') }}</text>
@@ -1414,7 +1417,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .m-check{flex-shrink:0}.check-box{width:40rpx;height:40rpx;border-radius:8rpx;border:2rpx solid $b;display:flex;align-items:center;justify-content:center;font-size:26rpx;color:#fff}.check-box.on{background:$p;border-color:$p}
 .m-arrows{display:flex;flex-direction:column;gap:2rpx;flex-shrink:0}.arr-btn{width:40rpx;height:34rpx;border-radius:6rpx;background:#FAFBF9;border:1rpx solid $b;display:flex;align-items:center;justify-content:center;font-size:18rpx;color:$t2}.arr-btn.dis{opacity:.3}
 .m-order{width:120rpx;flex-shrink:0;display:flex;align-items:center;justify-content:center}.order-num{width:96rpx;height:52rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:700;color:$t1;border:2rpx solid $b;border-radius:10rpx;background:#FAFBF9}.order-input{width:96rpx;height:56rpx;text-align:center;font-size:28rpx;font-weight:700;border:2rpx solid $b;border-radius:10rpx;color:$t1;background:#FAFBF9}
-.mr-icon{width:72rpx;height:72rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32rpx;flex-shrink:0}.mr-icon.green{background:$ps;color:$p}.mr-icon.gray{background:#FAFBF9;color:$t3}.mr-icon.check{background:$ps;color:$p;width:56rpx;height:56rpx;font-size:24rpx;font-weight:700}
+.mr-icon{width:72rpx;height:72rpx;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32rpx;flex-shrink:0}.mr-icon.green{background:$ps;color:$p}.mr-icon.gray{background:#FAFBF9;color:$t3}.mr-icon.check{background:$ps;color:$p;width:56rpx;height:56rpx;font-size:24rpx;font-weight:700}.mr-img{width:72rpx;height:72rpx;border-radius:14rpx;flex-shrink:0;background:#F0F1F3}.ext-img{width:72rpx;height:72rpx;border-radius:14rpx;flex-shrink:0;background:#F0F1F3;margin-right:20rpx}
 .mr-info{flex:1;min-width:0}.mr-name{display:block;font-size:28rpx;font-weight:400;color:$t1}.mr-name.done-name{font-size:28rpx;font-weight:400}
 .mr-desc{display:block;margin-top:4rpx;font-size:24rpx;color:$t3}.mr-desc.done-desc{font-size:22rpx}
 .mr-sub{display:flex;align-items:center;gap:12rpx;margin-top:4rpx}

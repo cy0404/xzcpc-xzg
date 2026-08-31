@@ -20,9 +20,11 @@ public interface MaterialMapper extends BaseMapper<Material> {
     /**
      * 同步专用更新：覆盖基本信息并显式写 del_flag（复活 DISABLED→ENABLED）。
      * 自定义 SQL 不受 MyBatis-Plus 逻辑删除对 updateById 的 WHERE 拼接影响。
+     * image_url 用 COALESCE 保护：接口无图（null）时不覆盖已有值（存量回填/手工维护不丢）。
      */
     @Update("UPDATE material SET qm_code = #{qmCode}, parent_category = #{parentCategory}, "
             + "category = #{category}, material_name = #{materialName}, spec = #{spec}, "
+            + "image_url = COALESCE(NULLIF(#{imageUrl}, ''), image_url), "
             + "del_flag = #{delFlag}, updated_at = NOW() "
             + "WHERE material_id = #{materialId}")
     int upsertSyncFields(Material material);
