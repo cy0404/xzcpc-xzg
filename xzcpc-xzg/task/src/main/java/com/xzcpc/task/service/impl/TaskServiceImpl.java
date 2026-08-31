@@ -243,9 +243,9 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
                 if (orderDay < 1 || orderDay > 7) {
                     throw new BusinessException("订货日非法: " + orderDay);
                 }
-                // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；截止时间 = 盘点日 23:59:59
-                int inventoryDay = inventoryDayOfOrderDay(orderDay);
-                deadline = weekStart.plusDays(inventoryDay - 1L).toLocalDate().atTime(23, 59, 59);
+                // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；截止时间 = 订货日当天 05:00:00
+                // （盘点窗口：订货日前一天 9 点生成 ~ 订货日当天 5 点截止）
+                deadline = weekStart.plusDays(orderDay - 1L).toLocalDate().atTime(5, 0, 0);
             }
             // 存在未配置订货周期的门店：跳过创建，统一在最后报错（事务回滚保证原子性）
 
@@ -337,7 +337,8 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
                 LocalDate inventoryDate = weekStart.plusDays(inventoryDayOfOrderDay(orderDay) - 1L);
                 if (!inventoryDate.equals(today)) { skipped++; continue; }
                 // 幂等：同店同周同截止时间（同周多次周盘按 deadline 区分）
-                LocalDateTime deadline = inventoryDate.atTime(23, 59, 59);
+                // 截止 = 订货日当天 05:00（盘点窗口：订货日前一天 9 点生成 ~ 订货日 5 点截止）
+                LocalDateTime deadline = weekStart.plusDays(orderDay - 1L).atTime(5, 0, 0);
                 Long dup = taskMapper.selectCount(new LambdaQueryWrapper<Task>()
                         .eq(Task::getStoreId, store.getId())
                         .eq(Task::getTaskType, "weekly")

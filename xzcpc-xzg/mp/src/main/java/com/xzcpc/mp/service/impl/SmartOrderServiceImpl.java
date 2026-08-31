@@ -1203,9 +1203,10 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         return total;
     }
 
-    /** 截止时间：订货日（周盘盘点截止次日）当天 sys_config 配置时刻（仅展示不强制）；任务无 deadline 时回退周初 */
+    /** 截止时间：订货日当天 sys_config 配置时刻（仅展示不强制）；任务无 deadline 时回退周初
+     * 周盘任务 deadline = 订货日当天 05:00，其日期即订货日 */
     private LocalDateTime orderDeadline(LocalDateTime taskDeadline, LocalDate weekStart) {
-        LocalDate day = taskDeadline != null ? taskDeadline.toLocalDate().plusDays(1) : weekStart;
+        LocalDate day = taskDeadline != null ? taskDeadline.toLocalDate() : weekStart;
         String time = getConfig(CFG_DEADLINE_TIME, "18:00:00");
         try {
             return LocalDateTime.of(day, LocalTime.parse(time));

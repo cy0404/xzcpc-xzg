@@ -123,7 +123,7 @@
                 </template>
               </a-table>
               <p class="field-tip">
-                按各门店订货周期自动计算截止时间（订货日前一天为盘点日），无需手动填写。
+                按各门店订货周期自动计算截止时间（订货日前一天 9:00 生成，截止 = 订货日当天 05:00），无需手动填写。
                 <router-link to="/stores/weekly-config" class="config-link">门店订货周期配置</router-link>
               </p>
             </a-form-item>
@@ -301,11 +301,10 @@ const weeklyDeadlines = computed(() => {
         unconfigured: true,
       }
     }
-    // 盘点日 = 订货日 - 1（订货日周一 → 盘点日上周日）
+    // 盘点日 = 订货日 - 1（订货日周一 → 盘点日上周日）；截止 = 订货日当天 05:00
     // 手动创建只按首个订货日生成（其余订货日由每日自动生成覆盖），与后端 batchCreate orderDays.get(0) 保持一致
     const firstDay = orderDays[0]
-    const invDay = firstDay === 1 ? 7 : firstDay - 1
-    const deadline = monday.add(invDay - 1, 'day').endOf('day').format('YYYY-MM-DD HH:mm')
+    const deadline = monday.add(firstDay - 1, 'day').hour(5).minute(0).format('YYYY-MM-DD HH:mm')
     return {
       storeId: s.id,
       storeName: s.mendianmingcheng,
