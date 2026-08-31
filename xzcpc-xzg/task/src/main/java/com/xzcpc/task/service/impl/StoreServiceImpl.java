@@ -192,6 +192,10 @@ public class StoreServiceImpl implements StoreService {
             if (store == null) {
                 throw new BusinessException("门店不存在: " + storeId);
             }
+            // 周盘仅直营店参与：非直营店配置订货日拒绝（清空配置不受限）
+            if (orderDays != null && !"direct".equals(store.getStoreType())) {
+                throw new BusinessException("门店[" + store.getStoreName() + "]为加盟店，周盘仅直营店可配置订货周期");
+            }
             StoreOrderCycle existing = storeOrderCycleMapper.selectOne(
                     new LambdaQueryWrapper<StoreOrderCycle>()
                             .eq(StoreOrderCycle::getStoreId, storeId));
@@ -306,6 +310,7 @@ public class StoreServiceImpl implements StoreService {
         info.setId(s.getStoreId());
         info.setMendianmingcheng(s.getStoreName());
         info.setBianma(s.getStoreCode());
+        info.setStoreType(s.getStoreType());
         info.setXinfoStoreName(s.getXinfoStoreName());
         info.setProvince(s.getProvince());
         info.setCity(s.getCity());

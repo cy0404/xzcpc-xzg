@@ -7,6 +7,8 @@ public class StoreInfo {
     private String id;
     private String mendianmingcheng;
     private String bianma;
+    /** 门店类型: direct直营|franchise加盟（本地维护，周盘仅直营店可配订货周期） */
+    private String storeType;
     /** 小象（xinfo 接口）门店名称，独立于企迈同步的 mendianmingcheng */
     private String xinfoStoreName;
     /** 省（xinfo 接口 province） */

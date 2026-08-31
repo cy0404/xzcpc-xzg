@@ -40,6 +40,9 @@ public class Store {
     /** 门店编码 */
     private String storeCode;
 
+    /** 门店类型: direct直营|franchise加盟（本地维护，周盘仅直营店可配订货周期） */
+    private String storeType;
+
     /** 小程序号 */
     private String xiaochengxuid;
 

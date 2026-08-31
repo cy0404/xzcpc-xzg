@@ -228,6 +228,7 @@ CREATE TABLE store_info (
     store_id        VARCHAR(64)   NOT NULL COMMENT '外部API门店ID',
     store_name      VARCHAR(128)  NOT NULL COMMENT '门店名称',
     store_code      VARCHAR(64)   DEFAULT NULL COMMENT '门店编码',
+    store_type      VARCHAR(20)   NOT NULL DEFAULT 'franchise' COMMENT '门店类型: direct直营|franchise加盟',
     xiaochengxuid   VARCHAR(64)   DEFAULT NULL COMMENT '小程序号',
     cangkuid        VARCHAR(64)   DEFAULT NULL COMMENT '仓库ID',
     qr_code         VARCHAR(512)  DEFAULT NULL COMMENT '门店二维码',

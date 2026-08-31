@@ -23,31 +23,39 @@
         :loading="loading"
         :pagination="false"
         row-key="id"
-        :scroll="{ x: 760 }"
+        :scroll="{ x: 900 }"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'days'">
+          <template v-if="column.key === 'storeType'">
+            <a-tag :color="isDirect(record) ? 'green' : 'default'">
+              {{ isDirect(record) ? '直营' : '加盟' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.key === 'days'">
             <a-checkbox-group
               v-model:value="orderDaysMap[record.id]"
               class="days-group"
             >
-              <a-checkbox v-for="(text, d) in WEEK_DAY_OPTIONS" :key="d" :value="Number(d)">
+              <a-checkbox v-for="(text, d) in WEEK_DAY_OPTIONS" :key="d" :value="Number(d)" :disabled="!isDirect(record)">
                 {{ text }}
               </a-checkbox>
             </a-checkbox-group>
-            <div v-if="!orderDaysMap[record.id]?.length" class="days-empty">未选择 = 不参与周盘</div>
+            <div v-if="!orderDaysMap[record.id]?.length" class="days-empty">
+              {{ isDirect(record) ? '未选择 = 不参与周盘' : '加盟店，不可配置' }}
+            </div>
           </template>
           <template v-else-if="column.key === 'paused'">
             <a-switch
               :checked="pausedMap[record.id] === 1"
-              :disabled="!orderDaysMap[record.id]?.length"
+              :disabled="!isDirect(record) || !orderDaysMap[record.id]?.length"
               checked-children="已暂停"
               un-checked-children="参与"
               @change="(v: boolean) => (pausedMap[record.id] = v ? 1 : 0)"
             />
           </template>
           <template v-else-if="column.key === 'status'">
-            <span v-if="orderDaysMap[record.id]?.length" class="status-ok">
+            <span v-if="!isDirect(record)" class="status-none">加盟店，不参与周盘</span>
+            <span v-else-if="orderDaysMap[record.id]?.length" class="status-ok">
               每周 {{ formatDays(orderDaysMap[record.id]) }} 订货
               <span v-if="pausedMap[record.id] === 1" class="status-paused">（已暂停）</span>
             </span>
@@ -59,8 +67,8 @@
       <div class="config-tip">
         <BulbOutlined />
         <span>
-          每个订货日的前一天自动生成周盘任务（如订货日为周一 → 上周日盘点），盘点截止 = 盘点日 23:59:59；
-          门店完成周盘提交后，次日自动生成智能订货单。一周多个订货日的门店，每周生成多个周盘任务。
+          周盘仅直营店参与：加盟店不可配置订货周期。每个订货日的前一天自动生成周盘任务（如订货日为周一 → 上周日盘点），
+          盘点截止 = 盘点日 23:59:59；门店完成周盘提交后，次日自动生成智能订货单。一周多个订货日的门店，每周生成多个周盘任务。
         </span>
       </div>
     </a-card>
@@ -92,10 +100,16 @@ const pausedMap = reactive<Record<string, number>>({})
 
 const columns = [
   { title: '门店', dataIndex: 'mendianmingcheng', key: 'storeName', width: 260, ellipsis: true },
+  { title: '类型', key: 'storeType', width: 80, align: 'center' as const },
   { title: '订货日（可多选）', key: 'days', width: 300 },
   { title: '暂停周盘', key: 'paused', width: 120 },
   { title: '当前状态', key: 'status', width: 240 },
 ]
+
+/** 直营店可配置订货周期，加盟店不参与周盘 */
+function isDirect(record: any): boolean {
+  return record.storeType === 'direct'
+}
 
 function formatDays(days: number[] | undefined) {
   if (!days?.length) return ''
