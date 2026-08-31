@@ -11,6 +11,7 @@ import com.xzcpc.template.dto.MaterialRuleResp;
 import com.xzcpc.template.entity.Material;
 import com.xzcpc.template.mapper.MaterialMapper;
 import com.xzcpc.template.service.MaterialRuleService;
+import com.xzcpc.template.service.SemiFormulaExplodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
     private JdbcTemplate pgJdbc;
     private final MaterialMapper materialMapper;
     private final MaterialRuleService materialRuleService;
+    private final SemiFormulaExplodeService semiFormulaExplodeService;
     private final TaskMapper taskMapper;
     private final TaskMaterialSummaryMapper summaryMapper;
     private final InventoryDifferenceMapper diffMapper;
@@ -135,21 +137,51 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         Map<String, BigDecimal> lossMap = batchQueryLossByDate(storeIds, startDate, endDate, categoryGroupMap);
         Map<String, BigDecimal> selfPurchaseMap = batchQuerySelfPurchaseByDate(storeIds, startDate, endDate, ruleMap);
 
+        // ---- 半成品 BOM 爆炸（开关开启时）：半成品盘点数 → 原料盘点数（6.2） ----
+        Map<String, BigDecimal> explodedActualMap = new HashMap<>();   // 原料mid → 半成品折算的盘点数
+        Set<String> explodedSemiMids = new HashSet<>();                // 已爆炸的半成品mid（自身不出差异行）
+        if (semiFormulaExplodeService.isEnabled()) {
+            semiFormulaExplodeService.prepare();
+            for (TaskMaterialSummary sm : summaries) {
+                if (!semiFormulaExplodeService.isExplodable(sm.getMaterialId())) continue;
+                BigDecimal actual = sm.getAdjustedQty() != null ? sm.getAdjustedQty() : sm.getTotalQty();
+                Map<String, BigDecimal> exploded = semiFormulaExplodeService.explode(sm.getMaterialId(), actual, sm.getBaseUnit());
+                if (exploded != null) {
+                    explodedSemiMids.add(sm.getMaterialId());
+                    exploded.forEach((rawMid, v) -> explodedActualMap.merge(rawMid, v, BigDecimal::add));
+                    log.warn("半成品爆炸(盘点): {}[{}] {} {} → 原料 {}", sm.getMaterialId(), sm.getMaterialName(),
+                            actual, sm.getBaseUnit(), exploded);
+                }
+            }
+            // 零盘点半成品：爆炸结果 0，自身行同样不再生成（切换为原料口径）
+            for (String mid : zeroMatMap.keySet()) {
+                if (semiFormulaExplodeService.isExplodable(mid)) {
+                    explodedSemiMids.add(mid);
+                    log.warn("半成品爆炸(盘点): {} 零盘点，切换原料口径，自身差异行不生成", mid);
+                }
+            }
+        }
+
         List<InventoryDifference> diffList = new ArrayList<>();
         // 处理有盘点数量的物料（从 summary）
         for (TaskMaterialSummary sm : summaries) {
             String mid = sm.getMaterialId();
-            computeDiff(diffList, mid, sm.getMaterialName(), sm.getSpec(), sm.getBaseUnit(), sm.getAdjustedQty(), taskId, storeId, startTime, endTime,
+            if (explodedSemiMids.contains(mid)) continue;
+            BigDecimal actual = sm.getAdjustedQty() != null ? sm.getAdjustedQty() : sm.getTotalQty();
+            actual = actual.add(explodedActualMap.getOrDefault(mid, BigDecimal.ZERO));
+            computeDiff(diffList, mid, sm.getMaterialName(), sm.getSpec(), sm.getBaseUnit(), actual, taskId, storeId, startTime, endTime,
                     pgPurchaseMap, pgOrderMap, pgConsumptionMap, transferNetMap, returnMap, lossMap, selfPurchaseMap, prevAdjustedMap, threshold);
         }
         // 处理零盘点物料（not_entered/zero_entered）
         for (Map.Entry<String, String> e : zeroMatMap.entrySet()) {
             String mid = e.getKey();
+            if (explodedSemiMids.contains(mid)) continue;
             Material m = materialMap.get(mid);
             String spec = m != null ? m.getSpec() : "";
             String unit = "";
             try { MaterialRuleResp r = ruleMap.get(mid); if (r != null && r.getBaseUnit() != null) unit = r.getBaseUnit(); } catch (Exception ignored) {}
-            computeDiff(diffList, mid, e.getValue(), spec, unit, BigDecimal.ZERO, taskId, storeId, startTime, endTime,
+            BigDecimal actual = explodedActualMap.getOrDefault(mid, BigDecimal.ZERO);
+            computeDiff(diffList, mid, e.getValue(), spec, unit, actual, taskId, storeId, startTime, endTime,
                     pgPurchaseMap, pgOrderMap, pgConsumptionMap, transferNetMap, returnMap, lossMap, selfPurchaseMap, prevAdjustedMap, threshold);
         }
         log.warn("单任务 storeId={} 调货:{} 还货:{} 报损:{} 自购:{} PG采购:{} 订货:{} 消耗:{} 上月:{}",
@@ -518,14 +550,24 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         } catch (Exception ignored) { return null; }
     }
 
-    /** 加载上一个任务的 adjusted_qty */
+    /** 加载上一个任务的 adjusted_qty（半成品爆炸并入原料，保证上月剩余口径与本店一致） */
     private Map<String, BigDecimal> loadPrevAdjustedQty(Integer prevTaskId) {
         Map<String, BigDecimal> map = new HashMap<>();
         if (prevTaskId == null) return map;
         List<TaskMaterialSummary> list = summaryMapper.selectList(
                 new LambdaQueryWrapper<TaskMaterialSummary>().eq(TaskMaterialSummary::getTaskId, prevTaskId));
+        boolean explodeEnabled = semiFormulaExplodeService.isEnabled();
+        if (explodeEnabled) semiFormulaExplodeService.prepare();
         for (TaskMaterialSummary sm : list) {
             BigDecimal v = sm.getAdjustedQty() != null ? sm.getAdjustedQty() : sm.getTotalQty();
+            if (explodeEnabled && semiFormulaExplodeService.isExplodable(sm.getMaterialId())) {
+                Map<String, BigDecimal> exploded = semiFormulaExplodeService.explode(sm.getMaterialId(), v, sm.getBaseUnit());
+                if (exploded != null) {
+                    exploded.forEach((rawMid, q) -> map.merge(rawMid, q, BigDecimal::add));
+                    log.warn("半成品爆炸(上月剩余): {}[{}] {} → 原料 {}", sm.getMaterialId(), sm.getMaterialName(), v, exploded);
+                    continue;
+                }
+            }
             map.put(sm.getMaterialId(), v);
         }
         return map;
@@ -616,7 +658,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 BigDecimal qty = toBigDecimal(row.get("base_qty"));
                 if (mid == null || qty.compareTo(BigDecimal.ZERO) == 0) continue;
                 if ("daily".equals(lossType)) {
-                    if ("completed".equals(status)) map.merge(mid + "|" + sid, qty, BigDecimal::add);
+                    if ("completed".equals(status)) mergeLossQty(map, mid, "|" + sid, qty);
                     continue;
                 }
                 boolean isFruitVeg = isFruitVegMaterial(category, categoryGroupMap);
@@ -682,10 +724,17 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
     private Map<String, BigDecimal> batchQueryPgConsumptionByDate(Set<String> whCodes, String startDate, String endDate,
                                                                     Map<String, String> qmToMid, Map<String, MaterialRuleResp> ruleMap) {
         Map<String, BigDecimal> map = new HashMap<>();
-        if (whCodes.isEmpty() || qmToMid.isEmpty()) return map;
+        if (whCodes.isEmpty()) return map;
         try {
             String inWh = whCodes.stream().map(w -> "'" + w + "'").collect(Collectors.joining(","));
-            String inItems = qmToMid.keySet().stream().map(c -> "'" + c + "'").collect(Collectors.joining(","));
+            // 查询集合 = 原料 code ∪ 可爆炸半成品 code（半成品消耗爆炸并入原料，6.4）
+            Set<String> queryCodes = new HashSet<>(qmToMid.keySet());
+            if (semiFormulaExplodeService.isEnabled()) {
+                semiFormulaExplodeService.prepare();
+                queryCodes.addAll(semiFormulaExplodeService.explodableQmCodes());
+            }
+            if (queryCodes.isEmpty()) return map;
+            String inItems = queryCodes.stream().map(c -> "'" + c.replace("'", "''") + "'").collect(Collectors.joining(","));
             String sql = "SELECT item_code, COALESCE(SUM(sales_quantity - COALESCE(return_quantity,0)),0) AS total_qty, " +
                     "COALESCE(unit, MAX(unit) OVER (PARTITION BY item_code)) AS unit " +
                     "FROM dwd.store_item_sales WHERE warehouse_code IN (" + inWh + ") " +
@@ -695,6 +744,16 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 String itemCode = (String) row.get("item_code");
                 String pgUnit = (String) row.get("unit");
                 BigDecimal rawQty = toBigDecimal(row.get("total_qty"));
+                if (semiFormulaExplodeService.isEnabled() && semiFormulaExplodeService.isExplodableCode(itemCode)) {
+                    // 半成品消耗：爆炸并入原料（消耗口径闭合）
+                    Map<String, BigDecimal> exploded = semiFormulaExplodeService.explodeByCode(itemCode, rawQty, pgUnit);
+                    if (exploded != null) {
+                        exploded.forEach((rawMid, v) -> map.merge(rawMid, v, BigDecimal::add));
+                        log.warn("半成品爆炸(消耗): {} pgUnit={} rawQty={} → 原料 {}", itemCode, pgUnit, rawQty, exploded);
+                        continue;
+                    }
+                    log.warn("半成品爆炸(消耗)失败: {} pgUnit={} rawQty={}，保留自身行", itemCode, pgUnit, rawQty);
+                }
                 String mid = qmToMid.get(itemCode);
                 if (mid != null) {
                     BigDecimal qty = convertToBaseUnit(mid, pgUnit, rawQty, ruleMap);
@@ -777,7 +836,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         return map;
     }
 
-    /** 查询 PG 消耗：SUM(sales_quantity - return_quantity) */
+    /** 查询 PG 消耗：SUM(sales_quantity - return_quantity)；半成品消耗爆炸并入原料（6.4） */
     private Map<String, BigDecimal> queryPgConsumption(String warehouseCode, String taskMonth,
                                                         Map<String, Material> materialMap, Map<String, MaterialRuleResp> ruleMap) {
         Map<String, BigDecimal> map = new HashMap<>();
@@ -788,9 +847,13 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                     qmToMid.put(m.getQmCode(), m.getMaterialId());
                 }
             }
-            if (qmToMid.isEmpty()) return map;
 
             List<String> qmCodes = new ArrayList<>(qmToMid.keySet());
+            if (semiFormulaExplodeService.isEnabled()) {
+                semiFormulaExplodeService.prepare();
+                qmCodes.addAll(semiFormulaExplodeService.explodableQmCodes());
+            }
+            if (qmCodes.isEmpty()) return map;
             String inClause = qmCodes.stream().map(c -> "'" + c.replace("'", "''") + "'")
                     .collect(Collectors.joining(","));
 
@@ -803,6 +866,15 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 String itemCode = (String) row.get("item_code");
                 String pgUnit = (String) row.get("unit");
                 BigDecimal qty = toBigDecimal(row.get("total_qty"));
+                if (semiFormulaExplodeService.isEnabled() && semiFormulaExplodeService.isExplodableCode(itemCode)) {
+                    Map<String, BigDecimal> exploded = semiFormulaExplodeService.explodeByCode(itemCode, qty, pgUnit);
+                    if (exploded != null) {
+                        exploded.forEach((rawMid, v) -> map.merge(rawMid, v, BigDecimal::add));
+                        log.warn("半成品爆炸(消耗): {} pgUnit={} qty={} → 原料 {}", itemCode, pgUnit, qty, exploded);
+                        continue;
+                    }
+                    log.warn("半成品爆炸(消耗)失败: {} pgUnit={} qty={}，保留自身行", itemCode, pgUnit, qty);
+                }
                 String mid = qmToMid.get(itemCode);
                 if (mid != null) {
                     BigDecimal converted = convertToBaseUnit(mid, pgUnit, qty, ruleMap);
@@ -929,7 +1001,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 // 日常报损：completed + occurred_date 本月 → 只减
                 if ("daily".equals(lossType)) {
                     if ("completed".equals(status) && isInMonth(occurredDate, start, end)) {
-                        map.merge(mid, qty, BigDecimal::add);
+                        mergeLossQty(map, mid, "", qty);
                     }
                     continue;
                 }
@@ -1162,6 +1234,24 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
             String prevMonth = previousMonth(taskMonth);
             List<TaskMaterialSummary> summaries = taskSummaryMap.getOrDefault(taskId, List.of());
 
+            // 半成品 BOM 爆炸（开关开启）：半成品盘点数 → 原料盘点数（6.2，与单任务路径一致）
+            Map<String, BigDecimal> explodedActualMap = new HashMap<>();
+            Set<String> explodedSemiMids = new HashSet<>();
+            if (semiFormulaExplodeService.isEnabled()) {
+                semiFormulaExplodeService.prepare();
+                for (TaskMaterialSummary sm : summaries) {
+                    if (!semiFormulaExplodeService.isExplodable(sm.getMaterialId())) continue;
+                    BigDecimal actual = sm.getAdjustedQty() != null ? sm.getAdjustedQty() : sm.getTotalQty();
+                    Map<String, BigDecimal> exploded = semiFormulaExplodeService.explode(sm.getMaterialId(), actual, sm.getBaseUnit());
+                    if (exploded != null) {
+                        explodedSemiMids.add(sm.getMaterialId());
+                        exploded.forEach((rawMid, v) -> explodedActualMap.merge(rawMid, v, BigDecimal::add));
+                        log.warn("半成品爆炸(盘点): {}[{}] {} {} → 原料 {}", sm.getMaterialId(), sm.getMaterialName(),
+                                actual, sm.getBaseUnit(), exploded);
+                    }
+                }
+            }
+
             // 上月剩余：批量查一次所有 stores + months 的组合
             Set<String> prevMonths = previousMonths(allMonths);
             log.warn("上月剩余查询: storeIds={}, prevMonths={}, matCount={}", allStoreIds, prevMonths, matIdList.size());
@@ -1170,6 +1260,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
 
             for (TaskMaterialSummary sm : summaries) {
                 String mid = sm.getMaterialId();
+                if (explodedSemiMids.contains(mid)) continue;
                 String key = mid + "|" + storeId + "|" + taskMonth;
 
                 BigDecimal lastMonth = lastMonthMap.getOrDefault(mid + "|" + storeId + "|" + prevMonth, BigDecimal.ZERO);
@@ -1187,6 +1278,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 BigDecimal theoretical = lastMonth.add(purchase).add(order).add(transferNet).add(returnNet)
                         .subtract(loss).add(selfPurchase).subtract(consumption);
                 BigDecimal actual = sm.getAdjustedQty() != null ? sm.getAdjustedQty() : sm.getTotalQty();
+                actual = actual.add(explodedActualMap.getOrDefault(mid, BigDecimal.ZERO));
                 BigDecimal diff = actual.subtract(theoretical);
                 BigDecimal diffRate = BigDecimal.ZERO;
                 if (theoretical.compareTo(BigDecimal.ZERO) != 0)
@@ -1361,7 +1453,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 // 日常报损：completed + occurred_date 本月 → 只减
                 if ("daily".equals(lossType)) {
                     if ("completed".equals(status) && months.contains(occMth)) {
-                        map.merge(mid + "|" + sid + "|" + occMth, qty, BigDecimal::add);
+                        mergeLossQty(map, mid, "|" + sid + "|" + occMth, qty);
                         dailyMatch++;
                     }
                     continue;
@@ -1386,6 +1478,22 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
             log.warn("批量查询报损失败: {}", e.getMessage());
         }
         return map;
+    }
+
+    /**
+     * 日常报损数量合并（半成品爆炸并入原料，key 保持原调用方格式）。
+     * keySuffix：新路径 "|storeId"，批量路径 "|storeId|month"，旧路径 ""——爆炸结果同样拼该后缀。
+     */
+    private void mergeLossQty(Map<String, BigDecimal> map, String mid, String keySuffix, BigDecimal qty) {
+        if (semiFormulaExplodeService.isEnabled() && semiFormulaExplodeService.isExplodable(mid)) {
+            Map<String, BigDecimal> exploded = semiFormulaExplodeService.explode(mid, qty, null);
+            if (exploded != null) {
+                exploded.forEach((rawMid, v) -> map.merge(rawMid + keySuffix, v, BigDecimal::add));
+                log.warn("半成品爆炸(日常报损): {} qty={} → 原料 {}", mid, qty, exploded);
+                return;
+            }
+        }
+        map.merge(mid + keySuffix, qty, BigDecimal::add);
     }
 
     private Map<String, BigDecimal> batchQuerySelfPurchase(Set<String> storeIds, Set<String> months) {
@@ -1430,7 +1538,17 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 String mid = (String) row.get("material_id");
                 String sid = (String) row.get("store_id");
                 String mth = (String) row.get("task_month");
-                map.merge(mid + "|" + sid + "|" + mth, toBigDecimal(row.get("qty")), BigDecimal::add);
+                BigDecimal qty = toBigDecimal(row.get("qty"));
+                if (semiFormulaExplodeService.isEnabled() && semiFormulaExplodeService.isExplodable(mid)) {
+                    // 半成品上月剩余爆炸并入原料（口径与本店盘点一致）
+                    Map<String, BigDecimal> exploded = semiFormulaExplodeService.explode(mid, qty, null);
+                    if (exploded != null) {
+                        exploded.forEach((rawMid, v) -> map.merge(rawMid + "|" + sid + "|" + mth, v, BigDecimal::add));
+                        log.warn("半成品爆炸(上月剩余): {} qty={} → 原料 {}", mid, qty, exploded);
+                        continue;
+                    }
+                }
+                map.merge(mid + "|" + sid + "|" + mth, qty, BigDecimal::add);
             }
         } catch (Exception e) {
             log.warn("批量查询上月剩余失败: {}", e.getMessage());
@@ -1485,13 +1603,20 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
     private Map<String, BigDecimal> batchQueryPgConsumption(Set<String> whCodes, Set<String> months,
                                                               Map<String, String> qmToMid, Map<String, MaterialRuleResp> ruleMap) {
         Map<String, BigDecimal> map = new HashMap<>();
-        if (whCodes.isEmpty() || months.isEmpty() || qmToMid.isEmpty()) return map;
+        if (whCodes.isEmpty() || months.isEmpty()) return map;
         try {
             String inWh = whCodes.stream().map(w -> "'" + w + "'").collect(Collectors.joining(","));
             String inMonths = months.stream().map(m -> "'" + m + "-01'::date").collect(Collectors.joining(","));
-            String inItems = qmToMid.keySet().stream().map(c -> "'" + c + "'").collect(Collectors.joining(","));
+            // 查询集合 = 原料 code ∪ 可爆炸半成品 code（半成品消耗爆炸并入原料，6.4）
+            Set<String> queryCodes = new HashSet<>(qmToMid.keySet());
+            if (semiFormulaExplodeService.isEnabled()) {
+                semiFormulaExplodeService.prepare();
+                queryCodes.addAll(semiFormulaExplodeService.explodableQmCodes());
+            }
+            if (queryCodes.isEmpty()) return map;
+            String inItems = queryCodes.stream().map(c -> "'" + c.replace("'", "''") + "'").collect(Collectors.joining(","));
 
-            log.warn("PG查询消耗: wh={} month={} itemCount={}", inWh, inMonths, qmToMid.size());
+            log.warn("PG查询消耗: wh={} month={} itemCount={}", inWh, inMonths, queryCodes.size());
 
             String sql = "SELECT item_code, warehouse_code, TO_CHAR(stat_month,'YYYY-MM') AS mth, " +
                     "COALESCE(SUM(sales_quantity - COALESCE(return_quantity, 0)), 0) AS total_qty, unit " +
@@ -1504,9 +1629,18 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 String itemCode = (String) row.get("item_code");
                 String pgUnit = (String) row.get("unit");
                 String mth = (String) row.get("mth");
+                BigDecimal qty = toBigDecimal(row.get("total_qty"));
+                if (semiFormulaExplodeService.isEnabled() && semiFormulaExplodeService.isExplodableCode(itemCode)) {
+                    Map<String, BigDecimal> exploded = semiFormulaExplodeService.explodeByCode(itemCode, qty, pgUnit);
+                    if (exploded != null) {
+                        exploded.forEach((rawMid, v) -> map.merge(rawMid + "|" + mth, v, BigDecimal::add));
+                        log.warn("半成品爆炸(消耗): {} pgUnit={} qty={} mth={} → 原料 {}", itemCode, pgUnit, qty, mth, exploded);
+                        continue;
+                    }
+                    log.warn("半成品爆炸(消耗)失败: {} pgUnit={} qty={}，保留自身行", itemCode, pgUnit, qty);
+                }
                 String mid = qmToMid.get(itemCode);
                 if (mid != null) {
-                    BigDecimal qty = toBigDecimal(row.get("total_qty"));
                     qty = convertToBaseUnit(mid, pgUnit, qty, ruleMap);
                     map.merge(mid + "|" + mth, qty, BigDecimal::add);
                 }

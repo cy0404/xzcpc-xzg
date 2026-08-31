@@ -53,15 +53,16 @@ app:
   public-url: https://www.xzcpc-9pd.top
   upload:
     path: /data/inventory-upload
-  # 每日凌晨 3 点物料同步（xinfo），迁移完成后设置 APP_SYNC_ENABLED=true 开启
+  # 物料同步开关（xinfo）：迁移未完成，全部写死关闭
+  # 开启同步：把 enabled 改为 true → 重新打包部署（脚本/服务器无需任何配置）
   sync:
-    enabled: ${APP_SYNC_ENABLED:false}
+    enabled: false
     # 全量镜像开关：insert-new=接口有库里没有的插入；delete-absent=接口没有的 del_flag=1（淘汰）
-    # 均默认 false（只补字段）；全量校准完成后开一次，跑完关闭
-    insert-new: ${APP_SYNC_INSERT_NEW:false}
-    delete-absent: ${APP_SYNC_DELETE_ABSENT:false}
-    # 半成品同步开关：暂时关闭（半成品数据待校准）；开启设 APP_SYNC_SEMI_ENABLED=true
-    semi-enabled: ${APP_SYNC_SEMI_ENABLED:false}
+    # 全量校准完成后开一次，跑完改回 false 重新打包
+    insert-new: false
+    delete-absent: false
+    # 半成品同步开关：2026-08-31 测试库验证通过，开启（每日凌晨 3 点同步 86 个半成品+配方）
+    semi-enabled: true
 
 admin:
   jwt:
