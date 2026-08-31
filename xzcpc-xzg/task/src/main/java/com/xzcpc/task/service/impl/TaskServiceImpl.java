@@ -322,7 +322,7 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         int generated = 0, skipped = 0;
         List<String> failed = new ArrayList<>();
         Map<String, StoreInfo> storeMap = storeService.getStoreMap();
-        // 按门店订货周期表：每个订货日 → 盘点日=订货日-1，盘点日在今天或明天则生成
+        // 按门店订货周期表：每个订货日 → 盘点日=订货日-1，盘点日在今天则生成（即订货日前一天9点生成任务）
         List<StoreOrderCycle> cycles = storeOrderCycleMapper.selectList(
                 new LambdaQueryWrapper<StoreOrderCycle>().orderByAsc(StoreOrderCycle::getId));
         for (StoreOrderCycle cycle : cycles) {
@@ -333,9 +333,9 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
             StoreInfo store = storeMap.get(cycle.getStoreId());
             if (store == null) { skipped++; continue; }
             for (int orderDay : orderDays) {
-                // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；窗口：今天/明天
+                // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；窗口：仅今天（订货日前一天9点生成）
                 LocalDate inventoryDate = weekStart.plusDays(inventoryDayOfOrderDay(orderDay) - 1L);
-                if (inventoryDate.isBefore(today) || inventoryDate.isAfter(today.plusDays(1))) { skipped++; continue; }
+                if (!inventoryDate.equals(today)) { skipped++; continue; }
                 // 幂等：同店同周同截止时间（同周多次周盘按 deadline 区分）
                 LocalDateTime deadline = inventoryDate.atTime(23, 59, 59);
                 Long dup = taskMapper.selectCount(new LambdaQueryWrapper<Task>()

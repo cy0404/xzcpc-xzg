@@ -7,7 +7,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * 周盘任务自动生成：每天早上 9 点，为盘点日在今天/明天的门店生成本周周盘任务。
+ * 周盘任务自动生成：每天早上 9 点，为盘点日在今天的门店生成本周周盘任务
+ * （盘点日 = 订货日前一天，即订货日前一天 9 点生成任务）。
  * 幂等（同店同周未提交任务已存在则跳过）、暂停门店跳过、无启用的周盘模板则全部跳过。
  * 联调/补生成可调用手动触发接口 POST /api/tasks/weekly-generate。
  */
