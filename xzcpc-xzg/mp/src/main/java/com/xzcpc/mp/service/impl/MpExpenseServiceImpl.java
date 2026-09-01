@@ -7,11 +7,14 @@ import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.expense.entity.ExpenseRecord;
 import com.xzcpc.expense.entity.ExpenseRecordItem;
 import com.xzcpc.expense.entity.ExpenseType;
+import com.xzcpc.expense.entity.ExpenseVoucher;
 import com.xzcpc.common.model.StoreInfo;
 import com.xzcpc.expense.mapper.ExpenseRecordItemMapper;
 import com.xzcpc.expense.mapper.ExpenseRecordMapper;
 import com.xzcpc.expense.mapper.ExpenseTypeMapper;
+import com.xzcpc.expense.mapper.ExpenseVoucherMapper;
 import com.xzcpc.mp.dto.ExpenseItemVO;
+import com.xzcpc.mp.dto.MpExpenseBatchSaveReq;
 import com.xzcpc.mp.dto.MpExpenseSaveReq;
 import com.xzcpc.expense.entity.SelfPurchaseMaterial;
 import com.xzcpc.expense.entity.SelfPurchaseMaterialItem;
@@ -45,10 +48,12 @@ public class MpExpenseServiceImpl implements MpExpenseService {
 
     private static final String SELF_PURCHASE_TYPE = "自购食材";
     private static final int SELF_PURCHASE_MAX_ITEMS = 10;
+    private static final int MAX_VOUCHER_SIZE = 9;
 
     private final ExpenseTypeMapper expenseTypeMapper;
     private final ExpenseRecordMapper expenseRecordMapper;
     private final ExpenseRecordItemMapper expenseRecordItemMapper;
+    private final ExpenseVoucherMapper voucherMapper;
     private final StoreService storeService;
     private final Cache<String, List<ExpenseType>> typeCache;
     private final SelfPurchaseMaterialMapper spmMapper;
@@ -233,6 +238,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
             if (StringUtils.hasText(handlerName) && !handlerName.equals(record.getHandlerName())) {
                 throw new BusinessException(403, "只能查看自己登记的支出");
             }
+            record.setVoucherUrls(voucherUrlsOrFallback(expenseId, record.getVoucherUrl()));
             return record;
         }
 
@@ -257,6 +263,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
             r.setVoucherUrl(spm.getVoucherUrl());
             r.setRemark(spm.getRemark());
             if (spm.getCreatedAt() != null) r.setCreatedAt(spm.getCreatedAt());
+            r.setVoucherUrls(voucherUrlsOrFallback(expenseId, spm.getVoucherUrl()));
             return r;
         }
         throw new BusinessException(404, "支出记录不存在");
@@ -278,6 +285,25 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         return createExpenseRecordOnly(storeId, storeName, store, type, req, null);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<ExpenseRecord> createBatch(String storeId, String storeName, MpExpenseBatchSaveReq req) {
+        requireStore(storeId);
+        if (req.getRecords().size() > 10) {
+            throw new BusinessException(400, "一次最多登记10个支出类型");
+        }
+        List<ExpenseRecord> results = new ArrayList<>();
+        for (MpExpenseSaveReq r : req.getRecords()) {
+            r.setOccurredDate(req.getOccurredDate());
+            r.setHandlerName(req.getHandlerName());
+            r.setRemark(req.getRemark());
+            r.setVoucherUrl(null);
+            r.setVoucherUrls(req.getVoucherUrls());
+            results.add(create(storeId, storeName, r));
+        }
+        return results;
+    }
+
     /** 非自购类型：expense_record 一单一行；有明细时 amount = Σ 明细，明细写 expense_record_item */
     private ExpenseRecord createExpenseRecordOnly(String storeId, String storeName, StoreInfo store,
                                                    ExpenseType type, MpExpenseSaveReq req, String fixedExpenseId) {
@@ -296,10 +322,11 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         record.setTypeName(type.getName());
         record.setFirstTypeId(nvl(type.getFirstTypeId()));
         record.setFirstTypeName(nvl(type.getFirstTypeName()));
+        List<String> vouchers = resolveVoucherUrls(req);
         record.setAmount(itemList != null ? calcPlainTotal(itemList) : req.getAmount());
         record.setOccurredDate(req.getOccurredDate());
         record.setHandlerName(req.getHandlerName().trim());
-        record.setVoucherUrl(trimToNull(req.getVoucherUrl()));
+        record.setVoucherUrl(vouchers.isEmpty() ? null : vouchers.get(0));
         record.setRemark(trimToNull(req.getRemark()));
         record.setExpenseId(StringUtils.hasText(fixedExpenseId) ? fixedExpenseId : "TMP_" + System.nanoTime());
         expenseRecordMapper.insert(record);
@@ -309,6 +336,9 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         }
         if (itemList != null) {
             insertAmountItems(record.getExpenseId(), itemList);
+        }
+        if (!vouchers.isEmpty()) {
+            insertVouchers(record.getExpenseId(), vouchers);
         }
         return record;
     }
@@ -329,9 +359,10 @@ public class MpExpenseServiceImpl implements MpExpenseService {
                 ? req.getOccurredDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"))
                 : LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
         spm.setPurchaseDate(req.getOccurredDate());
+        List<String> vouchers = resolveVoucherUrls(req);
         spm.setTotalAmount(calcTotalAmount(itemList));
         spm.setHandlerName(StringUtils.hasText(req.getHandlerName()) ? req.getHandlerName().trim() : null);
-        spm.setVoucherUrl(trimToNull(req.getVoucherUrl()));
+        spm.setVoucherUrl(vouchers.isEmpty() ? null : vouchers.get(0));
         spm.setRemark(trimToNull(req.getRemark()));
         spmMapper.insert(spm);
         String spmId;
@@ -343,6 +374,9 @@ public class MpExpenseServiceImpl implements MpExpenseService {
             spmMapper.updateById(spm);
         }
         insertItems(spmId, itemList);
+        if (!vouchers.isEmpty()) {
+            insertVouchers(spmId, vouchers);
+        }
 
         // 返回一个虚拟 ExpenseRecord 供前端展示
         ExpenseRecord record = new ExpenseRecord();
@@ -473,6 +507,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
                 deleteAmountItems(expenseId);
                 expenseRecordMapper.deleteById(oldRecord.getId());
             }
+            deleteVouchers(expenseId);
             StoreInfo store = storeService.getStoreById(storeId);
             if (newIsSelfPurchase) {
                 return createSelfPurchaseOnly(storeId, storeName,
@@ -490,14 +525,19 @@ public class MpExpenseServiceImpl implements MpExpenseService {
             oldSpm.setPurchaseMonth(req.getOccurredDate() != null
                     ? req.getOccurredDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"))
                     : LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
+            List<String> vouchers = resolveVoucherUrls(req);
             oldSpm.setTotalAmount(calcTotalAmount(itemList));
             oldSpm.setHandlerName(req.getHandlerName().trim());
-            oldSpm.setVoucherUrl(trimToNull(req.getVoucherUrl()));
+            oldSpm.setVoucherUrl(vouchers.isEmpty() ? null : vouchers.get(0));
             oldSpm.setRemark(trimToNull(req.getRemark()));
             spmMapper.updateById(oldSpm);
 
             deleteItems(expenseId);
             insertItems(expenseId, itemList);
+            deleteVouchers(expenseId);
+            if (!vouchers.isEmpty()) {
+                insertVouchers(expenseId, vouchers);
+            }
 
             ExpenseRecord record = new ExpenseRecord();
             record.setExpenseId(expenseId);
@@ -519,15 +559,20 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         oldRecord.setTypeName(type.getName());
         oldRecord.setFirstTypeId(nvl(type.getFirstTypeId()));
         oldRecord.setFirstTypeName(nvl(type.getFirstTypeName()));
+        List<String> vouchers = resolveVoucherUrls(req);
         oldRecord.setAmount(itemList != null ? calcPlainTotal(itemList) : req.getAmount());
         oldRecord.setOccurredDate(req.getOccurredDate());
         oldRecord.setHandlerName(req.getHandlerName().trim());
-        oldRecord.setVoucherUrl(trimToNull(req.getVoucherUrl()));
+        oldRecord.setVoucherUrl(vouchers.isEmpty() ? null : vouchers.get(0));
         oldRecord.setRemark(trimToNull(req.getRemark()));
         expenseRecordMapper.updateById(oldRecord);
         deleteAmountItems(expenseId);
+        deleteVouchers(expenseId);
         if (itemList != null) {
             insertAmountItems(expenseId, itemList);
+        }
+        if (!vouchers.isEmpty()) {
+            insertVouchers(expenseId, vouchers);
         }
         return oldRecord;
     }
@@ -544,6 +589,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
                 throw new BusinessException(403, "只能删除自己登记的支出");
             }
             deleteAmountItems(expenseId);
+            deleteVouchers(expenseId);
             expenseRecordMapper.deleteById(record.getId());
             return;
         }
@@ -555,6 +601,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
             if (StringUtils.hasText(handlerName) && !handlerName.equals(spm.getHandlerName())) {
                 throw new BusinessException(403, "只能删除自己登记的支出");
             }
+            deleteVouchers(expenseId);
             spmMapper.deleteById(spm.getId());
             return;
         }
@@ -565,6 +612,64 @@ public class MpExpenseServiceImpl implements MpExpenseService {
 
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    /** 凭证解析：优先 voucherUrls（多张），兜底单值 voucherUrl；最多9张 */
+    private List<String> resolveVoucherUrls(MpExpenseSaveReq req) {
+        if (req.getVoucherUrls() != null && !req.getVoucherUrls().isEmpty()) {
+            List<String> list = new ArrayList<>();
+            for (String u : req.getVoucherUrls()) {
+                if (StringUtils.hasText(u)) {
+                    list.add(u.trim());
+                }
+            }
+            if (!list.isEmpty()) {
+                if (list.size() > MAX_VOUCHER_SIZE) {
+                    throw new BusinessException(400, "最多上传" + MAX_VOUCHER_SIZE + "张凭证");
+                }
+                return list;
+            }
+        }
+        String single = trimToNull(req.getVoucherUrl());
+        return single != null ? Collections.singletonList(single) : Collections.emptyList();
+    }
+
+    private void insertVouchers(String expenseId, List<String> urls) {
+        int sortNo = 0;
+        for (String url : urls) {
+            ExpenseVoucher v = new ExpenseVoucher();
+            v.setExpenseId(expenseId);
+            v.setVoucherUrl(url);
+            v.setSortNo(sortNo++);
+            voucherMapper.insert(v);
+        }
+    }
+
+    private void deleteVouchers(String expenseId) {
+        voucherMapper.delete(new LambdaQueryWrapper<ExpenseVoucher>()
+                .eq(ExpenseVoucher::getExpenseId, expenseId));
+    }
+
+    private List<String> listVoucherUrls(String expenseId) {
+        List<ExpenseVoucher> list = voucherMapper.selectList(new LambdaQueryWrapper<ExpenseVoucher>()
+                .eq(ExpenseVoucher::getExpenseId, expenseId)
+                .orderByAsc(ExpenseVoucher::getSortNo)
+                .orderByAsc(ExpenseVoucher::getId));
+        List<String> urls = new ArrayList<>();
+        for (ExpenseVoucher v : list) {
+            urls.add(v.getVoucherUrl());
+        }
+        return urls;
+    }
+
+    /** 凭证列表：子表为空时兜底主表单值（历史数据无子表） */
+    private List<String> voucherUrlsOrFallback(String expenseId, String singleUrl) {
+        List<String> urls = listVoucherUrls(expenseId);
+        if (!urls.isEmpty()) {
+            return urls;
+        }
+        String single = trimToNull(singleUrl);
+        return single != null ? Collections.singletonList(single) : Collections.emptyList();
     }
 
     private ExpenseType findEnabledType(String typeId) {

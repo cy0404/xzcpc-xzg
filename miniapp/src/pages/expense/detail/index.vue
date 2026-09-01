@@ -9,6 +9,7 @@ const expenseId = ref('')
 const loading = ref(true)
 const detail = ref<ExpenseRecord | null>(null)
 const items = ref<ExpenseItem[]>([])
+const voucherList = ref<string[]>([])
 const showDelete = ref(false)
 const deleting = ref(false)
 
@@ -25,10 +26,14 @@ onShow(() => { if (expenseId.value) loadDetail() })
 async function loadDetail() {
   loading.value = true
   try {
-    detail.value = await fetchExpenseDetail(expenseId.value) as any
+    const d = await fetchExpenseDetail(expenseId.value) as any
+    detail.value = d
+    // 多张凭证：子表优先，兜底主表单值
+    voucherList.value = (d?.voucherUrls && d.voucherUrls.length) ? d.voucherUrls : (d?.voucherUrl ? [d.voucherUrl] : [])
     try { items.value = await fetchExpenseItems(expenseId.value) } catch { items.value = [] }
   } finally { loading.value = false }
 }
+function previewVoucher(idx: number) { uni.previewImage({ urls: voucherList.value, current: idx }) }
 function goEdit() { uni.navigateTo({ url: `/pages/expense/form/index?expenseId=${expenseId.value}` }) }
 function fmtMoney(n: number) { return Number(n || 0).toFixed(2) }
 </script>
@@ -67,10 +72,12 @@ function fmtMoney(n: number) { return Number(n || 0).toFixed(2) }
         </view>
       </view>
 
-      <!-- 凭证 -->
-      <view v-if="detail.voucherUrl" class="card">
-        <text class="card-title">凭证照片</text>
-        <image :src="detail.voucherUrl" class="voucher-photo" mode="widthFix" @error="detail.voucherUrl = ''" />
+      <!-- 凭证（多张） -->
+      <view v-if="voucherList.length" class="card">
+        <text class="card-title">凭证照片（{{ voucherList.length }}张）</text>
+        <view class="voucher-grid">
+          <image v-for="(u, vi) in voucherList" :key="vi" :src="u" class="voucher-photo" mode="aspectFill" @click="previewVoucher(vi)" />
+        </view>
       </view>
 
       <!-- 登记信息 -->
@@ -112,7 +119,8 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .card{background:$s;border-radius:20rpx;padding:28rpx;border:2rpx solid $b;margin-bottom:24rpx}
 .card-title{display:block;font-size:26rpx;font-weight:600;color:$t3;margin-bottom:12rpx}
 .row{display:flex;justify-content:space-between;gap:16rpx;padding:18rpx 0;border-bottom:2rpx solid #EEF1EF}.row.last{border:0}.rk{font-size:28rpx;color:$t2;flex-shrink:0}.rv{font-size:28rpx;color:$t1;text-align:right}.rv.total{color:$p;font-weight:700}
-.voucher-photo{width:100%;border-radius:12rpx;margin-top:8rpx}
+.voucher-grid{display:flex;flex-wrap:wrap;gap:16rpx;margin-top:8rpx}
+.voucher-photo{width:calc((100% - 32rpx) / 3);height:200rpx;border-radius:12rpx}
 .tip{padding:20rpx;text-align:center;font-size:24rpx;color:$t3}
 .bottom-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;gap:20rpx;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);background:$s;border-top:2rpx solid #EEF1EF}
 .bb-edit{flex:1;height:88rpx;border-radius:16rpx;border:2rpx solid $b;color:$p;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:600}

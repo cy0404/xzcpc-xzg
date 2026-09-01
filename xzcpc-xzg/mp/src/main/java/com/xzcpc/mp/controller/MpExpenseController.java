@@ -9,11 +9,11 @@ import com.xzcpc.common.response.R;
 import com.xzcpc.expense.entity.ExpenseItem;
 import com.xzcpc.expense.entity.ExpenseRecord;
 import com.xzcpc.expense.entity.ExpenseType;
-import com.xzcpc.common.model.MaterialInfo;
 import com.xzcpc.expense.service.ExpenseItemService;
 import com.xzcpc.mp.context.LoginUser;
 import com.xzcpc.mp.context.UserContextHolder;
 import com.xzcpc.mp.dto.ExpenseItemVO;
+import com.xzcpc.mp.dto.MpExpenseBatchSaveReq;
 import com.xzcpc.mp.dto.MpExpenseSaveReq;
 import com.xzcpc.mp.service.MpExpenseService;
 import com.xzcpc.template.service.MaterialService;
@@ -79,6 +79,13 @@ public class MpExpenseController {
     public R<ExpenseRecord> create(@Valid @RequestBody MpExpenseSaveReq req) {
         LoginUser user = UserContextHolder.get();
         return R.ok(expenseService.create(user.getStoreId(), user.getStoreName(), req));
+    }
+
+    @OpLog(module = "小程序-支出", operation = "批量登记")
+    @PostMapping("/expenses/batch")
+    public R<List<ExpenseRecord>> createBatch(@Valid @RequestBody MpExpenseBatchSaveReq req) {
+        LoginUser user = UserContextHolder.get();
+        return R.ok(expenseService.createBatch(user.getStoreId(), user.getStoreName(), req));
     }
 
     @OpLog(module = "小程序-支出", operation = "修改记录")

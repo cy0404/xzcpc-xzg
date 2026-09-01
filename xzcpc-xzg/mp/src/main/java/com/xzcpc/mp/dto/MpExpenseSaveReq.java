@@ -27,6 +27,9 @@ public class MpExpenseSaveReq {
 
     private String voucherUrl;
 
+    /** 多张凭证（最多9张，优先于 voucherUrl 单值） */
+    private List<String> voucherUrls;
+
     private String remark;
 
     // 自购食材物料明细（仅当支出类型为"自购食材"时填写）

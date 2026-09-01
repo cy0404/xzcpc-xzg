@@ -22,6 +22,8 @@ export interface ExpenseRecord {
   occurredDate: string
   handlerName: string
   voucherUrl?: string
+  /** 凭证列表（多张，最多9张；主表 voucherUrl 冗余首张） */
+  voucherUrls?: string[]
   remark?: string
   createdAt?: string
   /** 明细概要（列表页展示）：首条明细名称 + 条数 */
@@ -54,29 +56,35 @@ export function fetchExpenseDetail(expenseId: string) {
   return request<ExpenseRecord>({ url: `/expenses/${expenseId}` })
 }
 
-export function createExpense(data: {
+/** 单条支出保存载荷 */
+export interface ExpenseSavePayload {
   typeId: string
   amount: number
-  occurredDate: string
-  handlerName: string
+  occurredDate?: string
+  handlerName?: string
   voucherUrl?: string
+  voucherUrls?: string[]
   remark?: string
   items?: { materialId?: string; materialName: string; parentCategory?: string; category?: string; weight: number; unitPrice: number }[]
   amountItems?: { name: string; amount: number }[]
-}) {
+}
+
+export function createExpense(data: ExpenseSavePayload) {
   return request<ExpenseRecord>({ url: '/expenses', method: 'POST', data })
 }
 
-export function updateExpense(expenseId: string, data: {
-  typeId: string
-  amount: number
+/** 多类型组批量登记：整单共享日期/经手人/凭证/说明，records 为各类型组（每组一个支出类型） */
+export function createExpenseBatch(data: {
   occurredDate: string
   handlerName: string
-  voucherUrl?: string
+  voucherUrls?: string[]
   remark?: string
-  items?: { materialId?: string; materialName: string; parentCategory?: string; category?: string; weight: number; unitPrice: number }[]
-  amountItems?: { name: string; amount: number }[]
+  records: { typeId: string; amount: number; items?: ExpenseSavePayload['items']; amountItems?: ExpenseSavePayload['amountItems'] }[]
 }) {
+  return request<ExpenseRecord[]>({ url: '/expenses/batch', method: 'POST', data })
+}
+
+export function updateExpense(expenseId: string, data: ExpenseSavePayload) {
   return request<ExpenseRecord>({ url: `/expenses/${expenseId}`, method: 'PUT', data })
 }
 

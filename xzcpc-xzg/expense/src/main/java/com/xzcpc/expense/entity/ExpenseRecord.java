@@ -11,6 +11,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @TableName("expense_record")
@@ -54,4 +55,8 @@ public class ExpenseRecord {
 
     @TableField(exist = false)
     private Integer itemCount;
+
+    /** 凭证列表（多张；主表 voucherUrl 冗余首张，detail() 从子表填充） */
+    @TableField(exist = false)
+    private List<String> voucherUrls;
 }
