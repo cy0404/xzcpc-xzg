@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>支出登记</title>
+<style>
+:root{--p:#2F8F57;--ps:#E7F4EB;--t1:#1F2421;--t2:#66706A;--t3:#98A19C;--b:#E8ECE9;--bg:#F7F8F6;--d:#E05A47;--w:#E58A2D}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
+.page{max-width:520px;margin:0 auto;padding:12px 12px 150px}
+.card{background:#fff;border-radius:16px;padding:14px;border:1px solid var(--b);box-shadow:0 2px 12px rgba(31,36,33,.04);margin-bottom:10px}
+.card-title{display:flex;align-items:center;gap:4px;font-size:14px;font-weight:700;margin-bottom:8px}
+.card-sub{display:block;font-size:11px;color:var(--t2);margin-bottom:8px}
+/* 提示条 */
+.sp-tip{display:flex;align-items:flex-start;gap:6px;background:#FDF3E7;border:1px solid #F5D9B3;border-radius:10px;padding:9px 12px;margin-bottom:10px}
+.sp-tip-icon{font-size:14px;flex-shrink:0}
+.sp-tip-text{font-size:12px;color:var(--w);line-height:1.5}
+.edit-tip{background:var(--ps);border-color:var(--p)}
+.edit-tip .sp-tip-text{color:var(--p)}
+/* 类型组 */
+.group-head{display:flex;align-items:center;gap:6px}
+.group-type-field{flex:1;min-width:0}
+.group-desc{display:block;font-size:11px;color:var(--w);margin-top:2px}
+.group-del{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--t3);cursor:pointer}
+.group-del:active{background:#FDECEA;color:var(--d)}
+.group-total{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:8px 10px;background:var(--ps);border-radius:8px}
+.gt-label{font-size:12px;color:var(--p);font-weight:600}
+.gt-amount{font-size:16px;font-weight:800;color:var(--p)}
+.add-group-btn{display:flex;align-items:center;justify-content:center;gap:4px;padding:12px;border-radius:12px;border:1px dashed var(--p);color:var(--p);font-size:14px;font-weight:600;background:var(--ps);margin-bottom:10px;cursor:pointer}
+.add-group-btn:active{opacity:.8}
+/* 表单字段 */
+.field{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-radius:10px;padding:10px}
+.field:active{background:#EEF1EF}
+.field-col{flex-direction:column;align-items:stretch;gap:4px}
+.field-text{flex:1;min-width:0}
+.field-label{font-size:12px;color:var(--t2)}
+.required{color:var(--d)}
+.field-value{display:block;font-size:14px;margin-top:2px}
+.field-value.placeholder{color:var(--t3)}
+.field-arrow{font-size:16px;color:var(--p);flex-shrink:0}
+.field-input{width:100%;font-size:14px;background:transparent;border:none;outline:none;height:24px;line-height:24px;color:var(--t1)}
+.field-input::placeholder{color:var(--t3)}
+.form-body{display:flex;flex-direction:column;gap:6px}
+/* 明细区 */
+.mat-section{margin-top:8px;padding:10px;background:#FAFBF9;border-radius:10px;display:flex;flex-direction:column;gap:7px}
+.mat-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;font-weight:600;color:var(--p);margin-bottom:2px}
+.mat-count{font-size:11px;color:var(--t3);font-weight:400}
+.mat-empty{padding:12px 0;text-align:center;font-size:12px;color:var(--t3);background:#fff;border-radius:8px}
+.mat-item{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #EEF1EF;cursor:pointer}
+.mat-item:active{background:var(--bg)}
+.mi-left{flex:1;min-width:0}
+.mi-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi-meta{font-size:11px;color:var(--t3);margin-top:2px}
+.mi-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.mi-amount{font-size:13px;font-weight:700;color:var(--p)}
+.mi-del{flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t3);background:var(--bg);border-radius:50%;cursor:pointer}
+.mi-del:active{background:#EEF1EF;color:var(--d)}
+.add-material-btn{display:flex;align-items:center;justify-content:center;gap:4px;padding:10px;border-radius:8px;border:1px dashed var(--p);color:var(--p);font-size:13px;font-weight:600;background:var(--ps);cursor:pointer}
+.add-material-btn:active{opacity:.8}
+.add-icon{font-size:14px;line-height:1}
+.add-material-hint{text-align:center;font-size:11px;color:var(--t3);padding:6px 0}
+.mat-field{display:flex;flex-direction:column;gap:4px}
+.mat-label{font-size:13px}
+.mat-input-box{background:#fff;border-radius:8px;padding:0 12px;height:42px;display:flex;align-items:center;border:1px solid var(--b)}
+.mat-input-row{gap:4px}
+.mat-input-val{font-size:14px;flex:1;min-width:0;border:none;outline:none;background:transparent;height:42px}
+.mat-num{flex:1;min-width:0;font-size:14px;text-align:right;border:none;outline:none;background:transparent;height:42px;color:var(--t1)}
+.mat-unit,.mat-symbol{font-size:12px;color:var(--t2);flex-shrink:0}
+.mat-total{text-align:right;font-size:14px;font-weight:700;color:var(--p);padding-top:2px}
+/* 凭证 */
+.voucher-count{font-size:11px;color:var(--t3);font-weight:400;margin-left:auto}
+.voucher-grid{display:flex;flex-wrap:wrap;gap:8px}
+.voucher-item{position:relative;width:calc((100% - 16px) / 3);height:86px;border-radius:8px;overflow:hidden;background:var(--bg)}
+.voucher-img{width:100%;height:100%;object-fit:cover;display:block}
+.voucher-del{position:absolute;top:0;right:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:rgba(31,36,33,.55);color:#fff;font-size:11px;border-radius:0 0 0 8px;cursor:pointer;z-index:2}
+.voucher-add{width:calc((100% - 16px) / 3);height:86px;border:1px dashed var(--b);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:#FAFBF9;box-sizing:border-box;cursor:pointer}
+.voucher-add:active{background:#EEF1EF}
+.voucher-icon{font-size:20px}
+.voucher-text{font-size:11px;color:var(--t3)}
+.voucher-uploading{position:absolute;inset:0;background:rgba(31,36,33,.45);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:11px;z-index:1}
+.voucher-bar{width:70%;height:4px;border-radius:2px;background:rgba(255,255,255,.3);margin-top:6px;overflow:hidden}
+.voucher-bar i{display:block;height:100%;background:#fff;border-radius:2px;transition:width .2s}
+/* 底部 */
+.bottom{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);background:rgba(255,255,255,.95);backdrop-filter:blur(10px);border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.05)}
+.bottom-inner{max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center}
+.bottom-total{display:flex;align-items:baseline;justify-content:center;gap:8px;margin-bottom:8px}
+.bt-label{font-size:12px;color:var(--t2)}
+.bt-amount{font-size:22px;font-weight:800;color:var(--p)}
+.btn{width:100%;height:46px;border-radius:10px;background:var(--p);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;border:none;cursor:pointer}
+.btn:active{opacity:.9;transform:scale(.98)}
+.btn.disabled{opacity:.6}
+/* 弹窗 */
+.mask{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;background:rgba(31,36,33,.35)}
+.mask.show{display:flex}
+.mask.preview-mask{align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:150}
+.sh{width:40px;height:3px;border-radius:999px;background:var(--b);margin:4px auto 8px;flex-shrink:0}
+.sheet{width:100%;max-width:520px;margin:0 auto;max-height:75vh;border-radius:16px 16px 0 0;background:#fff;padding:8px 0 calc(env(safe-area-inset-bottom) + 8px);display:flex;flex-direction:column;box-shadow:0 -4px 24px rgba(31,36,33,.12);overflow:hidden}
+.sheet-head{display:flex;align-items:flex-start;justify-content:space-between;padding:0 16px;margin-bottom:8px}
+.sheet-title{display:block;font-size:16px;font-weight:700}
+.sheet-sub{display:block;font-size:11px;color:var(--t3);margin-top:2px}
+.sheet-close{width:32px;height:32px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--t3);flex-shrink:0;cursor:pointer}
+.sheet-list{flex:1;overflow-y:auto;padding:0 12px;max-height:55vh;-webkit-overflow-scrolling:touch}
+.dr-body{padding:0 16px 4px;display:flex;flex-direction:column;gap:8px}
+.dr-name{font-size:15px;font-weight:700;padding:2px 0}
+.dr-total{margin-top:2px}
+/* 类型网格 */
+.type-grid{display:flex;flex-wrap:wrap;gap:10px}
+.type-btn{width:calc((100% - 10px) / 2);padding:10px 9px;border-radius:10px;background:#FAFBF9;border:1px solid var(--b);display:flex;flex-direction:column;box-sizing:border-box;cursor:pointer}
+.type-btn-name{font-size:14px;font-weight:600}
+.type-btn-desc{font-size:11px;color:var(--w);margin-top:2px;line-height:1.3}
+.type-btn.on{background:var(--ps);border-color:var(--p)}
+.type-btn.on .type-btn-name{color:var(--p)}
+/* 搜索 */
+.search-box{padding:0 12px;margin-bottom:6px}
+.search-input{width:100%;height:40px;background:#FAFBF9;border-radius:10px;padding:0 12px;font-size:14px;border:none;outline:none;color:var(--t1);box-sizing:border-box}
+.search-status{padding:20px 0;text-align:center;font-size:13px;color:var(--t3)}
+.search-item{padding:12px 10px;border-bottom:1px solid #EEF1EF;cursor:pointer}
+.search-item:last-child{border-bottom:0}
+.si-info{flex:1;min-width:0}
+.si-name{display:block;font-size:14px;font-weight:500}
+.si-meta{display:block;font-size:12px;color:var(--t3);margin-top:2px}
+.other-item{border-top:1px solid var(--b);margin-top:4px}
+/* loading / toast / preview */
+.loading-overlay{position:fixed;inset:0;z-index:99;background:rgba(31,36,33,.35);display:none;align-items:center;justify-content:center}
+.loading-overlay.show{display:flex}
+.loading-box{background:#fff;border-radius:12px;padding:16px 24px;font-size:14px}
+.toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:200;background:rgba(31,36,33,.88);color:#fff;font-size:14px;padding:10px 20px;border-radius:10px;display:none;max-width:80%;text-align:center;pointer-events:none}
+.toast.show{display:block}
+.preview-img{max-width:92vw;max-height:92vh;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="tips"></div>
+  <div id="groupsBox"></div>
+  <div id="addGroupBox"></div>
+
+  <!-- 登记信息 -->
+  <div class="card">
+    <div class="card-title"><span>📄</span><span>登记信息</span></div>
+    <div class="form-body">
+      <div class="field">
+        <div class="field-text"><span class="field-label">支出日期 <b class="required">*</b></span></div>
+        <input type="date" id="dateInput" class="mat-num" style="text-align:left;height:24px;border:none;outline:none;background:transparent;font-size:14px" />
+      </div>
+      <div class="field field-col">
+        <span class="field-label">支出说明</span>
+        <input type="text" id="remarkInput" class="field-input" placeholder="请简要说明支出用途" />
+      </div>
+    </div>
+  </div>
+
+  <!-- 凭证 -->
+  <div class="card">
+    <div class="card-title"><span>📷</span><span>支出凭证</span><span class="voucher-count" id="voucherCount">0/9</span></div>
+    <span class="card-sub">请上传发票、收据、付款截图或现场照片，可多张</span>
+    <div class="voucher-grid" id="voucherGrid"></div>
+    <label id="voucherAdd" class="voucher-add" style="display:none">
+      <span class="voucher-icon">📷</span><span class="voucher-text">上传</span>
+      <input type="file" accept="image/*" multiple style="width:0;height:0;opacity:0;position:absolute" id="fileInput" />
+    </label>
+  </div>
+</div>
+
+<!-- 底部 -->
+<div class="bottom">
+  <div class="bottom-inner">
+    <div class="bottom-total"><span class="bt-label">合计金额</span><span class="bt-amount" id="totalAmount">¥0.00</span></div>
+    <button class="btn" id="submitBtn">提交登记</button>
+  </div>
+</div>
+
+<!-- 类型选择 -->
+<div class="mask" id="typeMask">
+  <div class="sheet">
+    <div class="sh"></div>
+    <div class="sheet-head">
+      <div><span class="sheet-title">选择支出类型</span><span class="sheet-sub" id="typeSheetSub">可一次登记多个支出类型</span></div>
+      <span class="sheet-close" onclick="closeTypePicker()">✕</span>
+    </div>
+    <div class="sheet-list" id="typeList"></div>
+  </div>
+</div>
+
+<!-- 物料搜索 -->
+<div class="mask" id="matMask">
+  <div class="sheet">
+    <div class="sh"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">选择物料</span>
+      <span class="sheet-close" onclick="closeMatSearch()">✕</span>
+    </div>
+    <div class="search-box"><input class="search-input" id="matSearchInput" placeholder="搜索物料名称" /></div>
+    <div class="sheet-list" id="matList"></div>
+  </div>
+</div>
+
+<!-- 物料抽屉（自购：重量/单价） -->
+<div class="mask" id="drawerMask">
+  <div class="sheet">
+    <div class="sh"></div>
+    <div class="sheet-head">
+      <span class="sheet-title" id="drawerTitle">添加物料</span>
+      <span class="sheet-close" onclick="closeDrawer()">✕</span>
+    </div>
+    <div class="dr-body">
+      <div class="dr-name" id="drawerName"></div>
+      <div class="mat-field">
+        <span class="mat-label">重量（kg）</span>
+        <div class="mat-input-box mat-input-row"><input type="number" step="0.01" class="mat-num" id="drawerWeight" placeholder="请输入重量" /><span class="mat-unit">kg</span></div>
+      </div>
+      <div class="mat-field">
+        <span class="mat-label">单价（元）</span>
+        <div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" id="drawerPrice" placeholder="请输入单价" /></div>
+      </div>
+      <div class="mat-total dr-total" id="drawerTotal">小计：¥0.00</div>
+      <button class="btn" onclick="confirmDrawer()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 明细抽屉（其他类型：名称/金额） -->
+<div class="mask" id="plainMask">
+  <div class="sheet">
+    <div class="sh"></div>
+    <div class="sheet-head">
+      <span class="sheet-title" id="plainTitle">添加明细</span>
+      <span class="sheet-close" onclick="closePlainDrawer()">✕</span>
+    </div>
+    <div class="dr-body">
+      <div class="mat-field">
+        <span class="mat-label">明细名称</span>
+        <div class="mat-input-box"><input type="text" class="mat-input-val" id="plainName" placeholder="请输入明细名称" /></div>
+      </div>
+      <div class="mat-field">
+        <span class="mat-label">明细金额</span>
+        <div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" id="plainAmount" placeholder="请输入金额" /></div>
+      </div>
+      <div class="mat-total dr-total" id="plainTotal">小计：¥0.00</div>
+      <button class="btn" onclick="confirmPlainDrawer()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 图片预览 -->
+<div class="mask preview-mask" id="previewMask" onclick="closePreview()"><img class="preview-img" id="previewImg" /></div>
+
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-box">提交中...</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict'
+  // ---------- 参数与认证 ----------
+  var TOKEN='',STORE='',EDIT_ID=''
+  ;(function(){
+    var p=new URLSearchParams(location.search)
+    TOKEN=p.get('token')||''
+    STORE=p.get('storeName')||''
+    EDIT_ID=p.get('expenseId')||''
+  })()
+  var _i=location.pathname.indexOf('/upload/')
+  var API=location.origin+(_i>=0?location.pathname.slice(0,_i):location.pathname.replace(/\/[^/]+$/,''))+'/api/mp'
+  function H(){var h={'Content-Type':'application/json'};if(TOKEN)h['Authorization']='Bearer '+TOKEN;return h}
+
+  // ---------- 常量 ----------
+  var SELF='自购食材',PARENT='自购食材成本',MAX_GROUPS=10,MAX_ITEMS=10,MAX_VOUCHERS=9
+  var CHUNK_SIZE=5*1024*1024,DIRECT_MAX=10*1024*1024
+
+  // ---------- 工具 ----------
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function fmtMoney(n){return Number(n||0).toFixed(2)}
+  function round2(n){return Math.round(n*100)/100}
+  var toastTimer=null
+  function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show';clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.className='toast'},2200)}
+  function showLoading(txt){document.getElementById('loadingOverlay').getElementsByClassName('loading-box')[0].textContent=txt||'提交中...';document.getElementById('loadingOverlay').className='loading-overlay show'}
+  function hideLoading(){document.getElementById('loadingOverlay').className='loading-overlay'}
+  function fetchJSON(url,opts){
+    return fetch(url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
+      var d=res.body||{}
+      if(!res.ok||d.code!==200){
+        var e=new Error(d.message||d.msg||'请求失败')
+        e.status=res.ok?d.code:res.status
+        throw e
+      }
+      return d.data
+    })
+  }
+  function get(url){return fetchJSON(url,{headers:H()})}
+  function post(url,data){return fetchJSON(url,{method:'POST',headers:H(),body:JSON.stringify(data||{})})}
+  function put(url,data){return fetchJSON(url,{method:'PUT',headers:H(),body:JSON.stringify(data||{})})}
+  function handleErr(e){
+    if(e.status===401){showToast('登录已过期，请重新进入小程序');return}
+    showToast(e.message||'网络异常，请重试')
+  }
+  function todayStr(){var n=new Date(),m=String(n.getMonth()+1).padStart(2,'0'),d=String(n.getDate()).padStart(2,'0');return n.getFullYear()+'-'+m+'-'+d}
+
+  // ---------- 状态 ----------
+  var types=[],groups=[],occurredDate=todayStr(),remark='',handlerName=''
+  // vouchers: {file,url,status:done|uploading,progress}
+  var vouchers=[]
+  // 弹窗状态
+  var activeGroupIdx=0,matGroupIdx=0,editingItemIdx=-1,matResults=[],matSearchTimer=null
+  var pGroupIdx=0,pEditIdx=-1
+  var drawerItem=null
+
+  // ---------- 组模型（对齐小程序 form 页） ----------
+  function newGroup(){return{typeId:'',typeName:'请选择支出类型',typeDesc:'',items:[],plainItems:[],manualAmount:''}}
+  function itemAmount(it){var w=parseFloat(it.weight),p=parseFloat(it.unitPrice);if(!(w>0)||!(p>0))return 0;return round2(w*p)}
+  function plainItemAmount(it){var a=parseFloat(it.amount);return a>0?round2(a):0}
+  function groupAmount(g){
+    if(g.typeName===SELF)return round2(g.items.reduce(function(s,it){return s+itemAmount(it)},0))
+    if(g.plainItems.length)return round2(g.plainItems.reduce(function(s,it){return s+plainItemAmount(it)},0))
+    var m=parseFloat(g.manualAmount);return m>0?round2(m):0
+  }
+  function totalAmount(){return round2(groups.reduce(function(s,g){return s+groupAmount(g)},0))}
+  function renderTotal(){
+    document.getElementById('totalAmount').textContent='¥'+fmtMoney(totalAmount())
+    var btn=document.getElementById('submitBtn')
+    btn.textContent=EDIT_ID?'保存修改':'提交登记'
+  }
+
+  // ---------- 组卡渲染 ----------
+  function renderGroupBody(g,idx){
+    var html=''
+    if(g.typeName===SELF){
+      html+='<div class="mat-section"><div class="mat-title"><span>📦 物料明细</span><span class="mat-count">'+g.items.length+'/'+MAX_ITEMS+'</span></div>'
+      if(!g.items.length)html+='<div class="mat-empty">请添加物料</div>'
+      g.items.forEach(function(it,i){
+        html+='<div class="mat-item" onclick="openEditDrawer('+idx+','+i+')">'
+          +'<div class="mi-left"><span class="mi-name">'+esc(it.materialName)+'</span>'+(it.category?'<span class="mi-meta">'+esc(it.category)+'</span>':'')+'</div>'
+          +'<div class="mi-right"><span class="mi-amount">¥'+fmtMoney(itemAmount(it))+'</span><span class="mi-meta">'+esc(it.weight)+'kg × ¥'+esc(it.unitPrice)+'</span></div>'
+          +'<span class="mi-del" onclick="event.stopPropagation();removeItem('+idx+','+i+')">✕</span></div>'
+      })
+      html+=g.items.length<MAX_ITEMS
+        ?'<div class="add-material-btn" onclick="openMatSearch('+idx+')"><span class="add-icon">＋</span><span>添加物料（'+g.items.length+'/'+MAX_ITEMS+'）</span></div>'
+        :'<div class="add-material-hint">最多添加 '+MAX_ITEMS+' 种物料</div>'
+      html+='</div>'
+    }else if(g.typeId){
+      html+='<div class="mat-section"><div class="mat-title"><span>💰 支出明细</span><span class="mat-count">'+g.plainItems.length+'/'+MAX_ITEMS+'</span></div>'
+      if(!g.plainItems.length)html+='<div class="mat-empty">可添加明细，或直接填写下方金额</div>'
+      g.plainItems.forEach(function(it,i){
+        html+='<div class="mat-item" onclick="openPlainEditDrawer('+idx+','+i+')">'
+          +'<div class="mi-left"><span class="mi-name">'+esc(it.name)+'</span></div>'
+          +'<div class="mi-right"><span class="mi-amount">¥'+fmtMoney(plainItemAmount(it))+'</span></div>'
+          +'<span class="mi-del" onclick="event.stopPropagation();removePlainItem('+idx+','+i+')">✕</span></div>'
+      })
+      html+=g.plainItems.length<MAX_ITEMS
+        ?'<div class="add-material-btn" onclick="openPlainAddDrawer('+idx+')"><span class="add-icon">＋</span><span>添加明细（'+g.plainItems.length+'/'+MAX_ITEMS+'）</span></div>'
+        :'<div class="add-material-hint">最多添加 '+MAX_ITEMS+' 项明细</div>'
+      if(!g.plainItems.length){
+        html+='<div class="mat-field"><span class="mat-label">金额</span>'
+          +'<div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" value="'+esc(g.manualAmount)+'" placeholder="请输入金额" oninput="onManualAmount('+idx+',this.value)" /></div></div>'
+      }
+      html+='</div>'
+    }
+    return html
+  }
+  function renderGroups(){
+    var html=''
+    groups.forEach(function(g,i){
+      html+='<div class="card"><div class="group-head">'
+        +'<div class="field group-type-field" onclick="openTypePicker('+i+')">'
+        +'<div class="field-text"><span class="field-label">类型 '+(i+1)+' <b class="required">*</b></span>'
+        +'<span class="field-value'+(g.typeId?'':' placeholder')+'">'+esc(g.typeName)+'</span>'
+        +(g.typeDesc?'<span class="group-desc">'+esc(g.typeDesc)+'</span>':'')
+        +'</div><span class="field-arrow">›</span></div>'
+        +(!EDIT_ID&&groups.length>1?'<span class="group-del" onclick="removeGroup('+i+')">✕</span>':'')
+        +'</div>'
+        +renderGroupBody(g,i)
+        +(g.typeId?'<div class="group-total"><span class="gt-label">本组小计</span><span class="gt-amount">¥'+fmtMoney(groupAmount(g))+'</span></div>':'')
+        +'</div>'
+    })
+    document.getElementById('groupsBox').innerHTML=html
+    document.getElementById('addGroupBox').innerHTML=(!EDIT_ID&&groups.length<MAX_GROUPS)
+      ?'<div class="add-group-btn" onclick="addGroup()"><span class="add-icon">＋</span><span>添加支出类型（'+groups.length+'/'+MAX_GROUPS+'）</span></div>'
+      :''
+    renderTips();renderTotal()
+  }
+  function renderTips(){
+    var html=''
+    if(EDIT_ID)html+='<div class="sp-tip edit-tip"><span class="sp-tip-icon">✏️</span><span class="sp-tip-text">编辑模式：仅支持修改一个支出类型</span></div>'
+    if(groups.some(function(g){return g.typeName===SELF}))html+='<div class="sp-tip"><span class="sp-tip-icon">⚠️</span><span class="sp-tip-text">请仅填写门店自行购买的物料，已通过企迈采购的物料无需登记</span></div>'
+    document.getElementById('tips').innerHTML=html
+  }
+
+  // ---------- 组操作 ----------
+  function addGroup(){
+    if(groups.length>=MAX_GROUPS){showToast('最多添加'+MAX_GROUPS+'个支出类型');return}
+    groups.push(newGroup());renderGroups()
+  }
+  function removeGroup(i){
+    if(EDIT_ID)return
+    if(groups.length<=1){showToast('至少保留一个支出类型');return}
+    groups.splice(i,1);renderGroups()
+  }
+  function openTypePicker(i){
+    if(EDIT_ID&&i!==0)return
+    activeGroupIdx=i
+    document.getElementById('typeSheetSub').textContent=EDIT_ID?'编辑模式仅修改当前类型':'可一次登记多个支出类型'
+    renderTypeList()
+    document.getElementById('typeMask').className='mask show'
+  }
+  function closeTypePicker(){document.getElementById('typeMask').className='mask'}
+  function renderTypeList(){
+    var g=groups[activeGroupIdx]
+    var html='<div class="type-grid">'
+    types.forEach(function(t){
+      html+='<div class="type-btn'+(g.typeId===t.typeId?' on':'')+'" data-id="'+esc(t.typeId)+'">'
+        +'<span class="type-btn-name">'+esc(t.name)+'</span>'
+        +(t.description?'<span class="type-btn-desc">'+esc(t.description)+'</span>':'')
+        +'</div>'
+    })
+    html+='</div>'
+    document.getElementById('typeList').innerHTML=html
+  }
+  function selectType(id){
+    var g=groups[activeGroupIdx]
+    var t=types.filter(function(x){return x.typeId===id})[0]
+    if(!t){closeTypePicker();return}
+    g.typeId=t.typeId;g.typeName=t.name;g.typeDesc=t.description||''
+    if(t.name===SELF){g.plainItems=[];g.manualAmount=''}else{g.items=[];g.manualAmount=''}
+    closeTypePicker();renderGroups()
+  }
+  document.getElementById('typeList').addEventListener('click',function(e){
+    var btn=e.target.closest('.type-btn');if(!btn)return
+    selectType(btn.getAttribute('data-id'))
+  })
+  function onManualAmount(i,v){
+    // 只更新数据 + 局部刷新小计，避免整页重建导致输入框失焦
+    groups[i].manualAmount=v
+    var cards=document.getElementById('groupsBox').querySelectorAll('.card')
+    var gt=cards[i]&&cards[i].querySelector('.group-total .gt-amount')
+    if(gt)gt.textContent='¥'+fmtMoney(groupAmount(groups[i]))
+    renderTotal()
+  }
+
+  // ---------- 自购：物料搜索 ----------
+  function openMatSearch(i){
+    matGroupIdx=i
+    document.getElementById('matMask').className='mask show'
+    document.getElementById('matSearchInput').value=''
+    document.getElementById('matList').innerHTML='<div class="search-status">输入关键词搜索</div>'
+    doMatSearch()
+    setTimeout(function(){document.getElementById('matSearchInput').focus()},150)
+  }
+  function closeMatSearch(){document.getElementById('matMask').className='mask'}
+  document.getElementById('matSearchInput').addEventListener('input',function(){
+    clearTimeout(matSearchTimer)
+    var v=this.value
+    matSearchTimer=setTimeout(function(){doMatSearch(v)},150)
+  })
+  function doMatSearch(kw){
+    document.getElementById('matList').innerHTML='<div class="search-status">搜索中...</div>'
+    get('/materials/by-category?parentCategory='+encodeURIComponent(PARENT)+'&keyword='+encodeURIComponent(kw||'')).then(function(d){
+      matResults=Array.isArray(d)?d:[]
+      var html=''
+      if(!matResults.length)html='<div class="search-status">暂无匹配物料</div>'
+      matResults.forEach(function(m){
+        html+='<div class="search-item" data-id="'+esc(m.id||m.materialId||'')+'">'
+          +'<div class="si-info"><span class="si-name">'+esc(m.yuancailiaomingcheng||m.materialName||'')+'</span>'
+          +'<span class="si-meta">'+esc(m.leibie2||m.category||'')+'</span></div></div>'
+      })
+      html+='<div class="search-item other-item" id="otherMat"><div class="si-info"><span class="si-name">其他</span></div></div>'
+      document.getElementById('matList').innerHTML=html
+    }).catch(handleErr)
+  }
+  function openAddDrawer(m){
+    var g=groups[matGroupIdx]
+    if(editingItemIdx===-1&&g.items.some(function(i){return i.materialId&&i.materialId===(m.id||m.materialId)})){
+      showToast('该物料已添加');return
+    }
+    drawerItem={materialId:m.id||m.materialId||'',materialName:m.yuancailiaomingcheng||m.materialName||'',parentCategory:m.leibie||m.parentCategory||'',category:m.leibie2||m.category||'',weight:'',unitPrice:''}
+    editingItemIdx=-1
+    showDrawer('添加物料')
+  }
+  function selectOther(){
+    drawerItem={materialId:'',materialName:'其他',parentCategory:PARENT,category:SELF,weight:'',unitPrice:''}
+    editingItemIdx=-1
+    showDrawer('添加物料')
+  }
+  function openEditDrawer(gIdx,iIdx){
+    matGroupIdx=gIdx
+    var it=groups[gIdx].items[iIdx]
+    drawerItem={materialId:it.materialId,materialName:it.materialName,parentCategory:it.parentCategory,category:it.category,weight:it.weight,unitPrice:it.unitPrice}
+    editingItemIdx=iIdx
+    showDrawer('编辑物料')
+  }
+  function showDrawer(title){
+    document.getElementById('drawerTitle').textContent=title
+    document.getElementById('drawerName').textContent=drawerItem.materialName||''
+    document.getElementById('drawerWeight').value=drawerItem.weight
+    document.getElementById('drawerPrice').value=drawerItem.unitPrice
+    updateDrawerTotal()
+    document.getElementById('drawerMask').className='mask show'
+  }
+  function closeDrawer(){document.getElementById('drawerMask').className='mask';drawerItem=null;editingItemIdx=-1}
+  function updateDrawerTotal(){
+    var w=parseFloat(document.getElementById('drawerWeight').value),p=parseFloat(document.getElementById('drawerPrice').value)
+    document.getElementById('drawerTotal').textContent='小计：¥'+((w>0&&p>0)?(w*p).toFixed(2):'0.00')
+  }
+  document.getElementById('drawerWeight').addEventListener('input',updateDrawerTotal)
+  document.getElementById('drawerPrice').addEventListener('input',updateDrawerTotal)
+  function confirmDrawer(){
+    var w=document.getElementById('drawerWeight').value,p=document.getElementById('drawerPrice').value
+    if(!(parseFloat(w)>0)){showToast('请填写重量');return}
+    if(!(parseFloat(p)>0)){showToast('请填写单价');return}
+    var item=Object.assign({},drawerItem,{weight:w,unitPrice:p})
+    var g=groups[matGroupIdx]
+    if(editingItemIdx>=0){g.items[editingItemIdx]=item}else{g.items.push(item)}
+    closeDrawer();renderGroups()
+  }
+  function removeItem(gIdx,iIdx){groups[gIdx].items.splice(iIdx,1);renderGroups()}
+  document.getElementById('matList').addEventListener('click',function(e){
+    var el=e.target.closest('[data-id],#otherMat')
+    if(!el)return
+    if(el.id==='otherMat'){selectOther();return}
+    closeMatSearch()
+    var d=matResults.filter(function(m){return (m.id||m.materialId||'')===el.getAttribute('data-id')})[0]
+    if(d)openAddDrawer(d)
+  })
+
+  // ---------- 其他类型：明细抽屉 ----------
+  function openPlainAddDrawer(gIdx){
+    pGroupIdx=gIdx;pEditIdx=-1
+    document.getElementById('plainTitle').textContent='添加明细'
+    document.getElementById('plainName').value='';document.getElementById('plainAmount').value=''
+    document.getElementById('plainTotal').textContent='小计：¥0.00'
+    document.getElementById('plainMask').className='mask show'
+  }
+  function openPlainEditDrawer(gIdx,pIdx){
+    pGroupIdx=gIdx;pEditIdx=pIdx
+    var it=groups[gIdx].plainItems[pIdx]
+    document.getElementById('plainTitle').textContent='编辑明细'
+    document.getElementById('plainName').value=it.name;document.getElementById('plainAmount').value=it.amount
+    document.getElementById('plainTotal').textContent='小计：¥'+fmtMoney(plainItemAmount(it))
+    document.getElementById('plainMask').className='mask show'
+  }
+  function closePlainDrawer(){document.getElementById('plainMask').className='mask';pEditIdx=-1}
+  document.getElementById('plainName').addEventListener('input',function(){
+    var a=document.getElementById('plainAmount').value
+    document.getElementById('plainTotal').textContent='小计：¥'+((parseFloat(a)>0)?fmtMoney(a):'0.00')
+  })
+  document.getElementById('plainAmount').addEventListener('input',function(){
+    var a=this.value
+    document.getElementById('plainTotal').textContent='小计：¥'+((parseFloat(a)>0)?fmtMoney(a):'0.00')
+  })
+  function confirmPlainDrawer(){
+    var name=document.getElementById('plainName').value.trim()
+    var amount=document.getElementById('plainAmount').value
+    if(!name){showToast('请填写明细名称');return}
+    if(!(parseFloat(amount)>0)){showToast('请填写明细金额');return}
+    var g=groups[pGroupIdx]
+    if(pEditIdx>=0){g.plainItems[pEditIdx]={name:name,amount:amount}}else{g.plainItems.push({name:name,amount:amount})}
+    closePlainDrawer();renderGroups()
+  }
+  function removePlainItem(gIdx,pIdx){groups[gIdx].plainItems.splice(pIdx,1);renderGroups()}
+
+  // ---------- 凭证上传 ----------
+  function renderVouchers(){
+    var html=''
+    vouchers.forEach(function(v,i){
+      var thumb=null
+      if(v.status==='done'&&v.url){
+        thumb=v.thumb||v.url
+      }else if(v.file){
+        try{thumb=URL.createObjectURL(v.file)}catch(e){}
+      }
+      html+='<div class="voucher-item">'
+        +(thumb?'<img class="voucher-img" src="'+esc(thumb)+'" '+(v.status==='done'?'onclick="previewVoucher('+i+')"':'')+' />':'')
+        +(v.status==='uploading'
+          ?'<div class="voucher-uploading"><span>上传中 '+v.progress+'%</span><div class="voucher-bar"><i style="width:'+v.progress+'%"></i></div></div>'
+          :'')
+        +'<span class="voucher-del" onclick="removeVoucher('+i+')">✕</span></div>'
+    })
+    document.getElementById('voucherGrid').innerHTML=html
+    document.getElementById('voucherAdd').style.display=vouchers.length<MAX_VOUCHERS?'flex':'none'
+    document.getElementById('voucherCount').textContent=vouchers.length+'/'+MAX_VOUCHERS
+  }
+  function addFiles(input){
+    var files=Array.prototype.slice.call(input.files||[])
+    input.value=''
+    files.forEach(function(f){
+      if(vouchers.length>=MAX_VOUCHERS){showToast('最多上传'+MAX_VOUCHERS+'张凭证');return}
+      var v={file:f,url:'',thumb:'',status:'uploading',progress:0}
+      vouchers.push(v)
+      renderVouchers()
+      uploadOne(v)
+    })
+  }
+  function uploadOne(v){
+    if(v.file.size<=DIRECT_MAX){directUpload(v)}
+    else{chunkedUpload(v)}
+  }
+  function directUpload(v){
+    var xhr=new XMLHttpRequest()
+    var fd=new FormData()
+    fd.append('file',v.file)
+    fd.append('storeName',STORE||'unknown')
+    xhr.open('POST',API+'/upload/voucher')
+    if(TOKEN)xhr.setRequestHeader('Authorization','Bearer '+TOKEN)
+    xhr.upload.onprogress=function(e){
+      if(e.lengthComputable){v.progress=Math.round(e.loaded/e.total*100);renderVouchers()}
+    }
+    xhr.onload=function(){
+      try{
+        var d=JSON.parse(xhr.responseText)
+        if(d.code===200){v.url=d.data.url;v.thumb=d.data.thumb||'';v.status='done';v.file=null;renderVouchers()}
+        else{showToast(d.message||d.msg||'上传失败');removeVoucherIdx(vouchers.indexOf(v))}
+      }catch(e){showToast('上传失败');removeVoucherIdx(vouchers.indexOf(v))}
+    }
+    xhr.onerror=function(){showToast('网络异常，上传失败');removeVoucherIdx(vouchers.indexOf(v))}
+    xhr.send(fd)
+  }
+  function chunkedUpload(v){
+    var size=v.file.size,total=Math.ceil(size/CHUNK_SIZE)
+    showToast('大图分片上传中...')
+    post('/upload/chunk/init',{totalChunks:total}).then(function(d){
+      var uploadId=d.uploadId
+      function up(i){
+        if(i>=total){
+          return post('/upload/chunk/'+uploadId+'/complete',{fileName:v.file.name,totalChunks:total,storeName:STORE||'unknown'}).then(function(r){
+            v.url=r.url;v.thumb=r.thumb||'';v.status='done';v.file=null;renderVouchers()
+          })
+        }
+        var blob=v.file.slice(i*CHUNK_SIZE,(i+1)*CHUNK_SIZE)
+        var fd=new FormData()
+        fd.append('file',blob,v.file.name)
+        return new Promise(function(res,rej){
+          var xhr=new XMLHttpRequest()
+          xhr.open('POST',API+'/upload/chunk/'+uploadId+'/'+i)
+          if(TOKEN)xhr.setRequestHeader('Authorization','Bearer '+TOKEN)
+          xhr.onload=function(){
+            try{var d=JSON.parse(xhr.responseText);if(d.code===200){res()}else{rej(new Error(d.message||'分片失败'))}}catch(e){rej(e)}
+          }
+          xhr.onerror=function(){rej(new Error('网络异常'))}
+          xhr.send(fd)
+        }).then(function(){
+          v.progress=Math.round((i+1)/total*100)
+          renderVouchers()
+          return up(i+1)
+        })
+      }
+      return up(0)
+    }).catch(function(e){
+      showToast(e.message||'上传失败')
+      var idx=vouchers.indexOf(v);if(idx>=0)removeVoucherIdx(idx)
+    })
+  }
+  function removeVoucher(i){removeVoucherIdx(i)}
+  function removeVoucherIdx(i){
+    if(i<0)return
+    if(vouchers[i].file){try{URL.revokeObjectURL(vouchers[i].thumb)}catch(e){}}
+    vouchers.splice(i,1)
+    renderVouchers()
+  }
+  function previewVoucher(i){
+    document.getElementById('previewImg').src=vouchers[i].url
+    document.getElementById('previewMask').className='mask preview-mask show'
+  }
+  function closePreview(){document.getElementById('previewMask').className='mask preview-mask'}
+  document.getElementById('fileInput').addEventListener('change',function(){addFiles(this)})
+
+  // ---------- 提交 ----------
+  function submit(){
+    var btn=document.getElementById('submitBtn')
+    if(btn.classList.contains('disabled'))return
+    var filled=groups.filter(function(g){return g.typeId})
+    if(!filled.length){showToast('请至少选择一个支出类型');return}
+    if(EDIT_ID&&filled.length>1){showToast('编辑模式仅支持一个支出类型');return}
+    for(var i=0;i<filled.length;i++){
+      var g=filled[i]
+      if(g.typeName===SELF){
+        if(!g.items.length){showToast('请添加物料');return}
+        if(g.items.length>MAX_ITEMS){showToast('最多添加'+MAX_ITEMS+'种物料');return}
+        for(var j=0;j<g.items.length;j++){
+          if(!(parseFloat(g.items[j].weight)>0)){showToast('请填写物料重量');return}
+          if(!(parseFloat(g.items[j].unitPrice)>0)){showToast('请填写物料单价');return}
+        }
+      }else if(g.plainItems.length){
+        if(g.plainItems.length>MAX_ITEMS){showToast('最多添加'+MAX_ITEMS+'项明细');return}
+        for(var k=0;k<g.plainItems.length;k++){
+          if(!g.plainItems[k].name.trim()){showToast('请填写明细名称');return}
+          if(!(parseFloat(g.plainItems[k].amount)>0)){showToast('请填写明细金额');return}
+        }
+      }else{
+        if(!(parseFloat(g.manualAmount)>0)){showToast('请填写【'+g.typeName+'】金额');return}
+      }
+    }
+    for(var u=0;u<vouchers.length;u++){
+      if(vouchers[u].status==='uploading'){showToast('请等待凭证上传完成');return}
+    }
+    btn.classList.add('disabled')
+    showLoading(EDIT_ID?'保存中...':'提交中...')
+    var urls=vouchers.map(function(v){return v.url})
+    var payload={
+      typeId:filled[0].typeId,amount:groupAmount(filled[0]),occurredDate:occurredDate,
+      handlerName:handlerName||'--',voucherUrls:urls,remark:remark||undefined
+    }
+    if(EDIT_ID){
+      var g0=filled[0]
+      if(g0.typeName===SELF){
+        payload.items=g0.items.map(function(it){
+          return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice)}
+        })
+      }else if(g0.plainItems.length){
+        payload.amountItems=g0.plainItems.map(function(it){return{name:it.name.trim(),amount:parseFloat(it.amount)}})
+      }
+      return put('/expenses/'+EDIT_ID,payload).then(function(){done(true)}).catch(function(e){handleErr(e);btn.classList.remove('disabled')}).finally(hideLoading)
+    }
+    payload.records=filled.map(function(g){
+      var rec={typeId:g.typeId,amount:groupAmount(g)}
+      if(g.typeName===SELF){
+        rec.items=g.items.map(function(it){
+          return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice)}
+        })
+      }else if(g.plainItems.length){
+        rec.amountItems=g.plainItems.map(function(it){return{name:it.name.trim(),amount:parseFloat(it.amount)}})
+      }
+      return rec
+    })
+    return post('/expenses/batch',payload).then(function(){done(false)}).catch(function(e){handleErr(e);btn.classList.remove('disabled')}).finally(hideLoading)
+  }
+  function done(isEdit){
+    showToast(isEdit?'修改成功':'登记成功')
+    // 通知小程序容器刷新列表并返回（浏览器环境降级为提示）
+    if(typeof wx!=='undefined'&&wx.miniProgram){
+      wx.miniProgram.postMessage({data:{type:'expense-submitted',isEdit:isEdit}})
+      setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
+    }
+  }
+  document.getElementById('submitBtn').addEventListener('click',submit)
+
+  // ---------- 初始化 ----------
+  document.getElementById('dateInput').value=occurredDate
+  document.getElementById('dateInput').addEventListener('change',function(){occurredDate=this.value})
+  document.getElementById('remarkInput').addEventListener('input',function(){remark=this.value})
+  document.getElementById('typeMask').addEventListener('click',function(e){if(e.target===this)closeTypePicker()})
+  document.getElementById('matMask').addEventListener('click',function(e){if(e.target===this)closeMatSearch()})
+  document.getElementById('drawerMask').addEventListener('click',function(e){if(e.target===this)closeDrawer()})
+  document.getElementById('plainMask').addEventListener('click',function(e){if(e.target===this)closePlainDrawer()})
+
+  function boot(){
+    if(!TOKEN){showToast('登录已过期，请重新进入小程序')}
+    var p1=get('/expense-types').then(function(d){types=Array.isArray(d)?d:[]})
+    var p2=get('/auth/me').then(function(d){
+      handlerName=(d&&d.employeeName)||''
+    }).catch(function(){})
+    if(EDIT_ID){
+      document.getElementById('submitBtn').textContent='保存修改'
+      // 编辑回填：详情 + 明细 → 单组
+      Promise.all([p1,get('/expenses/'+EDIT_ID),get('/expenses/'+EDIT_ID+'/items')]).then(function(res){
+        var d=res[1],its=res[2]||[]
+        if(!d)return
+        var g=newGroup()
+        g.typeId=d.typeId||''
+        g.typeName=d.typeName||'请选择支出类型'
+        if(!g.typeId&&g.typeName!=='请选择支出类型'){
+          var matched=types.filter(function(t){return t.name===g.typeName})[0]
+          if(matched)g.typeId=matched.typeId
+        }
+        var mt=types.filter(function(t){return t.typeId===g.typeId})[0]
+        if(mt)g.typeDesc=mt.description||''
+        remark=d.remark||''
+        occurredDate=d.occurredDate||''
+        handlerName=d.handlerName||handlerName
+        document.getElementById('dateInput').value=occurredDate
+        document.getElementById('remarkInput').value=remark
+        var urls=(d.voucherUrls&&d.voucherUrls.length)?d.voucherUrls:(d.voucherUrl?[d.voucherUrl]:[])
+        vouchers=(Array.isArray(urls)?urls:[]).map(function(u){return{file:null,url:u,thumb:'',status:'done',progress:100}})
+        if(Array.isArray(its)&&its.length){
+          if(d.typeName===SELF){
+            g.items=its.map(function(mat){
+              return{materialId:mat.materialId||'',materialName:mat.name,parentCategory:mat.parentCategory||'',category:mat.category||'',weight:mat.qty!=null?String(mat.qty):'',unitPrice:mat.unitPrice!=null?String(mat.unitPrice):''}
+            })
+          }else{
+            g.plainItems=its.map(function(it){return{name:it.name||'',amount:it.amount!=null?String(it.amount):''}})
+          }
+        }else if(d.typeName!==SELF){
+          g.manualAmount=d.amount!=null?String(d.amount):''
+        }
+        groups=[g]
+        renderGroups();renderVouchers()
+      }).catch(handleErr)
+    }else{
+      groups=[newGroup()]
+      Promise.all([p1,p2]).catch(function(){}).then(function(){
+        renderGroups();renderVouchers()
+      })
+    }
+  }
+  boot()
+})()
+</script>
+</body>
+</html>

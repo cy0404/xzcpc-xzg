@@ -11,8 +11,19 @@ onLoad((q: any) => {
     uni.setNavigationBarTitle({ title: decodeURIComponent(q.title) })
   }
 })
+
+// H5 提交/删除通知：支出登记页提交成功、详情页删除成功 → 提示并返回
+function onMessage(e: any) {
+  const list: any[] = e?.detail?.data || []
+  const msg = list.find((d: any) => d?.type === 'expense-submitted')
+  if (msg) {
+    const tip = msg.deleted ? '已删除' : (msg.isEdit ? '修改成功' : '登记成功')
+    uni.showToast({ title: tip, icon: 'success' })
+    setTimeout(() => uni.navigateBack(), 600)
+  }
+}
 </script>
 
 <template>
-  <web-view v-if="src" :src="src" />
+  <web-view v-if="src" :src="src" @message="onMessage" />
 </template>

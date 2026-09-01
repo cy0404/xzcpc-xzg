@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>支出详情</title>
+<style>
+:root{--p:#2F8F57;--ps:#E7F4EB;--t1:#1F2421;--t2:#66706A;--t3:#98A19C;--b:#E8ECE9;--bg:#F7F8F6;--d:#E05A47}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
+.page{max-width:520px;margin:0 auto;padding:12px 16px 110px}
+/* 金额头部 */
+.hero-card{background:linear-gradient(135deg,var(--p),#247847);border-radius:16px;padding:24px 16px;color:#fff;text-align:center;margin-bottom:14px}
+.hero-badge{display:inline-block;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.2);font-size:11px;margin-bottom:8px}
+.hero-amount{display:block;font-size:36px;font-weight:800;line-height:1.2}
+.hero-type{display:block;margin-top:6px;font-size:14px;opacity:.85}
+/* 卡片 */
+.card{background:#fff;border-radius:14px;padding:14px;border:1px solid var(--b);margin-bottom:12px}
+.card-title{display:block;font-size:13px;font-weight:600;color:var(--t3);margin-bottom:6px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #EEF1EF}
+.row.last{border:0}
+.rk{font-size:14px;color:var(--t2);flex-shrink:0}
+.rv{font-size:14px;text-align:right;min-width:0;overflow-wrap:break-word;word-break:break-all}
+.rv.total{color:var(--p);font-weight:700}
+/* 凭证 */
+.voucher-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.voucher-photo{width:calc((100% - 16px) / 3);height:96px;border-radius:8px;object-fit:cover;cursor:pointer}
+.voucher-video{width:100%;border-radius:8px;margin-top:4px;background:#000}
+.tip{padding:14px 0;text-align:center;font-size:12px;color:var(--t3)}
+/* 底部操作 */
+.bottom-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;gap:10px;padding:10px 16px calc(env(safe-area-inset-bottom) + 10px);background:#fff;border-top:1px solid #EEF1EF}
+.bottom-inner{max-width:520px;margin:0 auto;display:flex;gap:10px;width:100%}
+.bb-edit{flex:1;height:44px;border-radius:10px;border:1px solid var(--b);color:var(--p);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;background:#fff;cursor:pointer}
+.bb-edit:active{background:#FAFBF9}
+.bb-del{flex:1;height:44px;border-radius:10px;border:1px solid var(--d);color:var(--d);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;background:#fff;cursor:pointer}
+.bb-del:active{background:#FDECEA}
+/* 弹窗 */
+.mask{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;background:rgba(31,36,33,.4)}
+.mask.show{display:flex}
+.mask.preview-mask{align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:150}
+.sh{width:40px;height:3px;border-radius:999px;background:var(--b);margin:4px auto 8px;flex-shrink:0}
+.sheet{width:100%;max-width:520px;margin:0 auto;border-radius:16px 16px 0 0;background:#fff;padding:8px 16px calc(env(safe-area-inset-bottom) + 16px);text-align:center}
+.st{display:block;font-size:17px;font-weight:700;margin-bottom:6px}
+.sd{display:block;font-size:14px;color:var(--t2);margin-bottom:16px}
+.sa{display:flex;gap:10px}
+.sab{flex:1;height:44px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:none;cursor:pointer}
+.sab.cancel{background:#FAFBF9;color:var(--t1)}
+.sab.danger{background:var(--d);color:#fff}
+.sab.danger:active{opacity:.9}
+/* loading / toast */
+.loading-overlay{position:fixed;inset:0;z-index:99;background:rgba(31,36,33,.35);display:none;align-items:center;justify-content:center}
+.loading-overlay.show{display:flex}
+.loading-box{background:#fff;border-radius:12px;padding:16px 24px;font-size:14px}
+.toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:200;background:rgba(31,36,33,.88);color:#fff;font-size:14px;padding:10px 20px;border-radius:10px;display:none;max-width:80%;text-align:center;pointer-events:none}
+.toast.show{display:block}
+.preview-img{max-width:92vw;max-height:92vh;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="page" id="pageBox"></div>
+
+<!-- 底部操作 -->
+<div class="bottom-bar">
+  <div class="bottom-inner">
+    <div class="bb-edit" id="editBtn">编辑记录</div>
+    <div class="bb-del" id="delBtn">删除记录</div>
+  </div>
+</div>
+
+<!-- 删除确认 -->
+<div class="mask" id="delMask">
+  <div class="sheet">
+    <div class="sh"></div>
+    <span class="st">确认删除</span>
+    <span class="sd">删除后该支出记录将无法恢复</span>
+    <div class="sa">
+      <button class="sab cancel" onclick="closeDel()">取消</button>
+      <button class="sab danger" id="delConfirm">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 图片预览 -->
+<div class="mask preview-mask" id="previewMask" onclick="closePreview()"><img class="preview-img" id="previewImg" /></div>
+
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-box">加载中...</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict'
+  // ---------- 参数与认证 ----------
+  var TOKEN='',STORE='',EXPENSE_ID=''
+  ;(function(){
+    var p=new URLSearchParams(location.search)
+    TOKEN=p.get('token')||''
+    STORE=p.get('storeName')||''
+    EXPENSE_ID=p.get('expenseId')||''
+  })()
+  var _i=location.pathname.indexOf('/upload/')
+  var API=location.origin+(_i>=0?location.pathname.slice(0,_i):location.pathname.replace(/\/[^/]+$/,''))+'/api/mp'
+  function H(){var h={'Content-Type':'application/json'};if(TOKEN)h['Authorization']='Bearer '+TOKEN;return h}
+
+  // ---------- 工具 ----------
+  var SELF='自购食材'
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function fmtMoney(n){return Number(n||0).toFixed(2)}
+  var toastTimer=null
+  function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show';clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.className='toast'},2200)}
+  function showLoading(txt){document.getElementById('loadingOverlay').getElementsByClassName('loading-box')[0].textContent=txt||'加载中...';document.getElementById('loadingOverlay').className='loading-overlay show'}
+  function hideLoading(){document.getElementById('loadingOverlay').className='loading-overlay'}
+  function fetchJSON(url,opts){
+    return fetch(url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
+      var d=res.body||{}
+      if(!res.ok||d.code!==200){
+        var e=new Error(d.message||d.msg||'请求失败')
+        e.status=res.ok?d.code:res.status
+        throw e
+      }
+      return d.data
+    })
+  }
+  function get(url){return fetchJSON(url,{headers:H()})}
+  function del(url){return fetchJSON(url,{method:'DELETE',headers:H()})}
+  function handleErr(e){
+    if(e.status===401){showToast('登录已过期，请重新进入小程序');return}
+    showToast(e.message||'网络异常，请重试')
+  }
+  // 图片/视频区分：带视频扩展名视为视频，否则按图处理
+  function isVideoUrl(u){
+    var m=String(u||'').split('?')[0].toLowerCase()
+    return /\.(mp4|mov|webm|m4v|avi)$/.test(m)
+  }
+  function thumbOf(u){
+    var dot=String(u||'').lastIndexOf('.')
+    return dot>0?u.slice(0,dot)+'_thumb.jpg':u
+  }
+
+  // ---------- 状态 ----------
+  var detail=null,items=[],vouchers=[],deleting=false
+
+  // ---------- 加载 ----------
+  function load(){
+    if(!EXPENSE_ID){showToast('参数缺失');return}
+    showLoading()
+    Promise.all([get('/expenses/'+EXPENSE_ID),get('/expenses/'+EXPENSE_ID+'/items').catch(function(){return[]})])
+      .then(function(res){
+        detail=res[0];items=res[1]||[]
+        if(!detail){showToast('记录不存在');return}
+        // 多张凭证：voucherUrls 优先，兜底主表单值
+        var urls=(detail.voucherUrls&&detail.voucherUrls.length)?detail.voucherUrls:(detail.voucherUrl?[detail.voucherUrl]:[])
+        vouchers=Array.isArray(urls)?urls:[]
+        render()
+      })
+      .catch(handleErr)
+      .finally(hideLoading)
+  }
+
+  // ---------- 渲染 ----------
+  function render(){
+    var d=detail
+    var html=''
+    // 金额头部
+    html+='<div class="hero-card"><span class="hero-badge">已登记</span>'
+      +'<span class="hero-amount">¥'+fmtMoney(d.amount)+'</span>'
+      +'<span class="hero-type">'+esc(d.typeName)+'</span></div>'
+    // 支出信息
+    html+='<div class="card"><span class="card-title">支出信息</span>'
+      +'<div class="row"><span class="rk">类型</span><span class="rv">'+esc(d.typeName)+'</span></div>'
+      +'<div class="row"><span class="rk">日期</span><span class="rv">'+esc(d.occurredDate)+'</span></div>'
+      +'<div class="row"><span class="rk">说明</span><span class="rv">'+esc(d.remark||'--')+'</span></div>'
+      +'<div class="row last"><span class="rk">经手人</span><span class="rv">'+esc(d.handlerName)+'</span></div></div>'
+    // 明细
+    if(items.length){
+      html+='<div class="card"><span class="card-title">'+(d.typeName===SELF?'📦 物料明细':'💰 支出明细')+'</span>'
+      items.forEach(function(it){
+        html+='<div class="row"><span class="rk">'+esc(it.name)+'</span>'
+        if(d.typeName===SELF){
+          html+='<span class="rv">'+esc(it.qty)+' '+esc(it.unit||'kg')+' × ¥'+fmtMoney(it.unitPrice)+' = ¥'+fmtMoney(it.amount)+'</span>'
+        }else{
+          html+='<span class="rv">¥'+fmtMoney(it.amount)+'</span>'
+        }
+        html+='</div>'
+      })
+      html+='<div class="row last"><span class="rk">合计</span><span class="rv total">¥'+fmtMoney(d.amount)+'</span></div></div>'
+    }
+    // 凭证
+    if(vouchers.length){
+      html+='<div class="card"><span class="card-title">凭证照片（'+vouchers.length+'张）</span><div class="voucher-grid">'
+      vouchers.forEach(function(u,vi){
+        if(isVideoUrl(u)){
+          html+='<video class="voucher-video" controls preload="metadata" poster="'+esc(thumbOf(u))+'"><source src="'+esc(u)+'"></video>'
+        }else{
+          html+='<img class="voucher-photo" src="'+esc(u)+'" onclick="preview('+vi+')" />'
+        }
+      })
+      html+='</div></div>'
+    }
+    // 登记信息
+    html+='<div class="card"><span class="card-title">登记信息</span>'
+      +'<div class="row"><span class="rk">登记人</span><span class="rv">'+esc(d.handlerName)+'</span></div>'
+      +'<div class="row last"><span class="rk">时间</span><span class="rv">'+esc(d.createdAt||'--')+'</span></div></div>'
+    html+='<div class="tip">如需修改或删除，请联系门店负责人</div>'
+    document.getElementById('pageBox').innerHTML=html
+  }
+  function preview(i){
+    document.getElementById('previewImg').src=vouchers[i]
+    document.getElementById('previewMask').className='mask preview-mask show'
+  }
+  function closePreview(){document.getElementById('previewMask').className='mask preview-mask'}
+
+  // ---------- 操作 ----------
+  function goEdit(){
+    if(!detail)return
+    location.href='expense-form.html?expenseId='+encodeURIComponent(EXPENSE_ID)+'&token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
+  }
+  function openDel(){document.getElementById('delMask').className='mask show'}
+  function closeDel(){document.getElementById('delMask').className='mask'}
+  function doDelete(){
+    if(deleting)return
+    deleting=true
+    document.getElementById('delConfirm').textContent='删除中...'
+    showLoading('删除中...')
+    del('/expenses/'+EXPENSE_ID)
+      .then(function(){
+        closeDel()
+        showToast('已删除')
+        if(typeof wx!=='undefined'&&wx.miniProgram){
+          wx.miniProgram.postMessage({data:{type:'expense-submitted',deleted:true}})
+          setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
+        }
+      })
+      .catch(function(e){handleErr(e);deleting=false;document.getElementById('delConfirm').textContent='确认删除'})
+      .finally(hideLoading)
+  }
+
+  document.getElementById('editBtn').addEventListener('click',goEdit)
+  document.getElementById('delBtn').addEventListener('click',openDel)
+  document.getElementById('delConfirm').addEventListener('click',doDelete)
+  document.getElementById('delMask').addEventListener('click',function(e){if(e.target===this)closeDel()})
+  document.getElementById('pageBox').addEventListener('click',function(e){
+    var img=e.target.closest('.voucher-photo');if(!img)return
+    var idx=Array.prototype.indexOf.call(e.target.parentNode.children,img)
+    preview(idx)
+  })
+
+  // ---------- 启动 ----------
+  if(!TOKEN){showToast('登录已过期，请重新进入小程序')}
+  load()
+})()
+</script>
+</body>
+</html>

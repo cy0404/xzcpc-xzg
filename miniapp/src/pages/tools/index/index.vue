@@ -18,6 +18,7 @@ const showStoreSheet = ref(false)
 const pendingExecUrl = ref('')
 const pendingExecIsH5 = ref(false)
 const pendingExecComplaint = ref(false)
+const pendingExecExpense = ref(false)
 const smartOrderPending = ref(0)
 
 const isStaff = computed(() => userStore.role === 'staff' || userStore.role === '店员')
@@ -87,7 +88,7 @@ async function goSmartOrder() {
   uni.navigateTo({ url: buildSmartOrderUrl(false) })
 }
 
-interface ToolItem { title: string; desc: string; icon: string; url: string; h5?: boolean; complaint?: boolean }
+interface ToolItem { title: string; desc: string; icon: string; url: string; h5?: boolean; complaint?: boolean; expense?: boolean }
 
 // 执行类工具 — role-aware
 const execTools = computed<ToolItem[]>(() => {
@@ -96,7 +97,7 @@ const execTools = computed<ToolItem[]>(() => {
       { title: '盘点', desc: '进入盘点任务', icon: '✅', url: '/pages/task/list/index' },
       // 暂隐藏「入库管理」入口，需要时恢复：
       // { title: '入库管理', desc: '报货单收货入库', icon: '📦', url: '/pages/common/webview/index', h5: true },
-      { title: '支出登记', desc: '记录门店费用', icon: '🧾', url: '/pages/expense/list/index' },
+      { title: '支出登记', desc: '记录门店费用', icon: '🧾', url: '', expense: true },
       { title: '门店报损', desc: '日常/到货报损', icon: '📋', url: '/pages/loss-report/list/index' },
     ]
   }
@@ -104,7 +105,7 @@ const execTools = computed<ToolItem[]>(() => {
     { title: '盘点', desc: '进入盘点任务', icon: '✅', url: '/pages/task/list/index' },
     // 暂隐藏「入库管理」入口，需要时恢复：
     // { title: '入库管理', desc: '报货单收货入库', icon: '📦', url: '/pages/common/webview/index', h5: true },
-    { title: '支出登记', desc: '记录门店费用', icon: '🧾', url: '/pages/expense/list/index' },
+    { title: '支出登记', desc: '记录门店费用', icon: '🧾', url: '', expense: true },
     { title: '工时登记', desc: '录入上月汇总', icon: '⏱', url: '/pages/work-hours/index/index' },
     { title: '门店报损', desc: '日常/到货报损', icon: '📋', url: '/pages/loss-report/list/index' },
     { title: '客诉处理', desc: '处理顾客投诉', icon: '💬', url: '', complaint: true },
@@ -172,6 +173,13 @@ function goTool(url: string) {
   }
 }
 
+// 执行类工具点击分发：客诉/支出走专用 H5 流程，其余按原逻辑
+function goExecTool(t: ToolItem) {
+  if (t.complaint) { goComplaintTool(); return }
+  if (t.expense) { goExpenseTool(); return }
+  handleExecTool(t.url, t.h5)
+}
+
 function handleExecTool(url: string, isH5 = false) {
   if (scope.value === 'all') {
     pendingExecUrl.value = url
@@ -201,6 +209,24 @@ function goComplaintTool() {
   }
 }
 
+// 支出登记 H5 入口（web-view 打开，token 走 URL；导航时动态构建保证 token 最新）
+function goExpense() {
+  const token = uni.getStorageSync('token') || userStore.token || ''
+  const storeName = userStore.storeName || ''
+  const h5url = H5_BASE + '/upload/h5/expense-list.html?v=1&token=' + encodeURIComponent(token) + '&storeName=' + encodeURIComponent(storeName)
+  uni.navigateTo({ url: '/pages/common/webview/index?url=' + encodeURIComponent(h5url) + '&title=' + encodeURIComponent('支出登记') })
+}
+
+// 支出登记：全部门店视图下先弹选门店 sheet（支出按门店登记），单店视图直接打开
+function goExpenseTool() {
+  if (scope.value === 'all') {
+    pendingExecExpense.value = true
+    showStoreSheet.value = true
+  } else {
+    goExpense()
+  }
+}
+
 async function confirmExecStore(store: StoreOption) {
   try {
     const data: any = await switchStore(store.storeId)
@@ -215,6 +241,7 @@ async function confirmExecStore(store: StoreOption) {
   scope.value = store.storeId
   showStoreSheet.value = false
   if (pendingExecComplaint.value) { pendingExecComplaint.value = false; goComplaint(); return }
+  if (pendingExecExpense.value) { pendingExecExpense.value = false; goExpense(); return }
   uni.navigateTo({ url: pendingExecIsH5.value ? buildInboundUrl() : pendingExecUrl.value })
 }
 </script>
@@ -257,7 +284,7 @@ async function confirmExecStore(store: StoreOption) {
         <text class="sec-tag warn">{{ execLabel }}</text>
       </view>
       <view class="tool-grid">
-        <view v-for="(t, i) in execTools" :key="t.title" class="tool-card" :class="'tc-' + colors[(i + viewTools.length) % colors.length]" @click="t.complaint ? goComplaintTool() : handleExecTool(t.url, t.h5)">
+        <view v-for="(t, i) in execTools" :key="t.title" class="tool-card" :class="'tc-' + colors[(i + viewTools.length) % colors.length]" @click="goExecTool(t)">
           <text class="tc-title">{{ t.title }}</text>
           <text class="tc-desc">{{ t.desc }}</text>
           <text class="tc-icon">{{ t.icon }}</text>

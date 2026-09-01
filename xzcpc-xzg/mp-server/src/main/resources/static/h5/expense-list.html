@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>支出登记</title>
+<style>
+:root{--p:#2F8F57;--ps:#E7F4EB;--t1:#1F2421;--t2:#66706A;--t3:#98A19C;--b:#E8ECE9;--bg:#F7F8F6}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
+.page{max-width:520px;margin:0 auto;padding:12px 16px 130px}
+/* 汇总卡 */
+.sum-card{background:#fff;border-radius:16px;padding:20px;border:1px solid var(--b);box-shadow:0 2px 12px rgba(31,36,33,.04);margin-bottom:14px}
+.sum-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.sum-label{font-size:12px;color:var(--t2)}
+.sum-store{display:block;margin-top:3px;font-size:17px;font-weight:700}
+.sum-month{padding:4px 10px;border-radius:999px;background:#FAFBF9;font-size:12px;color:var(--t2);white-space:nowrap;flex-shrink:0}
+.sum-amount{display:block;margin-top:12px;font-size:30px;font-weight:800;line-height:1.2}
+.sum-count{display:block;margin-top:5px;font-size:12px;color:var(--t2)}
+/* 类型筛选 */
+.filter-scroll{overflow-x:auto;white-space:nowrap;margin:0 -16px 14px;padding:0 16px;-webkit-overflow-scrolling:touch}
+.filter-scroll::-webkit-scrollbar{display:none}
+.chip{display:inline-block;padding:7px 14px;border-radius:999px;font-size:13px;background:#fff;color:var(--t2);margin-right:8px;cursor:pointer;user-select:none}
+.chip:active{opacity:.8}
+.chip.on{background:var(--p);color:#fff}
+/* 日期分组 */
+.group{margin-bottom:14px}
+.group-label{font-size:12px;font-weight:600;color:var(--t3);margin-bottom:6px}
+.exp-card{display:flex;align-items:center;gap:10px;padding:13px 14px;background:#fff;border-radius:14px;border:1px solid var(--b);box-shadow:0 2px 10px rgba(31,36,33,.04);margin-bottom:6px;cursor:pointer}
+.exp-card:active{background:#FAFBF9}
+.ec-icon{width:40px;height:40px;border-radius:50%;background:var(--ps);color:var(--p);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0}
+.ec-info{flex:1;min-width:0}
+.ec-top{display:flex;justify-content:space-between;gap:8px}
+.ec-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ec-amount{font-size:14px;font-weight:800;flex-shrink:0}
+.ec-desc{display:block;margin-top:3px;font-size:12px;color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mat-info{color:var(--p);font-weight:500}
+.ec-meta{display:flex;align-items:center;gap:8px;margin-top:5px;font-size:11px;color:var(--t3)}
+.ec-voucher{padding:1px 8px;border-radius:999px;font-size:10px;color:var(--t3)}
+.ec-voucher.has{background:var(--ps);color:var(--p)}
+.ec-arrow{font-size:18px;color:#8C9691;flex-shrink:0}
+/* FAB */
+.fab{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:linear-gradient(to top,#fff,rgba(255,255,255,0));pointer-events:none}
+.fab-btn{max-width:520px;margin:0 auto;height:48px;border-radius:999px;background:var(--p);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;box-shadow:0 4px 16px rgba(47,143,87,.3);pointer-events:auto;cursor:pointer;user-select:none}
+.fab-btn:active{opacity:.9;transform:scale(.98)}
+/* 空态 */
+.empty{padding:70px 0;text-align:center;font-size:14px;color:var(--t3)}
+/* loading / toast */
+.loading-overlay{position:fixed;inset:0;z-index:99;background:rgba(31,36,33,.35);display:none;align-items:center;justify-content:center}
+.loading-overlay.show{display:flex}
+.loading-box{background:#fff;border-radius:12px;padding:16px 24px;font-size:14px;color:var(--t1)}
+.toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:200;background:rgba(31,36,33,.88);color:#fff;font-size:14px;padding:10px 20px;border-radius:10px;display:none;max-width:80%;text-align:center;pointer-events:none}
+.toast.show{display:block}
+</style>
+</head>
+<body>
+<div class="page">
+  <!-- 汇总卡 -->
+  <div class="sum-card">
+    <div class="sum-top">
+      <div><div class="sum-label">当前门店</div><div class="sum-store" id="storeName">--</div></div>
+      <span class="sum-month">📅 本月</span>
+    </div>
+    <div class="sum-amount" id="sumAmount">¥0.00</div>
+    <div class="sum-count" id="sumCount">共 0 笔记录</div>
+  </div>
+  <!-- 类型筛选 -->
+  <div class="filter-scroll" id="chipRow"></div>
+  <!-- 日期分组列表 -->
+  <div id="listBox"></div>
+</div>
+<!-- FAB -->
+<div class="fab"><div class="fab-btn" id="fabBtn">＋ 新增支出</div></div>
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-box">加载中...</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict'
+  // ---------- 参数与认证 ----------
+  var TOKEN='',STORE='';
+  (function(){
+    var p=new URLSearchParams(location.search);
+    TOKEN=p.get('token')||'';
+    STORE=p.get('storeName')||'';
+  })();
+  // API base：/upload/ 前缀取前缀；无则去掉最后一段（jar 内 static/h5/ 兜底）
+  var _i=location.pathname.indexOf('/upload/');
+  var API=location.origin+(_i>=0?location.pathname.slice(0,_i):location.pathname.replace(/\/[^/]+$/,''))+'/api/mp';
+  function H(){var h={'Content-Type':'application/json'};if(TOKEN)h['Authorization']='Bearer '+TOKEN;return h}
+
+  // ---------- 工具 ----------
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function fmtMoney(n){return Number(n||0).toFixed(2)}
+  var toastTimer=null
+  function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show';clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.className='toast'},2200)}
+  function showLoading(){document.getElementById('loadingOverlay').className='loading-overlay show'}
+  function hideLoading(){document.getElementById('loadingOverlay').className='loading-overlay'}
+  function fetchJSON(url,opts){
+    return fetch(url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
+      var d=res.body||{}
+      if(!res.ok||d.code!==200){
+        var e=new Error(d.message||d.msg||('请求失败'))
+        e.status=res.ok?d.code:res.status
+        throw e
+      }
+      return d.data
+    })
+  }
+  function get(url){return fetchJSON(url,{headers:H()})}
+  function handleErr(e){
+    if(e.status===401){showToast('登录已过期，请重新进入小程序');return}
+    showToast(e.message||'网络异常，请重试')
+  }
+
+  // ---------- 状态 ----------
+  var types=[],records=[],selectedTypeId='',monthAmount=0,monthCount=0
+
+  // ---------- 数据 ----------
+  function loadTypes(){return get('/expense-types').then(function(d){types=Array.isArray(d)?d:[];renderChips()})}
+  function loadRecords(){
+    return get('/expenses?typeId='+encodeURIComponent(selectedTypeId)+'&pageNum=1&pageSize=100').then(function(d){
+      records=(d&&d.records)?d.records:[]
+      renderList()
+    })
+  }
+  // 本月统计：startDate=月初 ~ endDate=今天（修正小程序端「标签写本月、实际全量」的缺口）
+  function loadMonth(){
+    var now=new Date(),y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,'0')
+    var start=y+'-'+m+'-01',end=y+'-'+m+'-'+String(now.getDate()).padStart(2,'0')
+    return get('/expenses?startDate='+start+'&endDate='+end+'&pageNum=1&pageSize=999').then(function(d){
+      var arr=(d&&d.records)?d.records:[]
+      monthAmount=arr.reduce(function(s,i){return s+Number(i.amount||0)},0)
+      monthCount=arr.length
+      renderSummary()
+    })
+  }
+
+  // ---------- 渲染 ----------
+  function renderSummary(){
+    document.getElementById('storeName').textContent=STORE||'--'
+    document.getElementById('sumAmount').textContent='¥'+fmtMoney(monthAmount)
+    document.getElementById('sumCount').textContent='共 '+monthCount+' 笔记录'
+  }
+  function renderChips(){
+    var html='<span class="chip'+(selectedTypeId?'':' on')+'" data-id="">全部类型</span>'
+    types.forEach(function(t){
+      html+='<span class="chip'+(selectedTypeId===t.typeId?' on':'')+'" data-id="'+esc(t.typeId)+'">'+esc(t.name)+'</span>'
+    })
+    document.getElementById('chipRow').innerHTML=html
+  }
+  function voucherLabel(r){return r.voucherUrl?'已上传凭证':'未上传凭证'}
+  function renderList(){
+    var html=''
+    if(!records.length){html='<div class="empty">暂无支出记录</div>'}
+    else{
+      var lastDate=''
+      records.forEach(function(r){
+        var d=r.occurredDate||''
+        if(d!==lastDate){lastDate=d;html+='<div class="group"><div class="group-label">'+esc(d)+'</div>'}
+        html+='<div class="exp-card" data-id="'+esc(r.expenseId)+'">'
+          +'<div class="ec-icon">'+esc((r.typeName||'支').charAt(0))+'</div>'
+          +'<div class="ec-info">'
+          +'<div class="ec-top"><span class="ec-name">'+esc(r.typeName)+'</span><span class="ec-amount">¥'+fmtMoney(r.amount)+'</span></div>'
+          +(r.firstItemName?'<span class="ec-desc mat-info">'+esc(r.firstItemName)+((r.itemCount||0)>1?' 等'+r.itemCount+'项':'')+'</span>':'')
+          +'<span class="ec-desc">'+esc(r.remark||'--')+'</span>'
+          +'<div class="ec-meta"><span>'+esc(r.handlerName)+' · '+esc(d)+'</span><span class="ec-voucher'+(r.voucherUrl?' has':'')+'">'+voucherLabel(r)+'</span></div>'
+          +'</div><span class="ec-arrow">›</span></div>'
+      })
+    }
+    document.getElementById('listBox').innerHTML=html
+  }
+
+  // ---------- 交互 ----------
+  function selectType(id){selectedTypeId=id;renderChips();showLoading();loadRecords().catch(handleErr).finally(hideLoading)}
+  function goForm(){location.href='expense-form.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)}
+  function goDetail(id){location.href='expense-detail.html?expenseId='+encodeURIComponent(id)+'&token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)}
+
+  document.getElementById('chipRow').addEventListener('click',function(e){
+    var chip=e.target.closest('.chip');if(!chip)return
+    selectType(chip.getAttribute('data-id')||'')
+  })
+  document.getElementById('listBox').addEventListener('click',function(e){
+    var card=e.target.closest('.exp-card');if(!card)return
+    goDetail(card.getAttribute('data-id'))
+  })
+  document.getElementById('fabBtn').addEventListener('click',goForm)
+
+  // ---------- 启动 ----------
+  if(!TOKEN){showToast('登录已过期，请重新进入小程序')}
+  renderSummary()
+  showLoading()
+  Promise.all([loadTypes(),loadRecords(),loadMonth()]).catch(handleErr).finally(hideLoading)
+})()
+</script>
+</body>
+</html>

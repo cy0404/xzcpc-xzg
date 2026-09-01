@@ -429,6 +429,31 @@ async function goComplaintForStore(store: any) {
   goComplaint()
 }
 
+// 支出登记 H5 入口（web-view 打开，token 走 URL；导航时动态构建保证 token 最新）
+function goExpense() {
+  const token = uni.getStorageSync('token') || userStore.token || ''
+  const storeName = userStore.storeName || ''
+  const h5url = H5_BASE + '/upload/h5/expense-list.html?v=1&token=' + encodeURIComponent(token) + '&storeName=' + encodeURIComponent(storeName)
+  uni.navigateTo({ url: '/pages/common/webview/index?url=' + encodeURIComponent(h5url) + '&title=' + encodeURIComponent('支出登记') })
+}
+
+// 支出卡片入口（单店视图）：确保 token 切到当前门店再进支出页
+async function goExpenseEntry() {
+  if (scope.value !== userStore.storeId) {
+    try {
+      const data: any = await switchStore(scope.value as string)
+      if (data?.token) {
+        uni.setStorageSync('token', data.token)
+        userStore.token = data.token
+      }
+      userStore.storeId = data?.storeId || scope.value
+      userStore.storeName = data?.storeName || userStore.storeName || ''
+      userStore.chatId = data?.chatId || ''
+    } catch { /* ignore */ }
+  }
+  goExpense()
+}
+
 // 智能订货 H5 入口（goPendingItem 已先切门店，此处动态构建保证 token 最新）
 function buildSmartOrderUrl(): string {
   const token = uni.getStorageSync('token') || userStore.token || ''
@@ -525,7 +550,7 @@ async function goPendingItem(item: PendingItem) {
           <text class="ov-label">昨日销售</text>
           <text class="ov-val">{{ yesterdaySales > 0 ? '¥' + yesterdaySales.toLocaleString() : '--' }}</text>
         </view>
-        <view class="ov-item" @click="go('/pages/expense/list/index')">
+        <view class="ov-item" @click="goExpenseEntry()">
           <text class="ov-label">昨日支出</text>
           <text class="ov-val">{{ yesterdayExpense > 0 ? '¥' + yesterdayExpense.toLocaleString() : '--' }}</text>
         </view>
@@ -577,7 +602,7 @@ async function goPendingItem(item: PendingItem) {
     <section v-if="!scopeAll" class="section">
       <text class="sec-title sec-title-block">常用工具</text>
       <view class="tool-grid">
-        <view class="tool-card tool-blue" @click="go('/pages/expense/list/index')">
+        <view class="tool-card tool-blue" @click="goExpenseEntry()">
           <text class="tc-title">新增支出</text>
           <text class="tc-desc">记录门店费用</text>
           <text class="tc-icon">🧾</text>
