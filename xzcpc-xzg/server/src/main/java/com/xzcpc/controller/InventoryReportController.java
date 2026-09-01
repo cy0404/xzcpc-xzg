@@ -2,10 +2,10 @@ package com.xzcpc.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.xzcpc.common.response.R;
-import com.xzcpc.expense.entity.ExpenseRecord;
 import com.xzcpc.expense.entity.SelfPurchaseMaterial;
-import com.xzcpc.expense.mapper.ExpenseRecordMapper;
+import com.xzcpc.expense.entity.SelfPurchaseMaterialItem;
 import com.xzcpc.expense.mapper.SelfPurchaseMaterialMapper;
+import com.xzcpc.expense.mapper.SelfPurchaseMaterialItemMapper;
 import com.xzcpc.mp.entity.LossReport;
 import com.xzcpc.mp.entity.LossReportItem;
 import com.xzcpc.mp.entity.LossReportLog;
@@ -54,12 +54,12 @@ public class InventoryReportController {
     private final TaskMapper taskMapper;
     private final TaskMaterialSummaryMapper taskMaterialSummaryMapper;
     private final TaskZoneMaterialMapper taskZoneMaterialMapper;
-    private final ExpenseRecordMapper expenseRecordMapper;
     private final MaterialInventoryRuleMapper ruleMapper;
     private final MaterialConversionRuleMapper conversionMapper;
     private final StoreWorkHoursMapper workHoursMapper;
     private final StoreMapper storeMapper;
     private final SelfPurchaseMaterialMapper selfPurchaseMaterialMapper;
+    private final SelfPurchaseMaterialItemMapper selfPurchaseMaterialItemMapper;
     private final LossReportMapper lossReportMapper;
     private final LossReportLogMapper lossReportLogMapper;
     private final LossReportItemMapper lossReportItemMapper;
@@ -321,39 +321,61 @@ public class InventoryReportController {
         List<String> monthList = parseList(months);
         List<String> storeIdList = parseList(storeIds);
 
-        LambdaQueryWrapper<ExpenseRecord> w = new LambdaQueryWrapper<ExpenseRecord>()
-                .ne(ExpenseRecord::getFirstTypeName, "自购成本");
+        // 原生 SQL 绕过 @TableLogic：软删记录也下发（delFlag 由调用方自行判断，兑现接口文档承诺）；
+        // itemName 取当前有效明细的首条（明细软删重建后主表 item_name 已不维护，存量记录兜底主表值）
+        StringBuilder sql = new StringBuilder(
+                "SELECT e.store_id, e.store_miniapp_no, e.store_name, e.expense_id, e.first_type_name,"
+                        + " e.type_name, e.item_name, e.amount, e.occurred_date, e.created_at, e.del_flag,"
+                        + " (SELECT eri.item_name FROM expense_record_item eri"
+                        + "   WHERE eri.expense_id = e.expense_id AND eri.del_flag = 0"
+                        + "   ORDER BY eri.sort_no ASC, eri.id ASC LIMIT 1) AS first_item_name"
+                        + " FROM expense_record e"
+                        + " WHERE e.first_type_name != '自购成本'");
+        List<Object> params = new ArrayList<>();
         if (!monthList.isEmpty()) {
-            for (String m : monthList) {
-                LocalDate s = LocalDate.parse(m + "-01");
-                w.and(wp -> wp.between(ExpenseRecord::getOccurredDate, s, s.plusMonths(1).minusDays(1)));
+            sql.append(" AND (");
+            for (int i = 0; i < monthList.size(); i++) {
+                if (i > 0) sql.append(" OR ");
+                LocalDate s = LocalDate.parse(monthList.get(i) + "-01");
+                sql.append("(e.occurred_date BETWEEN ? AND ?)");
+                params.add(s);
+                params.add(s.plusMonths(1).minusDays(1));
             }
+            sql.append(")");
         }
-        if (!storeIdList.isEmpty()) w.in(ExpenseRecord::getStoreId, storeIdList);
-        w.orderByDesc(ExpenseRecord::getOccurredDate).orderByDesc(ExpenseRecord::getId);
+        if (!storeIdList.isEmpty()) {
+            sql.append(" AND e.store_id IN (");
+            sql.append(storeIdList.stream().map(s -> "?").collect(Collectors.joining(",")));
+            sql.append(")");
+            params.addAll(storeIdList);
+        }
+        sql.append(" ORDER BY e.occurred_date DESC, e.id DESC");
 
-        List<ExpenseRecord> all = expenseRecordMapper.selectList(w);
+        List<Map<String, Object>> all = jdbcTemplate.queryForList(sql.toString(), params.toArray());
         Map<String, Map<String, Object>> storeMap = new LinkedHashMap<>();
-        for (ExpenseRecord r : all) {
-            Map<String, Object> store = storeMap.computeIfAbsent(nvl(r.getStoreId()), k -> {
+        for (Map<String, Object> r : all) {
+            String storeId = nvl((String) r.get("store_id"));
+            Map<String, Object> store = storeMap.computeIfAbsent(storeId, k -> {
                 Map<String, Object> s = new LinkedHashMap<>();
-                s.put("storeId", r.getStoreId());
-                s.put("storeXiaochengxuId", nvl(r.getStoreMiniappNo()));
-                s.put("storeName", nvl(r.getStoreName()));
+                s.put("storeId", storeId);
+                s.put("storeXiaochengxuId", nvl((String) r.get("store_miniapp_no")));
+                s.put("storeName", nvl((String) r.get("store_name")));
                 s.put("expenses", new ArrayList<Map<String, Object>>());
                 return s;
             });
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("expenseMonth", r.getOccurredDate() != null
-                    ? r.getOccurredDate().getYear() + "-" + String.format("%02d", r.getOccurredDate().getMonthValue()) : "");
-            item.put("firstTypeName", nvl(r.getFirstTypeName()));
-            item.put("typeName", nvl(r.getTypeName()));
-            item.put("itemName", nvl(r.getItemName()));
-            item.put("expenseId", nvl(r.getExpenseId()));
-            item.put("amount", r.getAmount());
-            item.put("occurredDate", r.getOccurredDate() != null ? r.getOccurredDate().toString() : "");
-            item.put("createdAt", r.getCreatedAt() != null ? r.getCreatedAt().toString().replace("T", " ") : "");
-            item.put("delFlag", r.getDelFlag() != null ? r.getDelFlag() : 0);
+            String occurred = r.get("occurred_date") != null ? r.get("occurred_date").toString() : "";
+            item.put("expenseMonth", occurred.length() >= 7 ? occurred.substring(0, 7) : "");
+            item.put("firstTypeName", nvl((String) r.get("first_type_name")));
+            item.put("typeName", nvl((String) r.get("type_name")));
+            String firstItem = r.get("first_item_name") != null ? r.get("first_item_name").toString() : "";
+            item.put("itemName", StringUtils.hasText(firstItem) ? firstItem : nvl((String) r.get("item_name")));
+            item.put("expenseId", nvl((String) r.get("expense_id")));
+            item.put("amount", r.get("amount"));
+            item.put("occurredDate", occurred);
+            String createdAt = r.get("created_at") != null ? r.get("created_at").toString() : "";
+            item.put("createdAt", createdAt.length() > 19 ? createdAt.substring(0, 19) : createdAt);
+            item.put("delFlag", r.get("del_flag") != null ? r.get("del_flag") : 0);
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> expenses = (List<Map<String, Object>>) store.get("expenses");
             expenses.add(item);
@@ -390,33 +412,67 @@ public class InventoryReportController {
 
         List<SelfPurchaseMaterial> all = selfPurchaseMaterialMapper.selectList(w);
         List<Map<String, Object>> records = new ArrayList<>();
-        for (SelfPurchaseMaterial r : all) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("storeId", nvl(r.getStoreId()));
-            item.put("storeXiaochengxuId", nvl(r.getStoreMiniappNo()));
-            item.put("storeName", nvl(r.getStoreName()));
-            item.put("bizCode", nvl(r.getBizCode()));
-            item.put("parentCategory", nvl(r.getParentCategory()));
-            item.put("category", nvl(r.getCategory()));
-            item.put("materialId", nvl(r.getMaterialId()));
-            item.put("materialName", nvl(r.getMaterialName()));
-            item.put("unit", nvl(r.getUnit()));
-            item.put("purchaseMonth", nvl(r.getPurchaseMonth()));
-            item.put("purchaseDate", r.getPurchaseDate() != null ? r.getPurchaseDate().toString() : "");
-            item.put("purchaseQty", r.getPurchaseQty());
-            item.put("unitPrice", r.getUnitPrice());
-            item.put("totalAmount", r.getTotalAmount());
-            item.put("handlerName", nvl(r.getHandlerName()));
-            item.put("remark", nvl(r.getRemark()));
-            item.put("voucherUrl", nvl(r.getVoucherUrl()));
-            item.put("createdAt", r.getCreatedAt() != null ? r.getCreatedAt().toString().replace("T", " ") : "");
-            records.add(item);
+
+        // 多物料：主表铺平到明细，每物料一行
+        if (!all.isEmpty()) {
+            List<String> bizCodes = all.stream().map(SelfPurchaseMaterial::getBizCode)
+                    .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+            Map<String, List<SelfPurchaseMaterialItem>> itemsByBiz = Collections.emptyMap();
+            if (!bizCodes.isEmpty()) {
+                itemsByBiz = selfPurchaseMaterialItemMapper.selectList(
+                                new LambdaQueryWrapper<SelfPurchaseMaterialItem>()
+                                        .in(SelfPurchaseMaterialItem::getBizCode, bizCodes)
+                                        .orderByAsc(SelfPurchaseMaterialItem::getSortNo))
+                        .stream().collect(Collectors.groupingBy(SelfPurchaseMaterialItem::getBizCode));
+            }
+            for (SelfPurchaseMaterial r : all) {
+                List<SelfPurchaseMaterialItem> items = itemsByBiz.getOrDefault(r.getBizCode(), Collections.emptyList());
+                if (items.isEmpty()) {
+                    // 迁移前无明细的兜底：直接返回主表行（业务ID = 支出业务ID + "-" + 主表自增ID，保证唯一）
+                    records.add(buildSpmRow(r, r.getBizCode() + "-" + r.getId(), r.getMaterialName(),
+                            r.getParentCategory(), r.getCategory(),
+                            r.getMaterialId(), r.getUnit(), r.getPurchaseQty(), r.getUnitPrice(), r.getTotalAmount()));
+                    continue;
+                }
+                for (SelfPurchaseMaterialItem it : items) {
+                    // 多明细铺平一行一条：业务ID = 支出业务ID + "-" + 明细行自增ID，每行唯一（编辑后明细软删重建，行 id 随之更新）
+                    records.add(buildSpmRow(r, r.getBizCode() + "-" + it.getId(), it.getMaterialName(),
+                            it.getParentCategory(), it.getCategory(),
+                            it.getMaterialId(), it.getUnit(), it.getPurchaseQty(), it.getUnitPrice(), it.getTotalAmount()));
+                }
+            }
         }
 
         int total = records.size();
         int from = Math.min((pageNum - 1) * pageSize, total);
         int to = Math.min(from + pageSize, total);
         return R.ok(pageResult(records.subList(from, to), total, pageNum, pageSize));
+    }
+
+    /** 自购成本报表行：主表头信息 + 物料行字段 */
+    private Map<String, Object> buildSpmRow(SelfPurchaseMaterial r, String bizCode, String materialName,
+                                            String parentCategory, String category, String materialId, String unit,
+                                            BigDecimal purchaseQty, BigDecimal unitPrice, BigDecimal totalAmount) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("storeId", nvl(r.getStoreId()));
+        item.put("storeXiaochengxuId", nvl(r.getStoreMiniappNo()));
+        item.put("storeName", nvl(r.getStoreName()));
+        item.put("bizCode", nvl(bizCode));
+        item.put("parentCategory", nvl(parentCategory));
+        item.put("category", nvl(category));
+        item.put("materialId", nvl(materialId));
+        item.put("materialName", nvl(materialName));
+        item.put("unit", nvl(unit));
+        item.put("purchaseMonth", nvl(r.getPurchaseMonth()));
+        item.put("purchaseDate", r.getPurchaseDate() != null ? r.getPurchaseDate().toString() : "");
+        item.put("purchaseQty", purchaseQty);
+        item.put("unitPrice", unitPrice);
+        item.put("totalAmount", totalAmount);
+        item.put("handlerName", nvl(r.getHandlerName()));
+        item.put("remark", nvl(r.getRemark()));
+        item.put("voucherUrl", nvl(r.getVoucherUrl()));
+        item.put("createdAt", r.getCreatedAt() != null ? r.getCreatedAt().toString().replace("T", " ") : "");
+        return item;
     }
 
     // ---------- 店铺总工资 ----------

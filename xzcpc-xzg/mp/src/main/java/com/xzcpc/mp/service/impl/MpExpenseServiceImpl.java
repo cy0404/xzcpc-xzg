@@ -319,9 +319,9 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         validateItems(itemList);
 
         SelfPurchaseMaterial spm = new SelfPurchaseMaterial();
-        String spmId = StringUtils.hasText(fixedBizCode) ? fixedBizCode
-                : "SPM" + LocalDateTime.now().format(DTF) + String.format("%03d", (int)(Math.random() * 1000));
-        spm.setBizCode(spmId);
+        // 先插 TMP_ 临时号拿自增主键，再回填正式业务号（"SPM"+分钟+自增id，数据库分配单调递增，杜绝并发撞号）
+        boolean fixedBiz = StringUtils.hasText(fixedBizCode);
+        spm.setBizCode(fixedBiz ? fixedBizCode : "TMP_" + System.nanoTime());
         spm.setStoreId(storeId);
         spm.setStoreName(StringUtils.hasText(storeName) ? storeName : "未知门店");
         spm.setStoreMiniappNo(miniappNo);
@@ -334,6 +334,14 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         spm.setVoucherUrl(trimToNull(req.getVoucherUrl()));
         spm.setRemark(trimToNull(req.getRemark()));
         spmMapper.insert(spm);
+        String spmId;
+        if (fixedBiz) {
+            spmId = fixedBizCode;
+        } else {
+            spmId = "SPM" + LocalDateTime.now().format(DTF) + spm.getId();
+            spm.setBizCode(spmId);
+            spmMapper.updateById(spm);
+        }
         insertItems(spmId, itemList);
 
         // 返回一个虚拟 ExpenseRecord 供前端展示
