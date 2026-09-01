@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { fetchExpenseDetail, fetchExpenseMaterial, deleteExpense, type ExpenseRecord } from '@/api/expense'
+import { fetchExpenseDetail, fetchExpenseItems, deleteExpense, type ExpenseItem, type ExpenseRecord } from '@/api/expense'
 import Skeleton from '@/components/Skeleton.vue'
 
+const SELF_PURCHASE = '自购食材'
 const expenseId = ref('')
 const loading = ref(true)
 const detail = ref<ExpenseRecord | null>(null)
-const material = ref<any>(null)
+const items = ref<ExpenseItem[]>([])
 const showDelete = ref(false)
 const deleting = ref(false)
 
@@ -25,9 +26,7 @@ async function loadDetail() {
   loading.value = true
   try {
     detail.value = await fetchExpenseDetail(expenseId.value) as any
-    if (detail.value?.typeName === '自购食材') {
-      material.value = await fetchExpenseMaterial(expenseId.value)
-    }
+    try { items.value = await fetchExpenseItems(expenseId.value) } catch { items.value = [] }
   } finally { loading.value = false }
 }
 function goEdit() { uni.navigateTo({ url: `/pages/expense/form/index?expenseId=${expenseId.value}` }) }
@@ -54,14 +53,18 @@ function fmtMoney(n: number) { return Number(n || 0).toFixed(2) }
         <view class="row"><text class="rk">经手人</text><text class="rv">{{ detail.handlerName }}</text></view>
       </view>
 
-      <!-- 物料明细 -->
-      <view v-if="material" class="card">
-        <text class="card-title">📦 物料明细</text>
-        <view class="row"><text class="rk">物料名称</text><text class="rv">{{ material.materialName }}</text></view>
-        <view class="row"><text class="rk">分类</text><text class="rv">{{ material.parentCategory }} · {{ material.category }}</text></view>
-        <view class="row"><text class="rk">数量</text><text class="rv">{{ material.purchaseQty }} {{ material.unit || 'kg' }}</text></view>
-        <view class="row"><text class="rk">单价</text><text class="rv">¥{{ material.unitPrice ? Number(material.unitPrice).toFixed(2) : '--' }}</text></view>
-        <view class="row"><text class="rk">合计</text><text class="rv">¥{{ material.totalAmount ? Number(material.totalAmount).toFixed(2) : '--' }}</text></view>
+      <!-- 明细 -->
+      <view v-if="items.length" class="card">
+        <text class="card-title">{{ detail.typeName === SELF_PURCHASE ? '📦 物料明细' : '💰 支出明细' }}</text>
+        <view v-for="(it, idx) in items" :key="idx" class="row">
+          <text class="rk">{{ it.name }}</text>
+          <text v-if="detail.typeName === SELF_PURCHASE" class="rv">{{ it.qty }} {{ it.unit || 'kg' }} × ¥{{ fmtMoney(it.unitPrice) }} = ¥{{ fmtMoney(it.amount) }}</text>
+          <text v-else class="rv">¥{{ fmtMoney(it.amount) }}</text>
+        </view>
+        <view class="row last">
+          <text class="rk">合计</text>
+          <text class="rv total">¥{{ fmtMoney(detail.amount) }}</text>
+        </view>
       </view>
 
       <!-- 凭证 -->
@@ -108,7 +111,7 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .hero-amount{display:block;font-size:72rpx;font-weight:800}.hero-type{display:block;margin-top:12rpx;font-size:28rpx;opacity:.8}
 .card{background:$s;border-radius:20rpx;padding:28rpx;border:2rpx solid $b;margin-bottom:24rpx}
 .card-title{display:block;font-size:26rpx;font-weight:600;color:$t3;margin-bottom:12rpx}
-.row{display:flex;justify-content:space-between;padding:18rpx 0;border-bottom:2rpx solid #EEF1EF}.row.last{border:0}.rk{font-size:28rpx;color:$t2}.rv{font-size:28rpx;color:$t1}
+.row{display:flex;justify-content:space-between;gap:16rpx;padding:18rpx 0;border-bottom:2rpx solid #EEF1EF}.row.last{border:0}.rk{font-size:28rpx;color:$t2;flex-shrink:0}.rv{font-size:28rpx;color:$t1;text-align:right}.rv.total{color:$p;font-weight:700}
 .voucher-photo{width:100%;border-radius:12rpx;margin-top:8rpx}
 .tip{padding:20rpx;text-align:center;font-size:24rpx;color:$t3}
 .bottom-bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;gap:20rpx;padding:20rpx 32rpx calc(env(safe-area-inset-bottom) + 20rpx);background:$s;border-top:2rpx solid #EEF1EF}

@@ -5,13 +5,18 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.xzcpc.common.exception.BusinessException;
 import com.xzcpc.expense.entity.ExpenseRecord;
+import com.xzcpc.expense.entity.ExpenseRecordItem;
 import com.xzcpc.expense.entity.ExpenseType;
 import com.xzcpc.common.model.StoreInfo;
+import com.xzcpc.expense.mapper.ExpenseRecordItemMapper;
 import com.xzcpc.expense.mapper.ExpenseRecordMapper;
 import com.xzcpc.expense.mapper.ExpenseTypeMapper;
+import com.xzcpc.mp.dto.ExpenseItemVO;
 import com.xzcpc.mp.dto.MpExpenseSaveReq;
 import com.xzcpc.expense.entity.SelfPurchaseMaterial;
+import com.xzcpc.expense.entity.SelfPurchaseMaterialItem;
 import com.xzcpc.expense.mapper.SelfPurchaseMaterialMapper;
+import com.xzcpc.expense.mapper.SelfPurchaseMaterialItemMapper;
 import com.xzcpc.mp.service.MpExpenseService;
 import com.xzcpc.task.service.StoreService;
 import lombok.RequiredArgsConstructor;
@@ -24,8 +29,12 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,12 +44,15 @@ public class MpExpenseServiceImpl implements MpExpenseService {
     private static final java.time.format.DateTimeFormatter DTF = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmm");
 
     private static final String SELF_PURCHASE_TYPE = "自购食材";
+    private static final int SELF_PURCHASE_MAX_ITEMS = 10;
 
     private final ExpenseTypeMapper expenseTypeMapper;
     private final ExpenseRecordMapper expenseRecordMapper;
+    private final ExpenseRecordItemMapper expenseRecordItemMapper;
     private final StoreService storeService;
     private final Cache<String, List<ExpenseType>> typeCache;
     private final SelfPurchaseMaterialMapper spmMapper;
+    private final SelfPurchaseMaterialItemMapper spmItemMapper;
 
     @Override
     public List<ExpenseType> listTypes() {
@@ -141,9 +153,60 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         int to = Math.min(from + pageSize, total);
         List<ExpenseRecord> paged = all.subList(from, to);
 
+        // 明细概要：批量查两类明细，填充 firstItemName/itemCount（消除前端逐笔查询的 N+1）
+        if (!paged.isEmpty()) {
+            Map<String, List<ExpenseRecordItem>> itemsByExpense = batchLoadRecordItems(paged);
+            Map<String, List<SelfPurchaseMaterialItem>> spmItemsByBiz = batchLoadSpmItems(paged);
+            for (ExpenseRecord r : paged) {
+                List<ExpenseRecordItem> its = r.getId() != null
+                        ? itemsByExpense.getOrDefault(r.getExpenseId(), Collections.emptyList())
+                        : Collections.emptyList();
+                List<SelfPurchaseMaterialItem> sIts = r.getId() == null
+                        ? spmItemsByBiz.getOrDefault(r.getExpenseId(), Collections.emptyList())
+                        : Collections.emptyList();
+                if (!its.isEmpty()) {
+                    r.setFirstItemName(its.get(0).getItemName());
+                    r.setItemCount(its.size());
+                } else if (!sIts.isEmpty()) {
+                    r.setFirstItemName(sIts.get(0).getMaterialName());
+                    r.setItemCount(sIts.size());
+                }
+            }
+        }
+
         Page<ExpenseRecord> result = new Page<>(pageNum, pageSize, total);
         result.setRecords(paged);
         return result;
+    }
+
+    /** 批量查 expense_record 的明细（分页记录中主键 id 非空 = expense_record 行） */
+    private Map<String, List<ExpenseRecordItem>> batchLoadRecordItems(List<ExpenseRecord> records) {
+        List<String> ids = records.stream()
+                .filter(r -> r.getId() != null)
+                .map(ExpenseRecord::getExpenseId)
+                .filter(StringUtils::hasText)
+                .distinct().collect(Collectors.toList());
+        if (ids.isEmpty()) return Collections.emptyMap();
+        return expenseRecordItemMapper.selectList(new LambdaQueryWrapper<ExpenseRecordItem>()
+                        .in(ExpenseRecordItem::getExpenseId, ids)
+                        .orderByAsc(ExpenseRecordItem::getSortNo)
+                        .orderByAsc(ExpenseRecordItem::getId))
+                .stream().collect(Collectors.groupingBy(ExpenseRecordItem::getExpenseId, LinkedHashMap::new, Collectors.toList()));
+    }
+
+    /** 批量查 self_purchase_material 的明细（分页记录中主键 id 为空 = spm 虚拟记录） */
+    private Map<String, List<SelfPurchaseMaterialItem>> batchLoadSpmItems(List<ExpenseRecord> records) {
+        List<String> ids = records.stream()
+                .filter(r -> r.getId() == null)
+                .map(ExpenseRecord::getExpenseId)
+                .filter(StringUtils::hasText)
+                .distinct().collect(Collectors.toList());
+        if (ids.isEmpty()) return Collections.emptyMap();
+        return spmItemMapper.selectList(new LambdaQueryWrapper<SelfPurchaseMaterialItem>()
+                        .in(SelfPurchaseMaterialItem::getBizCode, ids)
+                        .orderByAsc(SelfPurchaseMaterialItem::getSortNo)
+                        .orderByAsc(SelfPurchaseMaterialItem::getId))
+                .stream().collect(Collectors.groupingBy(SelfPurchaseMaterialItem::getBizCode, LinkedHashMap::new, Collectors.toList()));
     }
 
     private boolean isSelfPurchaseTypeId(String typeId) {
@@ -203,20 +266,26 @@ public class MpExpenseServiceImpl implements MpExpenseService {
     @Transactional(rollbackFor = Exception.class)
     public ExpenseRecord create(String storeId, String storeName, MpExpenseSaveReq req) {
         requireStore(storeId);
-        ExpenseType type = expenseTypeMapper.selectOne(new LambdaQueryWrapper<ExpenseType>()
-                .eq(ExpenseType::getTypeId, req.getTypeId())
-                .eq(ExpenseType::getStatus, STATUS_ENABLED));
-        if (type == null) {
-            throw new BusinessException(400, "支出类型不存在或已停用");
-        }
+        ExpenseType type = findEnabledType(req.getTypeId());
 
         StoreInfo store = storeService.getStoreById(storeId);
         String miniappNo = store != null ? store.getXiaochengxuid() : null;
 
         // 自购食材只存 self_purchase_material，不存 expense_record
         if (SELF_PURCHASE_TYPE.equals(type.getName())) {
-            return createSelfPurchaseOnly(storeId, storeName, miniappNo, type, req);
+            return createSelfPurchaseOnly(storeId, storeName, miniappNo, type, req, null);
         }
+        return createExpenseRecordOnly(storeId, storeName, store, type, req, null);
+    }
+
+    /** 非自购类型：expense_record 一单一行；有明细时 amount = Σ 明细，明细写 expense_record_item */
+    private ExpenseRecord createExpenseRecordOnly(String storeId, String storeName, StoreInfo store,
+                                                   ExpenseType type, MpExpenseSaveReq req, String fixedExpenseId) {
+        List<MpExpenseSaveReq.AmountItem> itemList = resolveAmountItems(req);
+        if (itemList != null) {
+            validateAmountItems(itemList);
+        }
+        String miniappNo = store != null ? store.getXiaochengxuid() : null;
 
         ExpenseRecord record = new ExpenseRecord();
         record.setStoreId(storeId);
@@ -227,44 +296,45 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         record.setTypeName(type.getName());
         record.setFirstTypeId(nvl(type.getFirstTypeId()));
         record.setFirstTypeName(nvl(type.getFirstTypeName()));
-        record.setAmount(req.getAmount());
+        record.setAmount(itemList != null ? calcPlainTotal(itemList) : req.getAmount());
         record.setOccurredDate(req.getOccurredDate());
         record.setHandlerName(req.getHandlerName().trim());
         record.setVoucherUrl(trimToNull(req.getVoucherUrl()));
         record.setRemark(trimToNull(req.getRemark()));
-        record.setExpenseId("TMP_" + System.nanoTime());
+        record.setExpenseId(StringUtils.hasText(fixedExpenseId) ? fixedExpenseId : "TMP_" + System.nanoTime());
         expenseRecordMapper.insert(record);
-        record.setExpenseId("EXP" + LocalDateTime.now().format(DTF) + String.format("%03d", record.getId() % 1000));
-        expenseRecordMapper.updateById(record);
+        if (!StringUtils.hasText(fixedExpenseId)) {
+            record.setExpenseId("EXP" + LocalDateTime.now().format(DTF) + String.format("%03d", record.getId() % 1000));
+            expenseRecordMapper.updateById(record);
+        }
+        if (itemList != null) {
+            insertAmountItems(record.getExpenseId(), itemList);
+        }
         return record;
     }
 
     private ExpenseRecord createSelfPurchaseOnly(String storeId, String storeName, String miniappNo,
-                                                   ExpenseType type, MpExpenseSaveReq req) {
+                                                   ExpenseType type, MpExpenseSaveReq req, String fixedBizCode) {
+        List<MpExpenseSaveReq.ItemReq> itemList = resolveItems(req);
+        validateItems(itemList);
+
         SelfPurchaseMaterial spm = new SelfPurchaseMaterial();
-        String spmId = "SPM" + LocalDateTime.now().format(DTF) + String.format("%03d", (int)(Math.random() * 1000));
+        String spmId = StringUtils.hasText(fixedBizCode) ? fixedBizCode
+                : "SPM" + LocalDateTime.now().format(DTF) + String.format("%03d", (int)(Math.random() * 1000));
         spm.setBizCode(spmId);
         spm.setStoreId(storeId);
         spm.setStoreName(StringUtils.hasText(storeName) ? storeName : "未知门店");
         spm.setStoreMiniappNo(miniappNo);
-        spm.setMaterialId(trimToNull(req.getMaterialId()));
-        spm.setMaterialName(StringUtils.hasText(req.getMaterialName()) ? req.getMaterialName().trim() : "其他");
-        spm.setParentCategory(trimToNull(req.getParentCategory()));
-        spm.setCategory(trimToNull(req.getCategory()));
-        spm.setUnit("kg");
         spm.setPurchaseMonth(req.getOccurredDate() != null
                 ? req.getOccurredDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"))
                 : LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
         spm.setPurchaseDate(req.getOccurredDate());
-        spm.setPurchaseQty(req.getWeight() != null ? req.getWeight() : BigDecimal.ZERO);
-        spm.setUnitPrice(req.getUnitPrice());
-        if (req.getUnitPrice() != null && req.getWeight() != null && req.getWeight().compareTo(BigDecimal.ZERO) > 0) {
-            spm.setTotalAmount(req.getUnitPrice().multiply(req.getWeight()).setScale(2, RoundingMode.HALF_UP));
-        }
+        spm.setTotalAmount(calcTotalAmount(itemList));
         spm.setHandlerName(StringUtils.hasText(req.getHandlerName()) ? req.getHandlerName().trim() : null);
         spm.setVoucherUrl(trimToNull(req.getVoucherUrl()));
         spm.setRemark(trimToNull(req.getRemark()));
         spmMapper.insert(spm);
+        insertItems(spmId, itemList);
 
         // 返回一个虚拟 ExpenseRecord 供前端展示
         ExpenseRecord record = new ExpenseRecord();
@@ -280,6 +350,78 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         return record;
     }
 
+    /** 多物料入参解析：优先 items，兼容旧的扁平单物料字段（包装成单条） */
+    private List<MpExpenseSaveReq.ItemReq> resolveItems(MpExpenseSaveReq req) {
+        if (req.getItems() != null && !req.getItems().isEmpty()) {
+            return req.getItems();
+        }
+        List<MpExpenseSaveReq.ItemReq> list = new ArrayList<>();
+        MpExpenseSaveReq.ItemReq single = new MpExpenseSaveReq.ItemReq();
+        single.setMaterialId(req.getMaterialId());
+        single.setMaterialName(req.getMaterialName());
+        single.setParentCategory(req.getParentCategory());
+        single.setCategory(req.getCategory());
+        single.setWeight(req.getWeight());
+        single.setUnitPrice(req.getUnitPrice());
+        list.add(single);
+        return list;
+    }
+
+    /** 校验自购食材明细：最多 10 条，每条物料名/重量/单价必填且大于 0 */
+    private void validateItems(List<MpExpenseSaveReq.ItemReq> itemList) {
+        if (itemList.size() > SELF_PURCHASE_MAX_ITEMS) {
+            throw new BusinessException(400, "最多添加" + SELF_PURCHASE_MAX_ITEMS + "种物料");
+        }
+        for (MpExpenseSaveReq.ItemReq item : itemList) {
+            if (!StringUtils.hasText(item.getMaterialName())) {
+                throw new BusinessException(400, "请选择物料");
+            }
+            if (item.getWeight() == null || item.getWeight().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(400, "物料[" + item.getMaterialName() + "]请填写重量");
+            }
+            if (item.getUnitPrice() == null || item.getUnitPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(400, "物料[" + item.getMaterialName() + "]请填写单价");
+            }
+        }
+    }
+
+    private BigDecimal calcTotalAmount(List<MpExpenseSaveReq.ItemReq> itemList) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (MpExpenseSaveReq.ItemReq item : itemList) {
+            BigDecimal amt = item.getWeight().multiply(item.getUnitPrice()).setScale(2, RoundingMode.HALF_UP);
+            total = total.add(amt);
+        }
+        return total;
+    }
+
+    private void insertItems(String bizCode, List<MpExpenseSaveReq.ItemReq> itemList) {
+        int sortNo = 0;
+        for (MpExpenseSaveReq.ItemReq item : itemList) {
+            SelfPurchaseMaterialItem spmi = new SelfPurchaseMaterialItem();
+            spmi.setBizCode(bizCode);
+            spmi.setMaterialId(trimToNull(item.getMaterialId()));
+            spmi.setMaterialName(item.getMaterialName().trim());
+            spmi.setParentCategory(trimToNull(item.getParentCategory()));
+            spmi.setCategory(trimToNull(item.getCategory()));
+            spmi.setUnit("kg");
+            spmi.setPurchaseQty(item.getWeight());
+            spmi.setUnitPrice(item.getUnitPrice());
+            spmi.setTotalAmount(item.getWeight().multiply(item.getUnitPrice()).setScale(2, RoundingMode.HALF_UP));
+            spmi.setSortNo(sortNo++);
+            spmItemMapper.insert(spmi);
+        }
+    }
+
+    /** 软删某单的全部明细（编辑重建用） */
+    private void deleteItems(String bizCode) {
+        List<SelfPurchaseMaterialItem> oldItems = spmItemMapper.selectList(
+                new LambdaQueryWrapper<SelfPurchaseMaterialItem>()
+                        .eq(SelfPurchaseMaterialItem::getBizCode, bizCode));
+        for (SelfPurchaseMaterialItem oi : oldItems) {
+            spmItemMapper.deleteById(oi.getId());
+        }
+    }
+
     private void requireStore(String storeId) {
         if (!StringUtils.hasText(storeId)) {
             throw new BusinessException(403, "请先绑定门店");
@@ -289,63 +431,97 @@ public class MpExpenseServiceImpl implements MpExpenseService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ExpenseRecord update(String storeId, String expenseId, MpExpenseSaveReq req, String handlerName) {
-        ExpenseType type = expenseTypeMapper.selectOne(new LambdaQueryWrapper<ExpenseType>()
-                .eq(ExpenseType::getTypeId, req.getTypeId())
-                .eq(ExpenseType::getStatus, STATUS_ENABLED));
-        if (type == null) {
-            throw new BusinessException(400, "支出类型不存在或已停用");
+        ExpenseType type = findEnabledType(req.getTypeId());
+        boolean newIsSelfPurchase = SELF_PURCHASE_TYPE.equals(type.getName());
+
+        // 定位原记录所在表
+        ExpenseRecord oldRecord = expenseRecordMapper.selectOne(new LambdaQueryWrapper<ExpenseRecord>()
+                .eq(ExpenseRecord::getStoreId, storeId)
+                .eq(ExpenseRecord::getExpenseId, expenseId));
+        SelfPurchaseMaterial oldSpm = oldRecord == null
+                ? spmMapper.selectOne(new LambdaQueryWrapper<SelfPurchaseMaterial>()
+                        .eq(SelfPurchaseMaterial::getBizCode, expenseId)
+                        .eq(SelfPurchaseMaterial::getStoreId, storeId))
+                : null;
+        if (oldRecord == null && oldSpm == null) {
+            throw new BusinessException(404, "记录不存在");
+        }
+        if (StringUtils.hasText(handlerName)) {
+            String owner = oldSpm != null ? oldSpm.getHandlerName() : oldRecord.getHandlerName();
+            if (!handlerName.equals(owner)) {
+                throw new BusinessException(403, "只能修改自己登记的支出");
+            }
+        }
+        boolean oldIsSelfPurchase = oldSpm != null;
+
+        // 跨类切换（自购食材 ↔ 其他类型）：软删旧记录，按新类型原地重建（expenseId 不变）
+        if (newIsSelfPurchase != oldIsSelfPurchase) {
+            String storeName = oldSpm != null ? oldSpm.getStoreName() : oldRecord.getStoreName();
+            if (oldIsSelfPurchase) {
+                spmItemMapper.delete(new LambdaQueryWrapper<SelfPurchaseMaterialItem>()
+                        .eq(SelfPurchaseMaterialItem::getBizCode, expenseId));
+                spmMapper.deleteById(oldSpm.getId());
+            } else {
+                deleteAmountItems(expenseId);
+                expenseRecordMapper.deleteById(oldRecord.getId());
+            }
+            StoreInfo store = storeService.getStoreById(storeId);
+            if (newIsSelfPurchase) {
+                return createSelfPurchaseOnly(storeId, storeName,
+                        store != null ? store.getXiaochengxuid() : null, type, req, expenseId);
+            }
+            return createExpenseRecordOnly(storeId, storeName, store, type, req, expenseId);
         }
 
-        // 自购食材：直接从 self_purchase_material 更新
-        if (SELF_PURCHASE_TYPE.equals(type.getName())) {
-            SelfPurchaseMaterial spm = spmMapper.selectOne(new LambdaQueryWrapper<SelfPurchaseMaterial>()
-                    .eq(SelfPurchaseMaterial::getBizCode, expenseId)
-                    .eq(SelfPurchaseMaterial::getStoreId, storeId));
-            if (spm == null) {
-                throw new BusinessException(404, "记录不存在");
-            }
-            spm.setMaterialId(trimToNull(req.getMaterialId()));
-            spm.setMaterialName(StringUtils.hasText(req.getMaterialName()) ? req.getMaterialName().trim() : "其他");
-            spm.setParentCategory(trimToNull(req.getParentCategory()));
-            spm.setCategory(trimToNull(req.getCategory()));
-            spm.setPurchaseDate(req.getOccurredDate());
-            spm.setPurchaseMonth(req.getOccurredDate() != null
+        // 自购食材：主表更新 + 明细软删重建
+        if (newIsSelfPurchase) {
+            List<MpExpenseSaveReq.ItemReq> itemList = resolveItems(req);
+            validateItems(itemList);
+
+            oldSpm.setPurchaseDate(req.getOccurredDate());
+            oldSpm.setPurchaseMonth(req.getOccurredDate() != null
                     ? req.getOccurredDate().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"))
                     : LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM")));
-            BigDecimal qty = req.getWeight() != null ? req.getWeight() : BigDecimal.ZERO;
-            spm.setPurchaseQty(qty);
-            spm.setUnitPrice(req.getUnitPrice());
-            if (req.getUnitPrice() != null && qty.compareTo(BigDecimal.ZERO) > 0) {
-                spm.setTotalAmount(req.getUnitPrice().multiply(qty).setScale(2, RoundingMode.HALF_UP));
-            }
-            spm.setHandlerName(req.getHandlerName().trim());
-            spm.setVoucherUrl(trimToNull(req.getVoucherUrl()));
-            spm.setRemark(trimToNull(req.getRemark()));
-            spmMapper.updateById(spm);
+            oldSpm.setTotalAmount(calcTotalAmount(itemList));
+            oldSpm.setHandlerName(req.getHandlerName().trim());
+            oldSpm.setVoucherUrl(trimToNull(req.getVoucherUrl()));
+            oldSpm.setRemark(trimToNull(req.getRemark()));
+            spmMapper.updateById(oldSpm);
+
+            deleteItems(expenseId);
+            insertItems(expenseId, itemList);
 
             ExpenseRecord record = new ExpenseRecord();
             record.setExpenseId(expenseId);
             record.setTypeId(type.getTypeId());
             record.setTypeName(type.getName());
-            record.setAmount(spm.getTotalAmount() != null ? spm.getTotalAmount() : BigDecimal.ZERO);
+            record.setAmount(oldSpm.getTotalAmount() != null ? oldSpm.getTotalAmount() : BigDecimal.ZERO);
             record.setOccurredDate(req.getOccurredDate());
             record.setHandlerName(req.getHandlerName());
             record.setRemark(req.getRemark());
             return record;
         }
 
-        ExpenseRecord record = detail(storeId, expenseId, handlerName);
-        record.setTypeId(type.getTypeId());
-        record.setTypeName(type.getName());
-        record.setFirstTypeId(nvl(type.getFirstTypeId()));
-        record.setFirstTypeName(nvl(type.getFirstTypeName()));
-        record.setAmount(req.getAmount());
-        record.setOccurredDate(req.getOccurredDate());
-        record.setHandlerName(req.getHandlerName().trim());
-        record.setVoucherUrl(trimToNull(req.getVoucherUrl()));
-        record.setRemark(trimToNull(req.getRemark()));
-        expenseRecordMapper.updateById(record);
-        return record;
+        // 其他类型：expense_record 更新 + 明细软删重建（明细为空时仅清旧明细，金额手填）
+        List<MpExpenseSaveReq.AmountItem> itemList = resolveAmountItems(req);
+        if (itemList != null) {
+            validateAmountItems(itemList);
+        }
+        oldRecord.setTypeId(type.getTypeId());
+        oldRecord.setTypeName(type.getName());
+        oldRecord.setFirstTypeId(nvl(type.getFirstTypeId()));
+        oldRecord.setFirstTypeName(nvl(type.getFirstTypeName()));
+        oldRecord.setAmount(itemList != null ? calcPlainTotal(itemList) : req.getAmount());
+        oldRecord.setOccurredDate(req.getOccurredDate());
+        oldRecord.setHandlerName(req.getHandlerName().trim());
+        oldRecord.setVoucherUrl(trimToNull(req.getVoucherUrl()));
+        oldRecord.setRemark(trimToNull(req.getRemark()));
+        expenseRecordMapper.updateById(oldRecord);
+        deleteAmountItems(expenseId);
+        if (itemList != null) {
+            insertAmountItems(expenseId, itemList);
+        }
+        return oldRecord;
     }
 
     @Override
@@ -359,6 +535,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
             if (StringUtils.hasText(handlerName) && !handlerName.equals(record.getHandlerName())) {
                 throw new BusinessException(403, "只能删除自己登记的支出");
             }
+            deleteAmountItems(expenseId);
             expenseRecordMapper.deleteById(record.getId());
             return;
         }
@@ -380,6 +557,113 @@ public class MpExpenseServiceImpl implements MpExpenseService {
 
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private ExpenseType findEnabledType(String typeId) {
+        ExpenseType type = expenseTypeMapper.selectOne(new LambdaQueryWrapper<ExpenseType>()
+                .eq(ExpenseType::getTypeId, typeId)
+                .eq(ExpenseType::getStatus, STATUS_ENABLED));
+        if (type == null) {
+            throw new BusinessException(400, "支出类型不存在或已停用");
+        }
+        return type;
+    }
+
+    /** 非自购类型明细入参：null = 未提供明细（金额走 req.amount 手填） */
+    private List<MpExpenseSaveReq.AmountItem> resolveAmountItems(MpExpenseSaveReq req) {
+        if (req.getAmountItems() != null && !req.getAmountItems().isEmpty()) {
+            return req.getAmountItems();
+        }
+        return null;
+    }
+
+    /** 校验非自购类型明细：最多 10 条，每条名称/金额必填且金额大于 0 */
+    private void validateAmountItems(List<MpExpenseSaveReq.AmountItem> itemList) {
+        if (itemList.size() > SELF_PURCHASE_MAX_ITEMS) {
+            throw new BusinessException(400, "最多添加" + SELF_PURCHASE_MAX_ITEMS + "项明细");
+        }
+        for (MpExpenseSaveReq.AmountItem item : itemList) {
+            if (!StringUtils.hasText(item.getName())) {
+                throw new BusinessException(400, "请填写明细名称");
+            }
+            if (item.getAmount() == null || item.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(400, "明细[" + item.getName() + "]请填写金额");
+            }
+        }
+    }
+
+    private BigDecimal calcPlainTotal(List<MpExpenseSaveReq.AmountItem> itemList) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (MpExpenseSaveReq.AmountItem item : itemList) {
+            total = total.add(item.getAmount().setScale(2, RoundingMode.HALF_UP));
+        }
+        return total;
+    }
+
+    private void insertAmountItems(String expenseId, List<MpExpenseSaveReq.AmountItem> itemList) {
+        int sortNo = 0;
+        for (MpExpenseSaveReq.AmountItem item : itemList) {
+            ExpenseRecordItem eri = new ExpenseRecordItem();
+            eri.setExpenseId(expenseId);
+            eri.setItemName(item.getName().trim());
+            eri.setAmount(item.getAmount().setScale(2, RoundingMode.HALF_UP));
+            eri.setSortNo(sortNo++);
+            expenseRecordItemMapper.insert(eri);
+        }
+    }
+
+    private void deleteAmountItems(String expenseId) {
+        expenseRecordItemMapper.delete(new LambdaQueryWrapper<ExpenseRecordItem>()
+                .eq(ExpenseRecordItem::getExpenseId, expenseId));
+    }
+
+    @Override
+    public List<ExpenseItemVO> listItems(String storeId, String expenseId) {
+        // 先查 expense_record（普通支出明细）
+        ExpenseRecord record = expenseRecordMapper.selectOne(new LambdaQueryWrapper<ExpenseRecord>()
+                .eq(ExpenseRecord::getStoreId, storeId)
+                .eq(ExpenseRecord::getExpenseId, expenseId));
+        if (record != null) {
+            List<ExpenseItemVO> vos = new ArrayList<>();
+            List<ExpenseRecordItem> items = expenseRecordItemMapper.selectList(new LambdaQueryWrapper<ExpenseRecordItem>()
+                    .eq(ExpenseRecordItem::getExpenseId, expenseId)
+                    .orderByAsc(ExpenseRecordItem::getSortNo)
+                    .orderByAsc(ExpenseRecordItem::getId));
+            for (ExpenseRecordItem it : items) {
+                ExpenseItemVO vo = new ExpenseItemVO();
+                vo.setName(it.getItemName());
+                vo.setAmount(it.getAmount());
+                vo.setSortNo(it.getSortNo());
+                vos.add(vo);
+            }
+            return vos;
+        }
+        // 再查 self_purchase_material（自购食材物料明细）
+        SelfPurchaseMaterial spm = spmMapper.selectOne(new LambdaQueryWrapper<SelfPurchaseMaterial>()
+                .eq(SelfPurchaseMaterial::getBizCode, expenseId)
+                .eq(SelfPurchaseMaterial::getStoreId, storeId));
+        if (spm != null) {
+            List<ExpenseItemVO> vos = new ArrayList<>();
+            List<SelfPurchaseMaterialItem> items = spmItemMapper.selectList(new LambdaQueryWrapper<SelfPurchaseMaterialItem>()
+                    .eq(SelfPurchaseMaterialItem::getBizCode, expenseId)
+                    .orderByAsc(SelfPurchaseMaterialItem::getSortNo)
+                    .orderByAsc(SelfPurchaseMaterialItem::getId));
+            for (SelfPurchaseMaterialItem it : items) {
+                ExpenseItemVO vo = new ExpenseItemVO();
+                vo.setMaterialId(it.getMaterialId());
+                vo.setName(it.getMaterialName());
+                vo.setParentCategory(it.getParentCategory());
+                vo.setCategory(it.getCategory());
+                vo.setUnit(it.getUnit());
+                vo.setQty(it.getPurchaseQty());
+                vo.setUnitPrice(it.getUnitPrice());
+                vo.setAmount(it.getTotalAmount());
+                vo.setSortNo(it.getSortNo());
+                vos.add(vo);
+            }
+            return vos;
+        }
+        return Collections.emptyList();
     }
 
 }

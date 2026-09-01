@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onLoad, onShow, onPullDownRefresh } from '@dcloudio/uni-app'
-import { fetchExpenses, fetchExpenseMaterial, fetchExpenseTypes, type ExpenseRecord, type ExpenseType } from '@/api/expense'
+import { fetchExpenses, fetchExpenseTypes, type ExpenseRecord, type ExpenseType } from '@/api/expense'
 import { useUserStore } from '@/store/user'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
@@ -15,7 +15,6 @@ const total = ref(0)
 const totalCount = ref(0)
 
 const totalAmount = ref(0)
-const materialMap = ref<Record<string, any>>({})
 
 const groupedRecords = computed(() => {
   const groups: { date: string; items: ExpenseRecord[] }[] = []
@@ -37,14 +36,6 @@ async function loadTypes() { types.value = await fetchExpenseTypes() }
 async function loadRecords(reset = false) {
   const data = await fetchExpenses({ typeId: selectedTypeId.value, pageNum: 1, pageSize: 100 })
   total.value = data.total || 0; records.value = data.records || []
-  // 批量加载自购食材物料明细
-  const map: Record<string, any> = {}
-  await Promise.all(records.value
-    .filter(r => r.typeName === '自购食材')
-    .map(async r => {
-      try { map[r.expenseId] = await fetchExpenseMaterial(r.expenseId) } catch { /* ignore */ }
-    }))
-  materialMap.value = map
 }
 async function loadTotal() {
   const data = await fetchExpenses({ pageNum: 1, pageSize: 999 })
@@ -90,8 +81,8 @@ function voucherLabel(item: ExpenseRecord) { return item.voucherUrl ? '已上传
               <text class="ec-name">{{ r.typeName }}</text>
               <text class="ec-amount">¥{{ fmtMoney(r.amount) }}</text>
             </view>
-            <text v-if="materialMap[r.expenseId]" class="ec-desc mat-info">
-              {{ materialMap[r.expenseId].materialName }} · {{ materialMap[r.expenseId].purchaseQty }}{{ materialMap[r.expenseId].unit || 'kg' }} · ¥{{ materialMap[r.expenseId].totalAmount ? Number(materialMap[r.expenseId].totalAmount).toFixed(2) : '--' }}
+            <text v-if="r.firstItemName" class="ec-desc mat-info">
+              {{ r.firstItemName }}{{ (r.itemCount || 0) > 1 ? ` 等${r.itemCount}项` : '' }}
             </text>
             <text class="ec-desc">{{ r.remark || '--' }}</text>
             <view class="ec-meta">

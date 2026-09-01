@@ -24,6 +24,9 @@ export interface ExpenseRecord {
   voucherUrl?: string
   remark?: string
   createdAt?: string
+  /** 明细概要（列表页展示）：首条明细名称 + 条数 */
+  firstItemName?: string
+  itemCount?: number
 }
 
 export interface ExpensePageResp {
@@ -58,6 +61,8 @@ export function createExpense(data: {
   handlerName: string
   voucherUrl?: string
   remark?: string
+  items?: { materialId?: string; materialName: string; parentCategory?: string; category?: string; weight: number; unitPrice: number }[]
+  amountItems?: { name: string; amount: number }[]
 }) {
   return request<ExpenseRecord>({ url: '/expenses', method: 'POST', data })
 }
@@ -69,6 +74,8 @@ export function updateExpense(expenseId: string, data: {
   handlerName: string
   voucherUrl?: string
   remark?: string
+  items?: { materialId?: string; materialName: string; parentCategory?: string; category?: string; weight: number; unitPrice: number }[]
+  amountItems?: { name: string; amount: number }[]
 }) {
   return request<ExpenseRecord>({ url: `/expenses/${expenseId}`, method: 'PUT', data })
 }
@@ -77,8 +84,21 @@ export function deleteExpense(expenseId: string) {
   return request({ url: `/expenses/${expenseId}`, method: 'DELETE' })
 }
 
-export function fetchExpenseMaterial(expenseId: string) {
-  return request<any>({ url: `/expenses/${expenseId}/material` })
+/** 支出明细统一返回体：自购食材=物料（materialId/qty/unitPrice 全填），其他类型=名称+金额 */
+export interface ExpenseItem {
+  materialId?: string
+  name: string
+  parentCategory?: string
+  category?: string
+  unit?: string
+  qty?: number
+  unitPrice?: number
+  amount?: number
+  sortNo?: number
+}
+
+export function fetchExpenseItems(expenseId: string) {
+  return request<ExpenseItem[]>({ url: `/expenses/${expenseId}/items` })
 }
 
 export function uploadVoucher(filePath: string) {

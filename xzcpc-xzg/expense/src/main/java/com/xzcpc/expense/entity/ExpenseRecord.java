@@ -47,4 +47,11 @@ public class ExpenseRecord {
 
     @TableField(exist = false)
     private String supervisorName;
+
+    /** 明细概要（列表页展示用）：首条明细名称 + 明细条数，page() 批量填充 */
+    @TableField(exist = false)
+    private String firstItemName;
+
+    @TableField(exist = false)
+    private Integer itemCount;
 }

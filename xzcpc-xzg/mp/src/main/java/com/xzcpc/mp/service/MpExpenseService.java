@@ -3,6 +3,7 @@ package com.xzcpc.mp.service;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xzcpc.expense.entity.ExpenseRecord;
 import com.xzcpc.expense.entity.ExpenseType;
+import com.xzcpc.mp.dto.ExpenseItemVO;
 import com.xzcpc.mp.dto.MpExpenseSaveReq;
 
 import java.util.List;
@@ -15,6 +16,8 @@ public interface MpExpenseService {
                              int pageNum, int pageSize, String handlerName);
 
     ExpenseRecord detail(String storeId, String expenseId, String handlerName);
+
+    List<ExpenseItemVO> listItems(String storeId, String expenseId);
 
     ExpenseRecord create(String storeId, String storeName, MpExpenseSaveReq req);
 

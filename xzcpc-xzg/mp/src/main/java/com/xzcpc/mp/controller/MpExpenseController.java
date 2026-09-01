@@ -13,9 +13,8 @@ import com.xzcpc.common.model.MaterialInfo;
 import com.xzcpc.expense.service.ExpenseItemService;
 import com.xzcpc.mp.context.LoginUser;
 import com.xzcpc.mp.context.UserContextHolder;
+import com.xzcpc.mp.dto.ExpenseItemVO;
 import com.xzcpc.mp.dto.MpExpenseSaveReq;
-import com.xzcpc.expense.entity.SelfPurchaseMaterial;
-import com.xzcpc.expense.mapper.SelfPurchaseMaterialMapper;
 import com.xzcpc.mp.service.MpExpenseService;
 import com.xzcpc.template.service.MaterialService;
 import jakarta.validation.Valid;
@@ -33,7 +32,6 @@ public class MpExpenseController {
     private final ExpenseItemService itemService;
     private final Cache<String, List<ExpenseItem>> itemCache;
     private final MaterialService materialService;
-    private final SelfPurchaseMaterialMapper spmMapper;
     private final Cache<String, List<MaterialInfo>> materialByCategoryCache;
 
     @OpLog(module = "小程序-物料", operation = "按分类搜索")
@@ -91,13 +89,10 @@ public class MpExpenseController {
         return R.ok(expenseService.update(user.getStoreId(), expenseId, req, handlerName));
     }
 
-    @GetMapping("/expenses/{expenseId}/material")
-    public R<SelfPurchaseMaterial> getMaterial(@PathVariable String expenseId) {
+    @GetMapping("/expenses/{expenseId}/items")
+    public R<List<ExpenseItemVO>> getItems(@PathVariable String expenseId) {
         LoginUser user = UserContextHolder.get();
-        SelfPurchaseMaterial spm = spmMapper.selectOne(new LambdaQueryWrapper<SelfPurchaseMaterial>()
-                .eq(SelfPurchaseMaterial::getBizCode, expenseId)
-                .eq(SelfPurchaseMaterial::getStoreId, user.getStoreId()));
-        return R.ok(spm);
+        return R.ok(expenseService.listItems(user.getStoreId(), expenseId));
     }
 
     @OpLog(module = "小程序-支出", operation = "删除记录")

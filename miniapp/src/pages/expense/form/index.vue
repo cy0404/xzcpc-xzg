@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { createExpense, updateExpense, fetchExpenseDetail, fetchExpenseMaterial, fetchExpenseTypes, uploadVoucher } from '@/api/expense'
+import { createExpense, updateExpense, fetchExpenseDetail, fetchExpenseItems, fetchExpenseTypes, uploadVoucher } from '@/api/expense'
 import { fetchMaterialsByCategory } from '@/api/material'
 import { useUserStore } from '@/store/user'
 
@@ -25,20 +25,71 @@ const voucherPath = ref('')
 const amountFocus = ref(true)
 
 const isSelfPurchase = computed(() => typeName.value === SELF_PURCHASE)
-const selectedMaterial = ref<any>(null)
-const isOtherMaterial = ref(false)
-const matWeight = ref('')
-const matUnitPrice = ref('')
 
-const matTotalAmount = computed(() => {
-  const w = parseFloat(matWeight.value)
-  const p = parseFloat(matUnitPrice.value)
-  if (!w || w <= 0 || !p || p <= 0) return ''
+// 多明细（一次登记最多 10 条）：自购食材=物料型（名称+重量kg+单价），其他类型=名称+金额
+interface MatItem {
+  materialId: string
+  materialName: string
+  parentCategory: string
+  category: string
+  weight: string
+  unitPrice: string
+}
+interface PlainItem {
+  name: string
+  amount: string
+}
+const items = ref<MatItem[]>([])          // 自购食材：物料明细
+const plainItems = ref<PlainItem[]>([])   // 其他类型：名称+金额明细
+const MAX_ITEMS = 10
+
+function itemAmount(it: MatItem): number {
+  const w = parseFloat(it.weight)
+  const p = parseFloat(it.unitPrice)
+  if (!(w > 0) || !(p > 0)) return 0
+  return Math.round(w * p * 100) / 100
+}
+function plainItemAmount(it: PlainItem): number {
+  const a = parseFloat(it.amount)
+  return a > 0 ? Math.round(a * 100) / 100 : 0
+}
+const totalAmount = computed(() => {
+  if (isSelfPurchase.value) {
+    const sum = items.value.reduce((s, it) => s + itemAmount(it), 0)
+    return sum > 0 ? sum.toFixed(2) : ''
+  }
+  const sum = plainItems.value.reduce((s, it) => s + plainItemAmount(it), 0)
+  return sum > 0 ? sum.toFixed(2) : ''
+})
+watch(totalAmount, (val) => {
+  const hasItems = isSelfPurchase.value ? items.value.length > 0 : plainItems.value.length > 0
+  if (val && hasItems) amount.value = val
+})
+const amountDisabled = computed(() => {
+  return isSelfPurchase.value ? items.value.length > 0 : plainItems.value.length > 0
+})
+
+// 自购食材物料：添加/编辑抽屉
+const showDrawer = ref(false)
+const editingIndex = ref(-1)
+const drawerItem = ref<MatItem | null>(null)
+const drawerWeight = ref('')
+const drawerUnitPrice = ref('')
+const drawerAmount = computed(() => {
+  const w = parseFloat(drawerWeight.value)
+  const p = parseFloat(drawerUnitPrice.value)
+  if (!(w > 0) || !(p > 0)) return ''
   return (w * p).toFixed(2)
 })
 
-watch(matTotalAmount, (val) => {
-  if (val && isSelfPurchase.value) amount.value = val
+// 其他类型明细：添加/编辑抽屉
+const showPlainDrawer = ref(false)
+const pEditingIndex = ref(-1)
+const pDrawerName = ref('')
+const pDrawerAmount = ref('')
+const pDrawerTotal = computed(() => {
+  const a = parseFloat(pDrawerAmount.value)
+  return a > 0 ? a.toFixed(2) : ''
 })
 
 const showMatSearch = ref(false)
@@ -70,21 +121,27 @@ onLoad(async (q: any) => {
       voucherPath.value = (vu.startsWith('http') && !vu.includes('127.0.0.1') && !vu.includes('__tmp__') && !vu.includes('://tmp/') && !vu.includes('localhost')) ? vu : ''
       const matched = types.value.find((t: any) => t.typeId === d.typeId)
       if (matched) typeDesc.value = matched.description || ''
-      // 自购食材回填物料信息
-      if (d.typeName === SELF_PURCHASE) {
-        try {
-          const mat = await fetchExpenseMaterial(q.expenseId)
-          if (mat) {
-            if (mat.materialId) {
-              selectedMaterial.value = { id: mat.materialId, materialId: mat.materialId, yuancailiaomingcheng: mat.materialName, materialName: mat.materialName, leibie: mat.parentCategory, parentCategory: mat.parentCategory, leibie2: mat.category, category: mat.category }
-            } else {
-              isOtherMaterial.value = true
-            }
-            matWeight.value = mat.purchaseQty ? String(mat.purchaseQty) : ''
-            matUnitPrice.value = mat.unitPrice ? String(mat.unitPrice) : ''
+      // 回填多明细：自购食材=物料型，其他类型=名称+金额
+      try {
+        const its = await fetchExpenseItems(q.expenseId)
+        if (Array.isArray(its) && its.length) {
+          if (d.typeName === SELF_PURCHASE) {
+            items.value = its.map((mat: any) => ({
+              materialId: mat.materialId || '',
+              materialName: mat.name,
+              parentCategory: mat.parentCategory || '',
+              category: mat.category || '',
+              weight: mat.qty != null ? String(mat.qty) : '',
+              unitPrice: mat.unitPrice != null ? String(mat.unitPrice) : '',
+            }))
+          } else {
+            plainItems.value = its.map((it: any) => ({
+              name: it.name || '',
+              amount: it.amount != null ? String(it.amount) : '',
+            }))
           }
-        } catch { /* ignore */ }
-      }
+        }
+      } catch { /* ignore */ }
     }
   }
 })
@@ -94,9 +151,7 @@ function selectType(item: any) {
   typeName.value = item.name
   typeDesc.value = item.description || ''
   showTypes.value = false
-  if (item.name !== SELF_PURCHASE) {
-    selectedMaterial.value = null; isOtherMaterial.value = false; matWeight.value = ''; matUnitPrice.value = ''
-  }
+  if (item.name === SELF_PURCHASE) { plainItems.value = [] } else { items.value = [] }
 }
 
 function openMatSearch() {
@@ -110,8 +165,60 @@ async function doMatSearch() {
   try { matResults.value = await fetchMaterialsByCategory(MATERIAL_PARENT_CATEGORY, matSearchKey.value) }
   finally { matLoading.value = false }
 }
-function selectMaterial(item: any) { selectedMaterial.value = item; isOtherMaterial.value = false; showMatSearch.value = false }
-function selectOther() { selectedMaterial.value = null; isOtherMaterial.value = true; showMatSearch.value = false }
+function openAddDrawer(m: any) {
+  if (editingIndex.value === -1 && items.value.some(i => i.materialId && i.materialId === (m.id || m.materialId))) {
+    uni.showToast({ title: '该物料已添加', icon: 'none' }); return
+  }
+  drawerItem.value = {
+    materialId: m.id || m.materialId || '',
+    materialName: matDisplayName(m),
+    parentCategory: m.leibie || m.parentCategory || '',
+    category: m.leibie2 || m.category || '',
+    weight: '', unitPrice: '',
+  }
+  drawerWeight.value = ''; drawerUnitPrice.value = ''
+  editingIndex.value = -1
+  showMatSearch.value = false; showDrawer.value = true
+}
+function selectOther() {
+  drawerItem.value = { materialId: '', materialName: '其他', parentCategory: MATERIAL_PARENT_CATEGORY, category: SELF_PURCHASE, weight: '', unitPrice: '' }
+  drawerWeight.value = ''; drawerUnitPrice.value = ''
+  editingIndex.value = -1
+  showMatSearch.value = false; showDrawer.value = true
+}
+function openEditDrawer(idx: number) {
+  const it = items.value[idx]
+  drawerItem.value = { ...it }
+  drawerWeight.value = it.weight; drawerUnitPrice.value = it.unitPrice
+  editingIndex.value = idx
+  showDrawer.value = true
+}
+function closeDrawer() { showDrawer.value = false; drawerItem.value = null; editingIndex.value = -1 }
+function confirmDrawer() {
+  if (!(parseFloat(drawerWeight.value) > 0)) { uni.showToast({ title: '请填写重量', icon: 'none' }); return }
+  if (!(parseFloat(drawerUnitPrice.value) > 0)) { uni.showToast({ title: '请填写单价', icon: 'none' }); return }
+  const item: MatItem = { ...drawerItem.value!, weight: drawerWeight.value, unitPrice: drawerUnitPrice.value }
+  if (editingIndex.value >= 0) { items.value[editingIndex.value] = item } else { items.value.push(item) }
+  closeDrawer()
+}
+function removeItem(idx: number) { items.value.splice(idx, 1) }
+function openPlainAddDrawer() {
+  pDrawerName.value = ''; pDrawerAmount.value = ''; pEditingIndex.value = -1; showPlainDrawer.value = true
+}
+function openPlainEditDrawer(idx: number) {
+  const it = plainItems.value[idx]
+  pDrawerName.value = it.name; pDrawerAmount.value = it.amount; pEditingIndex.value = idx; showPlainDrawer.value = true
+}
+function closePlainDrawer() { showPlainDrawer.value = false; pEditingIndex.value = -1 }
+function confirmPlainDrawer() {
+  const name = pDrawerName.value.trim()
+  if (!name) { uni.showToast({ title: '请填写明细名称', icon: 'none' }); return }
+  if (!(parseFloat(pDrawerAmount.value) > 0)) { uni.showToast({ title: '请填写明细金额', icon: 'none' }); return }
+  const item: PlainItem = { name, amount: pDrawerAmount.value }
+  if (pEditingIndex.value >= 0) { plainItems.value[pEditingIndex.value] = item } else { plainItems.value.push(item) }
+  closePlainDrawer()
+}
+function removePlainItem(idx: number) { plainItems.value.splice(idx, 1) }
 
 function onDateChange(e: any) { occurredDate.value = e.detail.value }
 function chooseVoucher() {
@@ -125,6 +232,20 @@ function chooseVoucher() {
 async function submit() {
   if (saving.value) return
   if (!typeId.value) { uni.showToast({ title: '请选择支出类型', icon: 'none' }); return }
+  if (isSelfPurchase.value) {
+    if (!items.value.length) { uni.showToast({ title: '请添加物料', icon: 'none' }); return }
+    if (items.value.length > MAX_ITEMS) { uni.showToast({ title: `最多添加${MAX_ITEMS}种物料`, icon: 'none' }); return }
+    for (const it of items.value) {
+      if (!(parseFloat(it.weight) > 0)) { uni.showToast({ title: '请填写物料重量', icon: 'none' }); return }
+      if (!(parseFloat(it.unitPrice) > 0)) { uni.showToast({ title: '请填写物料单价', icon: 'none' }); return }
+    }
+  } else if (plainItems.value.length) {
+    if (plainItems.value.length > MAX_ITEMS) { uni.showToast({ title: `最多添加${MAX_ITEMS}项明细`, icon: 'none' }); return }
+    for (const it of plainItems.value) {
+      if (!it.name.trim()) { uni.showToast({ title: '请填写明细名称', icon: 'none' }); return }
+      if (!(parseFloat(it.amount) > 0)) { uni.showToast({ title: '请填写明细金额', icon: 'none' }); return }
+    }
+  }
   const amt = parseFloat(amount.value)
   if (!amt || amt <= 0) { uni.showToast({ title: '请输入金额', icon: 'none' }); return }
   saving.value = true
@@ -144,23 +265,16 @@ async function submit() {
       remark: description.value || undefined
     }
     if (isSelfPurchase.value) {
-      if (!selectedMaterial.value && !isOtherMaterial.value) { uni.showToast({ title: '请选择物料', icon: 'none' }); saving.value = false; return }
-      if (!matWeight.value || parseFloat(matWeight.value) <= 0) { uni.showToast({ title: '请输入重量', icon: 'none' }); saving.value = false; return }
-      if (!matUnitPrice.value || parseFloat(matUnitPrice.value) <= 0) { uni.showToast({ title: '请输入单价', icon: 'none' }); saving.value = false; return }
-      if (isOtherMaterial.value) {
-        data.materialId = ''
-        data.materialName = '其他'
-        data.parentCategory = MATERIAL_PARENT_CATEGORY
-        data.category = SELF_PURCHASE
-      } else {
-        data.materialId = selectedMaterial.value.id || selectedMaterial.value.materialId || ''
-        data.materialName = selectedMaterial.value.yuancailiaomingcheng || selectedMaterial.value.materialName
-        data.parentCategory = selectedMaterial.value.leibie || selectedMaterial.value.parentCategory || ''
-        data.category = selectedMaterial.value.leibie2 || selectedMaterial.value.category || ''
-      }
-      data.materialUnit = 'kg'
-      data.weight = parseFloat(matWeight.value)
-      data.unitPrice = parseFloat(matUnitPrice.value)
+      data.items = items.value.map(it => ({
+        materialId: it.materialId || undefined,
+        materialName: it.materialName,
+        parentCategory: it.parentCategory || undefined,
+        category: it.category || undefined,
+        weight: parseFloat(it.weight),
+        unitPrice: parseFloat(it.unitPrice),
+      }))
+    } else if (plainItems.value.length) {
+      data.amountItems = plainItems.value.map(it => ({ name: it.name.trim(), amount: parseFloat(it.amount) }))
     }
     if (isEdit.value) { await updateExpense(editId.value, data) }
     else { await createExpense(data) }
@@ -180,7 +294,7 @@ function matDisplayCategory(item: any) { return item.leibie2 || item.category ||
       <text class="amount-label">支出金额</text>
       <view class="amount-row">
         <text class="amount-symbol">¥</text>
-        <input class="amount-num" type="digit" v-model="amount" placeholder="0.00" :focus="amountFocus" @blur="amountFocus=false" />
+        <input class="amount-num" type="digit" v-model="amount" placeholder="0.00" :focus="amountFocus" :disabled="amountDisabled" @blur="amountFocus=false" />
       </view>
     </view>
 
@@ -210,33 +324,46 @@ function matDisplayCategory(item: any) { return item.leibie2 || item.category ||
         <view v-if="isSelfPurchase" class="mat-section">
           <view class="mat-title">
             <text>📦 物料明细</text>
+            <text class="mat-count">{{ items.length }}/{{ MAX_ITEMS }}</text>
           </view>
-          <!-- 物料名称 -->
-          <view class="mat-field" @click="openMatSearch">
-            <text class="mat-label">物料名称 <text class="required">*</text></text>
-            <view class="mat-input-box">
-              <text v-if="!selectedMaterial && !isOtherMaterial" class="mat-placeholder">搜索物料名称</text>
-              <text v-else class="mat-input-val">{{ selectedMaterial ? matDisplayName(selectedMaterial) : '其他' }}</text>
+          <view v-if="items.length === 0" class="mat-empty">请添加物料</view>
+          <view v-for="(it, idx) in items" :key="idx" class="mat-item" @click="openEditDrawer(idx)">
+            <view class="mi-left">
+              <text class="mi-name">{{ it.materialName }}</text>
+              <text v-if="it.category" class="mi-meta">{{ it.category }}</text>
             </view>
+            <view class="mi-right">
+              <text class="mi-amount">¥{{ itemAmount(it).toFixed(2) }}</text>
+              <text class="mi-meta">{{ it.weight }}kg × ¥{{ it.unitPrice }}</text>
+            </view>
+            <text class="mi-del" @click.stop="removeItem(idx)">✕</text>
           </view>
-          <!-- 重量 + 单价 -->
-          <view class="mat-row">
-            <view class="mat-field mat-half">
-              <text class="mat-label">重量 <text class="required">*</text></text>
-              <view class="mat-input-box mat-input-row">
-                <input class="mat-num" type="digit" v-model="matWeight" placeholder="0" />
-                <text class="mat-unit">kg</text>
-              </view>
-            </view>
-            <view class="mat-field mat-half">
-              <text class="mat-label">单价 <text class="required">*</text></text>
-              <view class="mat-input-box mat-input-row">
-                <text class="mat-symbol">¥</text>
-                <input class="mat-num" type="digit" v-model="matUnitPrice" placeholder="0.00" />
-              </view>
-            </view>
+          <view v-if="items.length < MAX_ITEMS" class="add-material-btn" @click="openMatSearch">
+            <text class="add-icon">＋</text><text class="add-text">添加物料（{{ items.length }}/{{ MAX_ITEMS }}）</text>
           </view>
-          <text v-if="matTotalAmount" class="mat-total">合计：¥{{ matTotalAmount }}</text>
+          <view v-else class="add-material-hint">最多添加 {{ MAX_ITEMS }} 种物料</view>
+        </view>
+
+        <!-- 其他类型支出明细 -->
+        <view v-else class="mat-section">
+          <view class="mat-title">
+            <text>💰 支出明细</text>
+            <text class="mat-count">{{ plainItems.length }}/{{ MAX_ITEMS }}</text>
+          </view>
+          <view v-if="plainItems.length === 0" class="mat-empty">请添加明细（也可直接填写上方金额）</view>
+          <view v-for="(it, idx) in plainItems" :key="idx" class="mat-item" @click="openPlainEditDrawer(idx)">
+            <view class="mi-left">
+              <text class="mi-name">{{ it.name }}</text>
+            </view>
+            <view class="mi-right">
+              <text class="mi-amount">¥{{ plainItemAmount(it).toFixed(2) }}</text>
+            </view>
+            <text class="mi-del" @click.stop="removePlainItem(idx)">✕</text>
+          </view>
+          <view v-if="plainItems.length < MAX_ITEMS" class="add-material-btn" @click="openPlainAddDrawer">
+            <text class="add-icon">＋</text><text class="add-text">添加明细（{{ plainItems.length }}/{{ MAX_ITEMS }}）</text>
+          </view>
+          <view v-else class="add-material-hint">最多添加 {{ MAX_ITEMS }} 项明细</view>
         </view>
 
         <!-- 日期 -->
@@ -319,7 +446,7 @@ function matDisplayCategory(item: any) { return item.leibie2 || item.category ||
         <view v-if="matLoading" class="search-status">搜索中...</view>
         <view v-else-if="matResults.length===0 && !matSearchKey" class="search-status">输入关键词搜索</view>
         <view v-else-if="matResults.length===0" class="search-status">暂无匹配物料</view>
-        <view v-for="item in matResults" :key="item.id||item.materialId" class="search-item" @click="selectMaterial(item)">
+        <view v-for="item in matResults" :key="item.id||item.materialId" class="search-item" @click="openAddDrawer(item)">
           <view class="si-info">
             <text class="si-name">{{ matDisplayName(item) }}</text>
             <text class="si-meta">{{ matDisplayCategory(item) }}</text>
@@ -329,6 +456,64 @@ function matDisplayCategory(item: any) { return item.leibie2 || item.category ||
           <view class="si-info"><text class="si-name">其他</text></view>
         </view>
       </scroll-view>
+    </view>
+  </view>
+
+  <!-- 物料编辑抽屉（自购食材） -->
+  <view v-if="showDrawer" class="mask" @click="closeDrawer">
+    <view class="sheet" @click.stop>
+      <view class="sh"></view>
+      <view class="sheet-head">
+        <text class="sheet-title">{{ editingIndex >= 0 ? '编辑物料' : '添加物料' }}</text>
+        <view class="sheet-close" @click="closeDrawer">✕</view>
+      </view>
+      <view class="dr-body">
+        <view class="dr-name">{{ drawerItem?.materialName || '' }}</view>
+        <view class="mat-field">
+          <text class="mat-label">重量（kg）</text>
+          <view class="mat-input-box mat-input-row">
+            <input class="mat-num" type="digit" v-model="drawerWeight" placeholder="请输入重量" />
+            <text class="mat-unit">kg</text>
+          </view>
+        </view>
+        <view class="mat-field">
+          <text class="mat-label">单价（元）</text>
+          <view class="mat-input-box mat-input-row">
+            <text class="mat-symbol">¥</text>
+            <input class="mat-num" type="digit" v-model="drawerUnitPrice" placeholder="请输入单价" />
+          </view>
+        </view>
+        <view class="mat-total dr-total">小计：¥{{ drawerAmount || '0.00' }}</view>
+        <view class="btn" @click="confirmDrawer">确定</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 明细编辑抽屉（其他类型） -->
+  <view v-if="showPlainDrawer" class="mask" @click="closePlainDrawer">
+    <view class="sheet" @click.stop>
+      <view class="sh"></view>
+      <view class="sheet-head">
+        <text class="sheet-title">{{ pEditingIndex >= 0 ? '编辑明细' : '添加明细' }}</text>
+        <view class="sheet-close" @click="closePlainDrawer">✕</view>
+      </view>
+      <view class="dr-body">
+        <view class="mat-field">
+          <text class="mat-label">明细名称</text>
+          <view class="mat-input-box">
+            <input class="mat-input-val" v-model="pDrawerName" placeholder="请输入明细名称" />
+          </view>
+        </view>
+        <view class="mat-field">
+          <text class="mat-label">明细金额</text>
+          <view class="mat-input-box mat-input-row">
+            <text class="mat-symbol">¥</text>
+            <input class="mat-num" type="digit" v-model="pDrawerAmount" placeholder="请输入金额" />
+          </view>
+        </view>
+        <view class="mat-total dr-total">小计：¥{{ pDrawerTotal || '0.00' }}</view>
+        <view class="btn" @click="confirmPlainDrawer">确定</view>
+      </view>
     </view>
   </view>
 </template>
@@ -368,9 +553,24 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .field-input{width:100%;font-size:28rpx;color:$t1;background:transparent;height:48rpx;line-height:48rpx}.field-input::placeholder{color:$t3}
 .field-textarea{width:100%;font-size:28rpx;color:$t1;background:transparent;height:100rpx}.field-textarea::placeholder{color:$t3}
 
-// 物料明细
+// 物料/支出明细
 .mat-section{margin-top:8rpx;padding:20rpx;background:#FAFBF9;border-radius:16rpx;display:flex;flex-direction:column;gap:14rpx}
-.mat-title{font-size:26rpx;font-weight:600;color:$p;margin-bottom:4rpx}
+.mat-title{display:flex;align-items:center;justify-content:space-between;gap:8rpx;font-size:26rpx;font-weight:600;color:$p;margin-bottom:4rpx}
+.mat-count{font-size:22rpx;color:$t3;font-weight:400}
+.mat-empty{padding:24rpx 0;text-align:center;font-size:24rpx;color:$t3;background:$s;border-radius:12rpx}
+.mat-item{display:flex;align-items:center;justify-content:space-between;gap:12rpx;background:$s;border-radius:12rpx;padding:16rpx 20rpx;border:1rpx solid #EEF1EF}
+.mat-item:active{background:#F7F8F6}
+.mi-left{flex:1;min-width:0;display:flex;flex-direction:column;gap:4rpx}
+.mi-name{font-size:28rpx;color:$t1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi-meta{font-size:22rpx;color:$t3}
+.mi-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4rpx}
+.mi-amount{font-size:26rpx;font-weight:700;color:$p}
+.mi-del{flex-shrink:0;width:48rpx;height:48rpx;display:flex;align-items:center;justify-content:center;font-size:22rpx;color:$t3;background:#F7F8F6;border-radius:50%}
+.mi-del:active{background:#EEF1EF;color:#E05A47}
+.add-material-btn{display:flex;align-items:center;justify-content:center;gap:8rpx;padding:20rpx;border-radius:12rpx;border:2rpx dashed $p;color:$p;font-size:26rpx;font-weight:600;background:$ps}
+.add-material-btn:active{opacity:.8}
+.add-icon{font-size:28rpx;line-height:1}
+.add-material-hint{text-align:center;font-size:22rpx;color:$t3;padding:12rpx 0}
 .mat-field{display:flex;flex-direction:column;gap:8rpx}
 .mat-label{font-size:26rpx;color:$t1}
 .mat-input-box{background:$s;border-radius:12rpx;padding:0 20rpx;height:80rpx;display:flex;align-items:center}
@@ -382,6 +582,9 @@ $bg:#F7F8F6;$s:#fff;$p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$
 .mat-row{display:flex;gap:14rpx}
 .mat-half{flex:1}
 .mat-total{text-align:right;font-size:28rpx;font-weight:700;color:$p;padding-top:4rpx}
+.dr-body{padding:0 32rpx 8rpx;display:flex;flex-direction:column;gap:16rpx}
+.dr-name{font-size:30rpx;font-weight:700;color:$t1;padding:4rpx 0}
+.dr-total{margin-top:4rpx}
 
 // 凭证
 .voucher-area{border:2rpx dashed $b;border-radius:16rpx;overflow:hidden;position:relative}
