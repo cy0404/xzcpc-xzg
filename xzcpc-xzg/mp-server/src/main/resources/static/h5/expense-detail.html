@@ -23,6 +23,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .rk{font-size:14px;color:var(--t2);flex-shrink:0}
 .rv{font-size:14px;text-align:right;min-width:0;overflow-wrap:break-word;word-break:break-all}
 .rv.total{color:var(--p);font-weight:700}
+.rv-remark{display:block;font-size:11px;color:var(--t2);margin-top:3px;text-align:right}
 /* 凭证 */
 .voucher-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
 .voucher-photo{width:calc((100% - 16px) / 3);height:96px;border-radius:8px;object-fit:cover;cursor:pointer}
@@ -177,7 +178,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
       items.forEach(function(it){
         html+='<div class="row"><span class="rk">'+esc(it.name)+'</span>'
         if(d.typeName===SELF){
-          html+='<span class="rv">'+esc(it.qty)+' '+esc(it.unit||'kg')+' × ¥'+fmtMoney(it.unitPrice)+' = ¥'+fmtMoney(it.amount)+'</span>'
+          html+='<span class="rv">'+esc(it.qty)+' '+esc(it.unit||'kg')+' × ¥'+fmtMoney(it.unitPrice)+' = ¥'+fmtMoney(it.amount)
+            +(it.remark?'<span class="rv-remark">📝 '+esc(it.remark)+'</span>':'')+'</span>'
         }else{
           html+='<span class="rv">¥'+fmtMoney(it.amount)+'</span>'
         }

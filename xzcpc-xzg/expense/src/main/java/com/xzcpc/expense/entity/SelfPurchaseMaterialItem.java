@@ -23,6 +23,7 @@ public class SelfPurchaseMaterialItem {
     private BigDecimal unitPrice;
     private BigDecimal totalAmount;
     private Integer sortNo;
+    private String remark;
 
     @TableLogic(value = "0", delval = "1")
     private Integer delFlag;

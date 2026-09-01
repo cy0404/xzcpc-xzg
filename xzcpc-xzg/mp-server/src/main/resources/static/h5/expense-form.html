@@ -25,9 +25,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .group-desc{display:block;font-size:11px;color:var(--w);margin-top:2px}
 .group-del{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--t3);cursor:pointer}
 .group-del:active{background:#FDECEA;color:var(--d)}
-.group-total{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:8px 10px;background:var(--ps);border-radius:8px}
-.gt-label{font-size:12px;color:var(--p);font-weight:600}
-.gt-amount{font-size:16px;font-weight:800;color:var(--p)}
+.group-total{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:8px 10px;background:#FFF7E6;border-radius:8px}
+.gt-label{font-size:12px;color:#B8860B;font-weight:600}
+.gt-amount{font-size:16px;font-weight:800;color:#E6A23C}
 .add-group-btn{display:flex;align-items:center;justify-content:center;gap:4px;padding:12px;border-radius:12px;border:1px dashed var(--p);color:var(--p);font-size:14px;font-weight:600;background:var(--ps);margin-bottom:10px;cursor:pointer}
 .add-group-btn:active{opacity:.8}
 /* 表单字段 */
@@ -53,6 +53,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .mi-left{flex:1;min-width:0}
 .mi-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mi-meta{font-size:11px;color:var(--t3);margin-top:2px}
+.mi-remark{display:block;font-size:11px;color:var(--t2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mi-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .mi-amount{font-size:13px;font-weight:700;color:var(--p)}
 .mi-del{flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t3);background:var(--bg);border-radius:50%;cursor:pointer}
@@ -93,6 +94,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .btn.disabled{opacity:.6}
 /* 弹窗 */
 .mask{position:fixed;inset:0;z-index:100;display:none;align-items:flex-end;background:rgba(31,36,33,.35)}
+/* 弹窗打开时锁页面滚动，防止滚轮/列表滚动穿透到背景页面 */
+body.body-lock{overflow:hidden}
 .mask.show{display:flex}
 .mask.preview-mask{align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:150}
 .sh{width:40px;height:3px;border-radius:999px;background:var(--b);margin:4px auto 8px;flex-shrink:0}
@@ -136,7 +139,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .wheel-list{padding:60px 0}
 .wheel-item{height:40px;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--t2);scroll-snap-align:center;user-select:none}
 .wheel-item.on{color:var(--p);font-weight:700;font-size:17px}
-.wheel-selected-line{position:absolute;left:12px;right:12px;top:88px;height:40px;border-top:1px solid var(--b);border-bottom:1px solid var(--b);pointer-events:none}
+.wheel-selected-line{position:absolute;left:16px;right:16px;top:88px;height:40px;background:rgba(47,143,87,.10);border-radius:10px;pointer-events:none}
 .wheel-mask-top{position:absolute;left:12px;right:12px;top:8px;height:46px;background:linear-gradient(to bottom,#fff,rgba(255,255,255,0));pointer-events:none}
 .wheel-mask-bottom{position:absolute;left:12px;right:12px;bottom:8px;height:46px;background:linear-gradient(to top,#fff,rgba(255,255,255,0));pointer-events:none}
 .sheet-actions{display:flex;gap:10px;padding:10px 16px calc(env(safe-area-inset-bottom) + 10px)}
@@ -149,24 +152,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 <body>
 <div class="page">
   <div id="tips"></div>
-  <div id="groupsBox"></div>
-  <div id="addGroupBox"></div>
 
-  <!-- 登记信息 -->
-  <div class="card">
-    <div class="card-title"><span>📄</span><span>登记信息</span></div>
-    <div class="form-body">
-      <div class="field" onclick="openDatePicker()">
-        <div class="field-text"><span class="field-label">支出日期 <b class="required">*</b></span></div>
-        <span class="field-value" id="dateText" style="font-size:14px">--</span>
-        <span class="field-arrow">›</span>
-      </div>
-      <div class="field field-col">
-        <span class="field-label">支出说明</span>
-        <span class="field-value placeholder" style="font-size:13px;color:var(--t3)">在各支出类型内分别填写</span>
-      </div>
+  <!-- 支出日期（顶部） -->
+  <div class="card date-card">
+    <div class="field" onclick="openDatePicker()">
+      <div class="field-text"><span class="field-label">📅 支出日期 <b class="required">*</b></span></div>
+      <span class="field-value" id="dateText" style="font-size:14px">--</span>
+      <span class="field-arrow">›</span>
     </div>
   </div>
+
+  <div id="groupsBox"></div>
+  <div id="addGroupBox"></div>
 
   <!-- 凭证 -->
   <div class="card">
@@ -254,6 +251,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
         <span class="mat-label">单价（元）</span>
         <div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" id="drawerPrice" placeholder="请输入单价" /></div>
       </div>
+      <div class="mat-field">
+        <span class="mat-label">说明（选填）</span>
+        <input type="text" class="field-input" id="drawerRemark" placeholder="该物料的用途说明" />
+      </div>
       <div class="mat-total dr-total" id="drawerTotal">小计：¥0.00</div>
       <button class="btn" onclick="confirmDrawer()">确定</button>
     </div>
@@ -312,6 +313,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function fmtMoney(n){return Number(n||0).toFixed(2)}
   function round2(n){return Math.round(n*100)/100}
+  // 弹窗锁页面滚动（计数式，嵌套弹窗安全）：修滚轮/列表滚动穿透到背景页面
+  var maskCount=0
+  function lockScroll(on){if(on){maskCount++;document.body.classList.add('body-lock')}else{maskCount=Math.max(0,maskCount-1);if(!maskCount)document.body.classList.remove('body-lock')}}
   var toastTimer=null
   function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show';clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.className='toast'},2200)}
   function showLoading(txt){document.getElementById('loadingOverlay').getElementsByClassName('loading-box')[0].textContent=txt||'提交中...';document.getElementById('loadingOverlay').className='loading-overlay show'}
@@ -368,7 +372,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
       if(!g.items.length)html+='<div class="mat-empty">请添加物料</div>'
       g.items.forEach(function(it,i){
         html+='<div class="mat-item" onclick="openEditDrawer('+idx+','+i+')">'
-          +'<div class="mi-left"><span class="mi-name">'+esc(it.materialName)+'</span>'+(it.category?'<span class="mi-meta">'+esc(it.category)+'</span>':'')+'</div>'
+          +'<div class="mi-left"><span class="mi-name">'+esc(it.materialName)+'</span>'+(it.category?'<span class="mi-meta">'+esc(it.category)+'</span>':'')+(it.remark?'<span class="mi-remark">📝 '+esc(it.remark)+'</span>':'')+'</div>'
           +'<div class="mi-right"><span class="mi-amount">¥'+fmtMoney(itemAmount(it))+'</span><span class="mi-meta">'+esc(it.weight)+'kg × ¥'+esc(it.unitPrice)+'</span></div>'
           +'<span class="mi-del" onclick="event.stopPropagation();removeItem('+idx+','+i+')">✕</span></div>'
       })
@@ -381,9 +385,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
       html+='<div class="mat-field"><span class="mat-label">金额</span>'
         +'<div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" value="'+esc(g.manualAmount)+'" placeholder="请输入金额" oninput="onManualAmount('+idx+',this.value)" /></div></div>'
     }
-    // 每组独立的支出说明（按类型分组，替代整单说明）
-    html+='<div class="mat-field group-remark-field"><span class="mat-label">支出说明</span>'
-      +'<input type="text" class="field-input" placeholder="请简要说明该类型支出用途" value="'+esc(g.remark||'')+'" oninput="onGroupRemark('+idx+',this.value)" /></div>'
+    // 支出说明已取消总/组级字段：自购食材的说明在每条物料明细里填写
     return html
   }
   function renderGroups(){
@@ -418,6 +420,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function addGroup(){
     if(groups.length>=MAX_GROUPS){showToast('最多添加'+MAX_GROUPS+'个支出类型');return}
     groups.push(newGroup());renderGroups()
+    // 新增组直接弹类型选择，省一步操作
+    openTypePicker(groups.length-1)
   }
   function removeGroup(i){
     if(EDIT_ID)return
@@ -441,8 +445,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
       })
     }
     document.getElementById('typeMask').className='mask show'
+    lockScroll(true)
   }
-  function closeTypePicker(){document.getElementById('typeMask').className='mask'}
+  function closeTypePicker(){document.getElementById('typeMask').className='mask';lockScroll(false)}
   function renderTypeList(){
     var g=groups[activeGroupIdx]
     var html='<div class="type-grid">'
@@ -526,13 +531,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     document.getElementById('wheelMonth').scrollTop=(datePicker.m-1)*DATE_ITEM_H
     document.getElementById('wheelDay').scrollTop=(datePicker.d-1)*DATE_ITEM_H
     document.getElementById('dateMask').className='mask show'
+    lockScroll(true)
   }
   function confirmDatePicker(){
     occurredDate=datePicker.y+'-'+pad2(datePicker.m)+'-'+pad2(datePicker.d)
     document.getElementById('dateText').textContent=occurredDate
     closeDatePicker()
   }
-  function closeDatePicker(){document.getElementById('dateMask').className='mask'}
+  function closeDatePicker(){document.getElementById('dateMask').className='mask';lockScroll(false)}
   document.getElementById('dateMask').addEventListener('click',function(e){if(e.target===this)closeDatePicker()})
 
   function onManualAmount(i,v){
@@ -543,21 +549,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     if(gt)gt.textContent='¥'+fmtMoney(groupAmount(groups[i]))
     renderTotal()
   }
-  function onGroupRemark(i,v){
-    // 只更新数据，不重建 DOM（避免输入框失焦）
-    groups[i].remark=v
-  }
-
   // ---------- 自购：物料搜索 ----------
   function openMatSearch(i){
     matGroupIdx=i
     document.getElementById('matMask').className='mask show'
+    lockScroll(true)
     document.getElementById('matSearchInput').value=''
     document.getElementById('matList').innerHTML='<div class="search-status">输入关键词搜索</div>'
     doMatSearch()
     setTimeout(function(){document.getElementById('matSearchInput').focus()},150)
   }
-  function closeMatSearch(){document.getElementById('matMask').className='mask'}
+  function closeMatSearch(){document.getElementById('matMask').className='mask';lockScroll(false)}
   document.getElementById('matSearchInput').addEventListener('input',function(){
     clearTimeout(matSearchTimer)
     var v=this.value
@@ -583,19 +585,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     if(editingItemIdx===-1&&g.items.some(function(i){return i.materialId&&i.materialId===(m.id||m.materialId)})){
       showToast('该物料已添加');return
     }
-    drawerItem={materialId:m.id||m.materialId||'',materialName:m.yuancailiaomingcheng||m.materialName||'',parentCategory:m.leibie||m.parentCategory||'',category:m.leibie2||m.category||'',weight:'',unitPrice:''}
+    drawerItem={materialId:m.id||m.materialId||'',materialName:m.yuancailiaomingcheng||m.materialName||'',parentCategory:m.leibie||m.parentCategory||'',category:m.leibie2||m.category||'',weight:'',unitPrice:'',remark:''}
     editingItemIdx=-1
     showDrawer('添加物料')
   }
   function selectOther(){
-    drawerItem={materialId:'',materialName:'其他',parentCategory:PARENT,category:SELF,weight:'',unitPrice:''}
+    drawerItem={materialId:'',materialName:'其他',parentCategory:PARENT,category:SELF,weight:'',unitPrice:'',remark:''}
     editingItemIdx=-1
     showDrawer('添加物料')
   }
   function openEditDrawer(gIdx,iIdx){
     matGroupIdx=gIdx
     var it=groups[gIdx].items[iIdx]
-    drawerItem={materialId:it.materialId,materialName:it.materialName,parentCategory:it.parentCategory,category:it.category,weight:it.weight,unitPrice:it.unitPrice}
+    drawerItem={materialId:it.materialId,materialName:it.materialName,parentCategory:it.parentCategory,category:it.category,weight:it.weight,unitPrice:it.unitPrice,remark:it.remark||''}
     editingItemIdx=iIdx
     showDrawer('编辑物料')
   }
@@ -604,10 +606,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     document.getElementById('drawerName').textContent=drawerItem.materialName||''
     document.getElementById('drawerWeight').value=drawerItem.weight
     document.getElementById('drawerPrice').value=drawerItem.unitPrice
+    document.getElementById('drawerRemark').value=drawerItem.remark||''
     updateDrawerTotal()
     document.getElementById('drawerMask').className='mask show'
+    lockScroll(true)
   }
-  function closeDrawer(){document.getElementById('drawerMask').className='mask';drawerItem=null;editingItemIdx=-1}
+  function closeDrawer(){document.getElementById('drawerMask').className='mask';lockScroll(false);drawerItem=null;editingItemIdx=-1}
   function updateDrawerTotal(){
     var w=parseFloat(document.getElementById('drawerWeight').value),p=parseFloat(document.getElementById('drawerPrice').value)
     document.getElementById('drawerTotal').textContent='小计：¥'+((w>0&&p>0)?(w*p).toFixed(2):'0.00')
@@ -618,7 +622,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     var w=document.getElementById('drawerWeight').value,p=document.getElementById('drawerPrice').value
     if(!(parseFloat(w)>0)){showToast('请填写重量');return}
     if(!(parseFloat(p)>0)){showToast('请填写单价');return}
-    var item=Object.assign({},drawerItem,{weight:w,unitPrice:p})
+    var item=Object.assign({},drawerItem,{weight:w,unitPrice:p,remark:document.getElementById('drawerRemark').value.trim()})
     var g=groups[matGroupIdx]
     if(editingItemIdx>=0){g.items[editingItemIdx]=item}else{g.items.push(item)}
     closeDrawer();renderGroups()
@@ -640,6 +644,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     document.getElementById('plainName').value='';document.getElementById('plainAmount').value=''
     document.getElementById('plainTotal').textContent='小计：¥0.00'
     document.getElementById('plainMask').className='mask show'
+    lockScroll(true)
   }
   function openPlainEditDrawer(gIdx,pIdx){
     pGroupIdx=gIdx;pEditIdx=pIdx
@@ -648,8 +653,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     document.getElementById('plainName').value=it.name;document.getElementById('plainAmount').value=it.amount
     document.getElementById('plainTotal').textContent='小计：¥'+fmtMoney(plainItemAmount(it))
     document.getElementById('plainMask').className='mask show'
+    lockScroll(true)
   }
-  function closePlainDrawer(){document.getElementById('plainMask').className='mask';pEditIdx=-1}
+  function closePlainDrawer(){document.getElementById('plainMask').className='mask';lockScroll(false);pEditIdx=-1}
   document.getElementById('plainName').addEventListener('input',function(){
     var a=document.getElementById('plainAmount').value
     document.getElementById('plainTotal').textContent='小计：¥'+((parseFloat(a)>0)?fmtMoney(a):'0.00')
@@ -770,8 +776,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function previewVoucher(i){
     document.getElementById('previewImg').src=vouchers[i].url
     document.getElementById('previewMask').className='mask preview-mask show'
+    lockScroll(true)
   }
-  function closePreview(){document.getElementById('previewMask').className='mask preview-mask'}
+  function closePreview(){document.getElementById('previewMask').className='mask preview-mask';lockScroll(false)}
   document.getElementById('fileInput').addEventListener('change',function(){addFiles(this)})
 
   // ---------- 提交 ----------
@@ -802,22 +809,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     var urls=vouchers.map(function(v){return v.url})
     var payload={
       typeId:filled[0].typeId,amount:groupAmount(filled[0]),occurredDate:occurredDate,
-      handlerName:handlerName||'--',voucherUrls:urls,remark:filled[0].remark||undefined
+      handlerName:handlerName||'--',voucherUrls:urls
     }
     if(EDIT_ID){
       var g0=filled[0]
       if(g0.typeName===SELF){
         payload.items=g0.items.map(function(it){
-          return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice)}
+          return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice),remark:it.remark||undefined}
         })
       }
       return put('/expenses/'+EDIT_ID,payload).then(function(){done(true)}).catch(function(e){handleErr(e);btn.classList.remove('disabled')}).finally(hideLoading)
     }
     payload.records=filled.map(function(g){
-      var rec={typeId:g.typeId,amount:groupAmount(g),remark:g.remark||undefined}
+      var rec={typeId:g.typeId,amount:groupAmount(g)}
       if(g.typeName===SELF){
         rec.items=g.items.map(function(it){
-          return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice)}
+          return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice),remark:it.remark||undefined}
         })
       }
       return rec
@@ -835,7 +842,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   document.getElementById('submitBtn').addEventListener('click',submit)
 
   // ---------- 初始化 ----------
-  // 支出说明已改为每组独立填写（onGroupRemark）；日期改用滚轮选择器（openDatePicker）
+  // 支出说明已取消总/组级（自购的说明在每条物料明细里）；日期改用滚轮选择器（openDatePicker）
   document.getElementById('typeMask').addEventListener('click',function(e){if(e.target===this)closeTypePicker()})
   document.getElementById('matMask').addEventListener('click',function(e){if(e.target===this)closeMatSearch()})
   document.getElementById('drawerMask').addEventListener('click',function(e){if(e.target===this)closeDrawer()})
@@ -859,7 +866,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   window.removeGroup=removeGroup
   window.removeVoucher=removeVoucher
   window.onManualAmount=onManualAmount
-  window.onGroupRemark=onGroupRemark
+  //（onGroupRemark 已随组说明字段删除）
   window.openDatePicker=openDatePicker
   window.closeDatePicker=closeDatePicker
   window.confirmDatePicker=confirmDatePicker
@@ -894,7 +901,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
         vouchers=(Array.isArray(urls)?urls:[]).map(function(u){return{file:null,url:u,thumb:'',status:'done',progress:100}})
         if(d.typeName===SELF&&Array.isArray(its)&&its.length){
           g.items=its.map(function(mat){
-            return{materialId:mat.materialId||'',materialName:mat.name,parentCategory:mat.parentCategory||'',category:mat.category||'',weight:mat.qty!=null?String(mat.qty):'',unitPrice:mat.unitPrice!=null?String(mat.unitPrice):''}
+            return{materialId:mat.materialId||'',materialName:mat.name,parentCategory:mat.parentCategory||'',category:mat.category||'',weight:mat.qty!=null?String(mat.qty):'',unitPrice:mat.unitPrice!=null?String(mat.unitPrice):'',remark:mat.remark||''}
           })
         }else if(d.typeName!==SELF){
           // 其他类型：仅回填总金额（多明细仅自购食材支持）

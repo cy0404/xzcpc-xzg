@@ -445,6 +445,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
             spmi.setPurchaseQty(item.getWeight());
             spmi.setUnitPrice(item.getUnitPrice());
             spmi.setTotalAmount(item.getWeight().multiply(item.getUnitPrice()).setScale(2, RoundingMode.HALF_UP));
+            spmi.setRemark(trimToNull(item.getRemark()));
             spmi.setSortNo(sortNo++);
             spmItemMapper.insert(spmi);
         }
@@ -737,6 +738,7 @@ public class MpExpenseServiceImpl implements MpExpenseService {
                 vo.setUnitPrice(it.getUnitPrice());
                 vo.setAmount(it.getTotalAmount());
                 vo.setSortNo(it.getSortNo());
+                vo.setRemark(it.getRemark());
                 vos.add(vo);
             }
             return vos;

@@ -21,4 +21,5 @@ public class ExpenseItemVO {
     private BigDecimal unitPrice;
     private BigDecimal amount;
     private Integer sortNo;
+    private String remark;
 }

@@ -55,6 +55,7 @@ public class MpExpenseSaveReq {
         private String category;
         private BigDecimal weight;
         private BigDecimal unitPrice;
+        private String remark;
     }
 
     @Data
