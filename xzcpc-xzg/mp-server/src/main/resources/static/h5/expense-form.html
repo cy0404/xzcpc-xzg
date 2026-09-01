@@ -139,9 +139,11 @@ body.body-lock{overflow:hidden}
 .wheel-list{padding:60px 0}
 .wheel-item{height:40px;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--t2);scroll-snap-align:center;user-select:none}
 .wheel-item.on{color:var(--p);font-weight:700;font-size:17px}
-.wheel-selected-line{position:absolute;left:16px;right:16px;top:88px;height:40px;background:rgba(47,143,87,.10);border-radius:10px;pointer-events:none}
-.wheel-mask-top{position:absolute;left:12px;right:12px;top:8px;height:46px;background:linear-gradient(to bottom,#fff,rgba(255,255,255,0));pointer-events:none}
-.wheel-mask-bottom{position:absolute;left:12px;right:12px;bottom:8px;height:46px;background:linear-gradient(to top,#fff,rgba(255,255,255,0));pointer-events:none}
+/* 选中条：top 相对 .wheel-box(padding box)。wheel-view 可视区 = 8~168(高160，中心88)，
+   条高40 → top=88-20=68，中心与可视区中心(88)对齐；渐变遮罩紧贴条上下沿 */
+.wheel-selected-line{position:absolute;left:16px;right:16px;top:68px;height:40px;background:rgba(47,143,87,.10);border-radius:10px;pointer-events:none}
+.wheel-mask-top{position:absolute;left:12px;right:12px;top:8px;height:60px;background:linear-gradient(to bottom,#fff,rgba(255,255,255,0));pointer-events:none}
+.wheel-mask-bottom{position:absolute;left:12px;right:12px;bottom:8px;height:60px;background:linear-gradient(to top,#fff,rgba(255,255,255,0));pointer-events:none}
 .sheet-actions{display:flex;gap:10px;padding:10px 16px calc(env(safe-area-inset-bottom) + 10px)}
 .sheet-actions .sab{flex:1;height:44px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:none;cursor:pointer}
 .sab.cancel{background:#FAFBF9;color:var(--t1)}
@@ -253,7 +255,7 @@ body.body-lock{overflow:hidden}
       </div>
       <div class="mat-field">
         <span class="mat-label">说明（选填）</span>
-        <input type="text" class="field-input" id="drawerRemark" placeholder="该物料的用途说明" />
+        <div class="mat-input-box mat-input-row"><input type="text" class="mat-num" id="drawerRemark" placeholder="请输入该物料用途说明" /></div>
       </div>
       <div class="mat-total dr-total" id="drawerTotal">小计：¥0.00</div>
       <button class="btn" onclick="confirmDrawer()">确定</button>
@@ -385,7 +387,11 @@ body.body-lock{overflow:hidden}
       html+='<div class="mat-field"><span class="mat-label">金额</span>'
         +'<div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" value="'+esc(g.manualAmount)+'" placeholder="请输入金额" oninput="onManualAmount('+idx+',this.value)" /></div></div>'
     }
-    // 支出说明已取消总/组级字段：自购食材的说明在每条物料明细里填写
+    // 每个支出项各自说明：自购=每条物料明细；其他类型=本组一条说明
+    if(g.typeName!==SELF){
+      html+='<div class="mat-field group-remark-field"><span class="mat-label">支出说明</span>'
+        +'<div class="mat-input-box mat-input-row"><input type="text" class="mat-num" placeholder="请输入该类型支出用途" value="'+esc(g.remark||'')+'" oninput="onGroupRemark('+idx+',this.value)" /></div></div>'
+    }
     return html
   }
   function renderGroups(){
@@ -527,10 +533,11 @@ body.body-lock{overflow:hidden}
     if(m<1)m=1;if(m>12)m=12
     datePicker={y:y,m:m,d:d}
     rebuildDateWheels()
+    // 先显示再定位：mask 隐藏(display:none)时元素无布局，scrollTop 赋值被忽略，初始恒为 0 → 选中条与高亮条错位
+    document.getElementById('dateMask').className='mask show'
     document.getElementById('wheelYear').scrollTop=(datePicker.y-DATE_MIN_Y)*DATE_ITEM_H
     document.getElementById('wheelMonth').scrollTop=(datePicker.m-1)*DATE_ITEM_H
     document.getElementById('wheelDay').scrollTop=(datePicker.d-1)*DATE_ITEM_H
-    document.getElementById('dateMask').className='mask show'
     lockScroll(true)
   }
   function confirmDatePicker(){
@@ -549,6 +556,11 @@ body.body-lock{overflow:hidden}
     if(gt)gt.textContent='¥'+fmtMoney(groupAmount(groups[i]))
     renderTotal()
   }
+  function onGroupRemark(i,v){
+    // 只更新数据，不重建 DOM（避免输入框失焦）
+    groups[i].remark=v
+  }
+
   // ---------- 自购：物料搜索 ----------
   function openMatSearch(i){
     matGroupIdx=i
@@ -809,7 +821,7 @@ body.body-lock{overflow:hidden}
     var urls=vouchers.map(function(v){return v.url})
     var payload={
       typeId:filled[0].typeId,amount:groupAmount(filled[0]),occurredDate:occurredDate,
-      handlerName:handlerName||'--',voucherUrls:urls
+      handlerName:handlerName||'--',voucherUrls:urls,remark:filled[0].remark||undefined
     }
     if(EDIT_ID){
       var g0=filled[0]
@@ -821,7 +833,7 @@ body.body-lock{overflow:hidden}
       return put('/expenses/'+EDIT_ID,payload).then(function(){done(true)}).catch(function(e){handleErr(e);btn.classList.remove('disabled')}).finally(hideLoading)
     }
     payload.records=filled.map(function(g){
-      var rec={typeId:g.typeId,amount:groupAmount(g)}
+      var rec={typeId:g.typeId,amount:groupAmount(g),remark:g.remark||undefined}
       if(g.typeName===SELF){
         rec.items=g.items.map(function(it){
           return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice),remark:it.remark||undefined}
@@ -866,7 +878,7 @@ body.body-lock{overflow:hidden}
   window.removeGroup=removeGroup
   window.removeVoucher=removeVoucher
   window.onManualAmount=onManualAmount
-  //（onGroupRemark 已随组说明字段删除）
+  window.onGroupRemark=onGroupRemark
   window.openDatePicker=openDatePicker
   window.closeDatePicker=closeDatePicker
   window.confirmDatePicker=confirmDatePicker
