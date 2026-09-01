@@ -245,7 +245,7 @@ const storePendingItems = computed<PendingItem[]>(() => {
   const items: PendingItem[] = []
 
   if (scopeAll.value) {
-    // 全部门店：按门店分组展示
+    // 全部门店：按门店分组展示。未提交即未完成——不管物料录没录完、录了多少
     const byStore: Record<string, { name: string; remaining: number; weekly: boolean; hasLoss: boolean }> = {}
     for (const t of taskStore.currentTasks) {
       const sid = t.storeId || ''
@@ -254,13 +254,11 @@ const storePendingItems = computed<PendingItem[]>(() => {
       if (t.taskType === 'weekly') byStore[sid].weekly = true
     }
     for (const [sid, info] of Object.entries(byStore)) {
-      if (info.remaining > 0) {
-        items.push({
-          icon: '✅', title: info.weekly ? '完成本周盘点' : '完成本月盘点',
-          desc: `${info.name} · ${info.remaining} 项待录入`,
-          btn: '去盘点', url: '/pages/task/list/index', storeId: sid,
-        })
-      }
+      items.push({
+        icon: '✅', title: info.weekly ? '完成本周盘点' : '完成本月盘点',
+        desc: info.remaining > 0 ? `${info.name} · ${info.remaining} 项待录入` : `${info.name} · 已录完，待提交`,
+        btn: '去盘点', url: '/pages/task/list/index', storeId: sid,
+      })
     }
     // 报损：有 pending 才展示
     for (const s of allLossStores.value) {
@@ -303,11 +301,13 @@ const storePendingItems = computed<PendingItem[]>(() => {
       })
     }
   } else {
-    // 单门店
-    if (taskRemaining.value > 0) {
+    // 单门店：未提交即未完成，不管物料录完没有
+    if (taskStore.currentTasks.length > 0) {
       const hasWeekly = taskStore.currentTasks.some((t: any) => t.taskType === 'weekly')
       items.push({
-        icon: '✅', title: hasWeekly ? '完成本周盘点' : '完成本月盘点', desc: `${taskRemaining.value} 项待录入`, btn: '去盘点', url: '/pages/task/list/index',
+        icon: '✅', title: hasWeekly ? '完成本周盘点' : '完成本月盘点',
+        desc: taskRemaining.value > 0 ? `${taskRemaining.value} 项待录入` : '已录完，待提交',
+        btn: '去盘点', url: '/pages/task/list/index',
       })
     }
     const tCount = transferActionCount()
