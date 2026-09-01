@@ -111,7 +111,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function showLoading(txt){document.getElementById('loadingOverlay').getElementsByClassName('loading-box')[0].textContent=txt||'加载中...';document.getElementById('loadingOverlay').className='loading-overlay show'}
   function hideLoading(){document.getElementById('loadingOverlay').className='loading-overlay'}
   function fetchJSON(url,opts){
-    return fetch(url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
+    return fetch(API+url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
       var d=res.body||{}
       if(!res.ok||d.code!==200){
         var e=new Error(d.message||d.msg||'请求失败')
@@ -244,6 +244,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     var idx=Array.prototype.indexOf.call(e.target.parentNode.children,img)
     preview(idx)
   })
+
+  // ---------- 导出到 window（inline onclick 需全局可见） ----------
+  window.closeDel=closeDel
+  window.closePreview=closePreview
+  window.preview=preview
 
   // ---------- 启动 ----------
   if(!TOKEN){showToast('登录已过期，请重新进入小程序')}

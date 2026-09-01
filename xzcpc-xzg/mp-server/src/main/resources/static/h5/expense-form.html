@@ -129,6 +129,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:200;background:rgba(31,36,33,.88);color:#fff;font-size:14px;padding:10px 20px;border-radius:10px;display:none;max-width:80%;text-align:center;pointer-events:none}
 .toast.show{display:block}
 .preview-img{max-width:92vw;max-height:92vh;border-radius:8px}
+/* 日期滚轮 */
+.wheel-box{position:relative;height:176px;display:flex;padding:8px 12px;overflow:hidden}
+.wheel-view{flex:1;height:160px;overflow-y:auto;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.wheel-view::-webkit-scrollbar{display:none}
+.wheel-list{padding:60px 0}
+.wheel-item{height:40px;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--t2);scroll-snap-align:center;user-select:none}
+.wheel-item.on{color:var(--p);font-weight:700;font-size:17px}
+.wheel-selected-line{position:absolute;left:12px;right:12px;top:88px;height:40px;border-top:1px solid var(--b);border-bottom:1px solid var(--b);pointer-events:none}
+.wheel-mask-top{position:absolute;left:12px;right:12px;top:8px;height:46px;background:linear-gradient(to bottom,#fff,rgba(255,255,255,0));pointer-events:none}
+.wheel-mask-bottom{position:absolute;left:12px;right:12px;bottom:8px;height:46px;background:linear-gradient(to top,#fff,rgba(255,255,255,0));pointer-events:none}
+.sheet-actions{display:flex;gap:10px;padding:10px 16px calc(env(safe-area-inset-bottom) + 10px)}
+.sheet-actions .sab{flex:1;height:44px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:none;cursor:pointer}
+.sab.cancel{background:#FAFBF9;color:var(--t1)}
+.sab.danger{background:var(--p);color:#fff}
+.sab.danger:active{opacity:.9}
 </style>
 </head>
 <body>
@@ -141,13 +156,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   <div class="card">
     <div class="card-title"><span>📄</span><span>登记信息</span></div>
     <div class="form-body">
-      <div class="field">
+      <div class="field" onclick="openDatePicker()">
         <div class="field-text"><span class="field-label">支出日期 <b class="required">*</b></span></div>
-        <input type="date" id="dateInput" class="mat-num" style="text-align:left;height:24px;border:none;outline:none;background:transparent;font-size:14px" />
+        <span class="field-value" id="dateText" style="font-size:14px">--</span>
+        <span class="field-arrow">›</span>
       </div>
       <div class="field field-col">
         <span class="field-label">支出说明</span>
-        <input type="text" id="remarkInput" class="field-input" placeholder="请简要说明支出用途" />
+        <span class="field-value placeholder" style="font-size:13px;color:var(--t3)">在各支出类型内分别填写</span>
       </div>
     </div>
   </div>
@@ -169,6 +185,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   <div class="bottom-inner">
     <div class="bottom-total"><span class="bt-label">合计金额</span><span class="bt-amount" id="totalAmount">¥0.00</span></div>
     <button class="btn" id="submitBtn">提交登记</button>
+  </div>
+</div>
+
+<!-- 日期滚轮选择 -->
+<div class="mask" id="dateMask">
+  <div class="sheet">
+    <div class="sh"></div>
+    <div class="sheet-head">
+      <div><span class="sheet-title">选择日期</span><span class="sheet-sub">滚动选择年月日</span></div>
+      <span class="sheet-close" onclick="closeDatePicker()">✕</span>
+    </div>
+    <div class="wheel-box">
+      <div class="wheel-view" id="wheelYear"><div class="wheel-list" id="yearList"></div></div>
+      <div class="wheel-view" id="wheelMonth"><div class="wheel-list" id="monthList"></div></div>
+      <div class="wheel-view" id="wheelDay"><div class="wheel-list" id="dayList"></div></div>
+      <div class="wheel-selected-line"></div>
+      <div class="wheel-mask-top"></div>
+      <div class="wheel-mask-bottom"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="sab cancel" onclick="closeDatePicker()">取消</button>
+      <button class="sab danger" onclick="confirmDatePicker()">确定</button>
+    </div>
   </div>
 </div>
 
@@ -278,7 +317,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function showLoading(txt){document.getElementById('loadingOverlay').getElementsByClassName('loading-box')[0].textContent=txt||'提交中...';document.getElementById('loadingOverlay').className='loading-overlay show'}
   function hideLoading(){document.getElementById('loadingOverlay').className='loading-overlay'}
   function fetchJSON(url,opts){
-    return fetch(url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
+    return fetch(API+url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
       var d=res.body||{}
       if(!res.ok||d.code!==200){
         var e=new Error(d.message||d.msg||'请求失败')
@@ -298,7 +337,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function todayStr(){var n=new Date(),m=String(n.getMonth()+1).padStart(2,'0'),d=String(n.getDate()).padStart(2,'0');return n.getFullYear()+'-'+m+'-'+d}
 
   // ---------- 状态 ----------
-  var types=[],groups=[],occurredDate=todayStr(),remark='',handlerName=''
+  var types=[],groups=[],occurredDate=todayStr(),handlerName=''
   // vouchers: {file,url,status:done|uploading,progress}
   var vouchers=[]
   // 弹窗状态
@@ -307,12 +346,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   var drawerItem=null
 
   // ---------- 组模型（对齐小程序 form 页） ----------
-  function newGroup(){return{typeId:'',typeName:'请选择支出类型',typeDesc:'',items:[],plainItems:[],manualAmount:''}}
+  function newGroup(){return{typeId:'',typeName:'请选择支出类型',typeDesc:'',items:[],plainItems:[],manualAmount:'',remark:''}}
   function itemAmount(it){var w=parseFloat(it.weight),p=parseFloat(it.unitPrice);if(!(w>0)||!(p>0))return 0;return round2(w*p)}
   function plainItemAmount(it){var a=parseFloat(it.amount);return a>0?round2(a):0}
   function groupAmount(g){
     if(g.typeName===SELF)return round2(g.items.reduce(function(s,it){return s+itemAmount(it)},0))
-    if(g.plainItems.length)return round2(g.plainItems.reduce(function(s,it){return s+plainItemAmount(it)},0))
     var m=parseFloat(g.manualAmount);return m>0?round2(m):0
   }
   function totalAmount(){return round2(groups.reduce(function(s,g){return s+groupAmount(g)},0))}
@@ -339,23 +377,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
         :'<div class="add-material-hint">最多添加 '+MAX_ITEMS+' 种物料</div>'
       html+='</div>'
     }else if(g.typeId){
-      html+='<div class="mat-section"><div class="mat-title"><span>💰 支出明细</span><span class="mat-count">'+g.plainItems.length+'/'+MAX_ITEMS+'</span></div>'
-      if(!g.plainItems.length)html+='<div class="mat-empty">可添加明细，或直接填写下方金额</div>'
-      g.plainItems.forEach(function(it,i){
-        html+='<div class="mat-item" onclick="openPlainEditDrawer('+idx+','+i+')">'
-          +'<div class="mi-left"><span class="mi-name">'+esc(it.name)+'</span></div>'
-          +'<div class="mi-right"><span class="mi-amount">¥'+fmtMoney(plainItemAmount(it))+'</span></div>'
-          +'<span class="mi-del" onclick="event.stopPropagation();removePlainItem('+idx+','+i+')">✕</span></div>'
-      })
-      html+=g.plainItems.length<MAX_ITEMS
-        ?'<div class="add-material-btn" onclick="openPlainAddDrawer('+idx+')"><span class="add-icon">＋</span><span>添加明细（'+g.plainItems.length+'/'+MAX_ITEMS+'）</span></div>'
-        :'<div class="add-material-hint">最多添加 '+MAX_ITEMS+' 项明细</div>'
-      if(!g.plainItems.length){
-        html+='<div class="mat-field"><span class="mat-label">金额</span>'
-          +'<div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" value="'+esc(g.manualAmount)+'" placeholder="请输入金额" oninput="onManualAmount('+idx+',this.value)" /></div></div>'
-      }
-      html+='</div>'
+      // 其他类型：仅直接填写金额（多明细仅自购食材支持）
+      html+='<div class="mat-field"><span class="mat-label">金额</span>'
+        +'<div class="mat-input-box mat-input-row"><span class="mat-symbol">¥</span><input type="number" step="0.01" class="mat-num" value="'+esc(g.manualAmount)+'" placeholder="请输入金额" oninput="onManualAmount('+idx+',this.value)" /></div></div>'
     }
+    // 每组独立的支出说明（按类型分组，替代整单说明）
+    html+='<div class="mat-field group-remark-field"><span class="mat-label">支出说明</span>'
+      +'<input type="text" class="field-input" placeholder="请简要说明该类型支出用途" value="'+esc(g.remark||'')+'" oninput="onGroupRemark('+idx+',this.value)" /></div>'
     return html
   }
   function renderGroups(){
@@ -400,7 +428,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     if(EDIT_ID&&i!==0)return
     activeGroupIdx=i
     document.getElementById('typeSheetSub').textContent=EDIT_ID?'编辑模式仅修改当前类型':'可一次登记多个支出类型'
-    renderTypeList()
+    if(types.length){
+      renderTypeList()
+    }else{
+      // types 未就绪（页面打开过快或首次拉取失败）：弹窗内先给状态，再重拉一次，避免静默空白
+      document.getElementById('typeList').innerHTML='<div class="search-status">类型加载中...</div>'
+      get('/expense-types').then(function(d){
+        types=Array.isArray(d)?d:[]
+        renderTypeList()
+      }).catch(function(){
+        document.getElementById('typeList').innerHTML='<div class="search-status">类型加载失败，请关闭弹窗后重试</div>'
+      })
+    }
     document.getElementById('typeMask').className='mask show'
   }
   function closeTypePicker(){document.getElementById('typeMask').className='mask'}
@@ -421,13 +460,81 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     var t=types.filter(function(x){return x.typeId===id})[0]
     if(!t){closeTypePicker();return}
     g.typeId=t.typeId;g.typeName=t.name;g.typeDesc=t.description||''
-    if(t.name===SELF){g.plainItems=[];g.manualAmount=''}else{g.items=[];g.manualAmount=''}
+    if(t.name===SELF){g.manualAmount=''}else{g.items=[];g.manualAmount=''}
     closeTypePicker();renderGroups()
   }
   document.getElementById('typeList').addEventListener('click',function(e){
     var btn=e.target.closest('.type-btn');if(!btn)return
     selectType(btn.getAttribute('data-id'))
   })
+  // ---------- 日期滚轮选择 ----------
+  var DATE_ITEM_H=40
+  var DATE_MIN_Y=new Date().getFullYear()-1
+  var DATE_MAX_Y=new Date().getFullYear()+1
+  var datePicker={y:0,m:0,d:0}
+  function pad2(n){return n<10?'0'+n:''+n}
+  function daysInMonth(y,m){return new Date(y,m,0).getDate()}
+  function buildDateList(el,arr,sel){
+    var html=''
+    for(var i=0;i<arr.length;i++){
+      html+='<div class="wheel-item'+(i===sel?' on':'')+'" data-i="'+i+'">'+arr[i]+'</div>'
+    }
+    el.innerHTML=html
+  }
+  function rebuildDateWheels(){
+    var ys=[],ms=[],ds=[]
+    for(var y=DATE_MIN_Y;y<=DATE_MAX_Y;y++)ys.push(y+'年')
+    for(var m=1;m<=12;m++)ms.push(m+'月')
+    var nd=daysInMonth(datePicker.y,datePicker.m)
+    if(datePicker.d>nd)datePicker.d=nd
+    for(var d=1;d<=nd;d++)ds.push(d+'日')
+    buildDateList(document.getElementById('yearList'),ys,datePicker.y-DATE_MIN_Y)
+    buildDateList(document.getElementById('monthList'),ms,datePicker.m-1)
+    buildDateList(document.getElementById('dayList'),ds,datePicker.d-1)
+  }
+  // 注意：滚动发生在 .wheel-view 容器（wheelYear/wheelMonth/wheelDay）上，scroll 事件不冒泡到
+  // 内部 .wheel-list，监听器必须绑容器；scrollTop 读写也全部针对容器
+  function onDateWheelScroll(box,type){
+    var idx=Math.round(box.scrollTop/DATE_ITEM_H)
+    var maxI=(type==='y'?DATE_MAX_Y-DATE_MIN_Y:(type==='m'?11:daysInMonth(datePicker.y,datePicker.m)-1))
+    if(idx<0)idx=0;if(idx>maxI)idx=maxI
+    if(box.scrollTop!==idx*DATE_ITEM_H)box.scrollTop=idx*DATE_ITEM_H  // 手动对齐选中线（无 scroll-snap 内核兜底）
+    if(type==='y'&&datePicker.y!==DATE_MIN_Y+idx){datePicker.y=DATE_MIN_Y+idx;rebuildDateWheels();document.getElementById('wheelDay').scrollTop=(datePicker.d-1)*DATE_ITEM_H}
+    if(type==='m'&&datePicker.m!==idx+1){datePicker.m=idx+1;rebuildDateWheels();document.getElementById('wheelDay').scrollTop=(datePicker.d-1)*DATE_ITEM_H}
+    if(type==='d'&&datePicker.d!==idx+1)datePicker.d=idx+1
+    var items=box.querySelectorAll('.wheel-item')
+    for(var i=0;i<items.length;i++)items[i].className='wheel-item'+(i===idx?' on':'')
+  }
+  var dateScrollTimers={}
+  function bindDateWheel(box,type){
+    box.addEventListener('scroll',function(){
+      clearTimeout(dateScrollTimers[type])
+      dateScrollTimers[type]=setTimeout(function(){onDateWheelScroll(box,type)},90)
+    })
+  }
+  bindDateWheel(document.getElementById('wheelYear'),'y')
+  bindDateWheel(document.getElementById('wheelMonth'),'m')
+  bindDateWheel(document.getElementById('wheelDay'),'d')
+  function openDatePicker(){
+    var parts=String(occurredDate).split('-').map(function(s){return parseInt(s,10)})
+    var y=parts[0]||DATE_MAX_Y-1,m=parts[1]||1,d=parts[2]||1
+    if(y<DATE_MIN_Y)y=DATE_MIN_Y;if(y>DATE_MAX_Y)y=DATE_MAX_Y
+    if(m<1)m=1;if(m>12)m=12
+    datePicker={y:y,m:m,d:d}
+    rebuildDateWheels()
+    document.getElementById('wheelYear').scrollTop=(datePicker.y-DATE_MIN_Y)*DATE_ITEM_H
+    document.getElementById('wheelMonth').scrollTop=(datePicker.m-1)*DATE_ITEM_H
+    document.getElementById('wheelDay').scrollTop=(datePicker.d-1)*DATE_ITEM_H
+    document.getElementById('dateMask').className='mask show'
+  }
+  function confirmDatePicker(){
+    occurredDate=datePicker.y+'-'+pad2(datePicker.m)+'-'+pad2(datePicker.d)
+    document.getElementById('dateText').textContent=occurredDate
+    closeDatePicker()
+  }
+  function closeDatePicker(){document.getElementById('dateMask').className='mask'}
+  document.getElementById('dateMask').addEventListener('click',function(e){if(e.target===this)closeDatePicker()})
+
   function onManualAmount(i,v){
     // 只更新数据 + 局部刷新小计，避免整页重建导致输入框失焦
     groups[i].manualAmount=v
@@ -435,6 +542,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     var gt=cards[i]&&cards[i].querySelector('.group-total .gt-amount')
     if(gt)gt.textContent='¥'+fmtMoney(groupAmount(groups[i]))
     renderTotal()
+  }
+  function onGroupRemark(i,v){
+    // 只更新数据，不重建 DOM（避免输入框失焦）
+    groups[i].remark=v
   }
 
   // ---------- 自购：物料搜索 ----------
@@ -679,12 +790,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
           if(!(parseFloat(g.items[j].weight)>0)){showToast('请填写物料重量');return}
           if(!(parseFloat(g.items[j].unitPrice)>0)){showToast('请填写物料单价');return}
         }
-      }else if(g.plainItems.length){
-        if(g.plainItems.length>MAX_ITEMS){showToast('最多添加'+MAX_ITEMS+'项明细');return}
-        for(var k=0;k<g.plainItems.length;k++){
-          if(!g.plainItems[k].name.trim()){showToast('请填写明细名称');return}
-          if(!(parseFloat(g.plainItems[k].amount)>0)){showToast('请填写明细金额');return}
-        }
       }else{
         if(!(parseFloat(g.manualAmount)>0)){showToast('请填写【'+g.typeName+'】金额');return}
       }
@@ -697,7 +802,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     var urls=vouchers.map(function(v){return v.url})
     var payload={
       typeId:filled[0].typeId,amount:groupAmount(filled[0]),occurredDate:occurredDate,
-      handlerName:handlerName||'--',voucherUrls:urls,remark:remark||undefined
+      handlerName:handlerName||'--',voucherUrls:urls,remark:filled[0].remark||undefined
     }
     if(EDIT_ID){
       var g0=filled[0]
@@ -705,19 +810,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
         payload.items=g0.items.map(function(it){
           return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice)}
         })
-      }else if(g0.plainItems.length){
-        payload.amountItems=g0.plainItems.map(function(it){return{name:it.name.trim(),amount:parseFloat(it.amount)}})
       }
       return put('/expenses/'+EDIT_ID,payload).then(function(){done(true)}).catch(function(e){handleErr(e);btn.classList.remove('disabled')}).finally(hideLoading)
     }
     payload.records=filled.map(function(g){
-      var rec={typeId:g.typeId,amount:groupAmount(g)}
+      var rec={typeId:g.typeId,amount:groupAmount(g),remark:g.remark||undefined}
       if(g.typeName===SELF){
         rec.items=g.items.map(function(it){
           return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice)}
         })
-      }else if(g.plainItems.length){
-        rec.amountItems=g.plainItems.map(function(it){return{name:it.name.trim(),amount:parseFloat(it.amount)}})
       }
       return rec
     })
@@ -734,17 +835,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   document.getElementById('submitBtn').addEventListener('click',submit)
 
   // ---------- 初始化 ----------
-  document.getElementById('dateInput').value=occurredDate
-  document.getElementById('dateInput').addEventListener('change',function(){occurredDate=this.value})
-  document.getElementById('remarkInput').addEventListener('input',function(){remark=this.value})
+  // 支出说明已改为每组独立填写（onGroupRemark）；日期改用滚轮选择器（openDatePicker）
   document.getElementById('typeMask').addEventListener('click',function(e){if(e.target===this)closeTypePicker()})
   document.getElementById('matMask').addEventListener('click',function(e){if(e.target===this)closeMatSearch()})
   document.getElementById('drawerMask').addEventListener('click',function(e){if(e.target===this)closeDrawer()})
   document.getElementById('plainMask').addEventListener('click',function(e){if(e.target===this)closePlainDrawer()})
 
+  // ---------- 导出到 window（inline onclick 需全局可见） ----------
+  window.addGroup=addGroup
+  window.closeDrawer=closeDrawer
+  window.closeMatSearch=closeMatSearch
+  window.closePlainDrawer=closePlainDrawer
+  window.closePreview=closePreview
+  window.closeTypePicker=closeTypePicker
+  window.confirmDrawer=confirmDrawer
+  window.confirmPlainDrawer=confirmPlainDrawer
+  window.openEditDrawer=openEditDrawer
+  window.openMatSearch=openMatSearch
+  window.openPlainAddDrawer=openPlainAddDrawer
+  window.openPlainEditDrawer=openPlainEditDrawer
+  window.openTypePicker=openTypePicker
+  window.previewVoucher=previewVoucher
+  window.removeGroup=removeGroup
+  window.removeVoucher=removeVoucher
+  window.onManualAmount=onManualAmount
+  window.onGroupRemark=onGroupRemark
+  window.openDatePicker=openDatePicker
+  window.closeDatePicker=closeDatePicker
+  window.confirmDatePicker=confirmDatePicker
+
   function boot(){
     if(!TOKEN){showToast('登录已过期，请重新进入小程序')}
-    var p1=get('/expense-types').then(function(d){types=Array.isArray(d)?d:[]})
+    document.getElementById('dateText').textContent=occurredDate
+    var p1=get('/expense-types').then(function(d){types=Array.isArray(d)?d:[]}).catch(function(e){showToast('支出类型加载失败：'+(e.message||'网络异常'));throw e})
     var p2=get('/auth/me').then(function(d){
       handlerName=(d&&d.employeeName)||''
     }).catch(function(){})
@@ -763,22 +886,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
         }
         var mt=types.filter(function(t){return t.typeId===g.typeId})[0]
         if(mt)g.typeDesc=mt.description||''
-        remark=d.remark||''
+        g.remark=d.remark||''
         occurredDate=d.occurredDate||''
         handlerName=d.handlerName||handlerName
-        document.getElementById('dateInput').value=occurredDate
-        document.getElementById('remarkInput').value=remark
+        document.getElementById('dateText').textContent=occurredDate
         var urls=(d.voucherUrls&&d.voucherUrls.length)?d.voucherUrls:(d.voucherUrl?[d.voucherUrl]:[])
         vouchers=(Array.isArray(urls)?urls:[]).map(function(u){return{file:null,url:u,thumb:'',status:'done',progress:100}})
-        if(Array.isArray(its)&&its.length){
-          if(d.typeName===SELF){
-            g.items=its.map(function(mat){
-              return{materialId:mat.materialId||'',materialName:mat.name,parentCategory:mat.parentCategory||'',category:mat.category||'',weight:mat.qty!=null?String(mat.qty):'',unitPrice:mat.unitPrice!=null?String(mat.unitPrice):''}
-            })
-          }else{
-            g.plainItems=its.map(function(it){return{name:it.name||'',amount:it.amount!=null?String(it.amount):''}})
-          }
+        if(d.typeName===SELF&&Array.isArray(its)&&its.length){
+          g.items=its.map(function(mat){
+            return{materialId:mat.materialId||'',materialName:mat.name,parentCategory:mat.parentCategory||'',category:mat.category||'',weight:mat.qty!=null?String(mat.qty):'',unitPrice:mat.unitPrice!=null?String(mat.unitPrice):''}
+          })
         }else if(d.typeName!==SELF){
+          // 其他类型：仅回填总金额（多明细仅自购食材支持）
           g.manualAmount=d.amount!=null?String(d.amount):''
         }
         groups=[g]
@@ -788,6 +907,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
       groups=[newGroup()]
       Promise.all([p1,p2]).catch(function(){}).then(function(){
         renderGroups();renderVouchers()
+        // 新增时自动弹出类型选择，减少一步操作
+        setTimeout(function(){openTypePicker(0)},350)
       })
     }
   }

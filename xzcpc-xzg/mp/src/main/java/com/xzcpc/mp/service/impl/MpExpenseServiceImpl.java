@@ -297,7 +297,8 @@ public class MpExpenseServiceImpl implements MpExpenseService {
         for (MpExpenseSaveReq r : req.getRecords()) {
             r.setOccurredDate(req.getOccurredDate());
             r.setHandlerName(req.getHandlerName());
-            r.setRemark(req.getRemark());
+            // 记录级说明优先（H5 按类型分组填写），未填时回退整单说明（小程序旧版整单模式）
+            r.setRemark(StringUtils.hasText(r.getRemark()) ? r.getRemark() : req.getRemark());
             r.setVoucherUrl(null);
             r.setVoucherUrls(req.getVoucherUrls());
             results.add(create(storeId, storeName, r));

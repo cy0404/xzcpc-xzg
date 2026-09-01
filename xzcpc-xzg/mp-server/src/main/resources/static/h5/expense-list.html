@@ -98,7 +98,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function showLoading(){document.getElementById('loadingOverlay').className='loading-overlay show'}
   function hideLoading(){document.getElementById('loadingOverlay').className='loading-overlay'}
   function fetchJSON(url,opts){
-    return fetch(url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
+    return fetch(API+url,opts).then(function(r){return r.json().then(function(d){return{ok:r.ok,body:d}}) }).then(function(res){
       var d=res.body||{}
       if(!res.ok||d.code!==200){
         var e=new Error(d.message||d.msg||('请求失败'))
