@@ -1,0 +1,1 @@
+import{a as s}from"./index-BsRJrBdC.js";function t(e){return s.get("/expenses",{params:e})}function r(e){return s.get("/expenses/dashboard",{params:e})}function a(e){return s.get("/expense-types",{params:e})}export{t as a,a as b,r as g};

@@ -470,7 +470,9 @@ public class InventoryReportController {
         item.put("totalAmount", totalAmount);
         item.put("handlerName", nvl(r.getHandlerName()));
         item.put("remark", nvl(r.getRemark()));
-        item.put("voucherUrl", nvl(r.getVoucherUrl()));
+        // 凭证为多张逗号拼接，报表下发首张（保持单张URL契约）
+        item.put("voucherUrl", r.getVoucherUrl() != null && !r.getVoucherUrl().isEmpty()
+                ? r.getVoucherUrl().split(",")[0].trim() : "");
         item.put("createdAt", r.getCreatedAt() != null ? r.getCreatedAt().toString().replace("T", " ") : "");
         return item;
     }
