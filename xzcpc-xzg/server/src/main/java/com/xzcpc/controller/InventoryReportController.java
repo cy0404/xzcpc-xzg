@@ -431,14 +431,17 @@ public class InventoryReportController {
                     // 迁移前无明细的兜底：直接返回主表行（业务ID = 支出业务ID + "-" + 主表自增ID，保证唯一）
                     records.add(buildSpmRow(r, r.getBizCode() + "-" + r.getId(), r.getMaterialName(),
                             r.getParentCategory(), r.getCategory(),
-                            r.getMaterialId(), r.getUnit(), r.getPurchaseQty(), r.getUnitPrice(), r.getTotalAmount()));
+                            r.getMaterialId(), r.getUnit(), r.getPurchaseQty(), r.getUnitPrice(), r.getTotalAmount(),
+                            r.getRemark()));
                     continue;
                 }
                 for (SelfPurchaseMaterialItem it : items) {
                     // 多明细铺平一行一条：业务ID = 支出业务ID + "-" + 明细行自增ID，每行唯一（编辑后明细软删重建，行 id 随之更新）
+                    // 说明取物料明细级（H5 多物料提交后整单说明已停用）
                     records.add(buildSpmRow(r, r.getBizCode() + "-" + it.getId(), it.getMaterialName(),
                             it.getParentCategory(), it.getCategory(),
-                            it.getMaterialId(), it.getUnit(), it.getPurchaseQty(), it.getUnitPrice(), it.getTotalAmount()));
+                            it.getMaterialId(), it.getUnit(), it.getPurchaseQty(), it.getUnitPrice(), it.getTotalAmount(),
+                            it.getRemark()));
                 }
             }
         }
@@ -452,7 +455,8 @@ public class InventoryReportController {
     /** 自购成本报表行：主表头信息 + 物料行字段 */
     private Map<String, Object> buildSpmRow(SelfPurchaseMaterial r, String bizCode, String materialName,
                                             String parentCategory, String category, String materialId, String unit,
-                                            BigDecimal purchaseQty, BigDecimal unitPrice, BigDecimal totalAmount) {
+                                            BigDecimal purchaseQty, BigDecimal unitPrice, BigDecimal totalAmount,
+                                            String remark) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("storeId", nvl(r.getStoreId()));
         item.put("storeXiaochengxuId", nvl(r.getStoreMiniappNo()));
@@ -469,7 +473,7 @@ public class InventoryReportController {
         item.put("unitPrice", unitPrice);
         item.put("totalAmount", totalAmount);
         item.put("handlerName", nvl(r.getHandlerName()));
-        item.put("remark", nvl(r.getRemark()));
+        item.put("remark", nvl(remark));
         // 凭证为多张逗号拼接，报表下发首张（保持单张URL契约）
         item.put("voucherUrl", r.getVoucherUrl() != null && !r.getVoucherUrl().isEmpty()
                 ? r.getVoucherUrl().split(",")[0].trim() : "");
