@@ -473,6 +473,9 @@ body.body-lock{overflow:hidden}
     g.typeId=t.typeId;g.typeName=t.name;g.typeDesc=t.description||''
     if(t.name===SELF){g.manualAmount=''}else{g.items=[];g.manualAmount=''}
     closeTypePicker();renderGroups()
+    // 选中类型后自动滚动定位到新组卡片，避免弹窗关闭后页面停在原位看不到添加结果
+    var cards=document.getElementById('groupsBox').querySelectorAll('.card')
+    if(cards[activeGroupIdx])cards[activeGroupIdx].scrollIntoView({behavior:'smooth',block:'center'})
   }
   document.getElementById('typeList').addEventListener('click',function(e){
     var btn=e.target.closest('.type-btn');if(!btn)return
@@ -845,10 +848,14 @@ body.body-lock{overflow:hidden}
   }
   function done(isEdit){
     showToast(isEdit?'修改成功':'登记成功')
-    // 通知小程序容器刷新列表并返回（浏览器环境降级为提示）
+    // 通知小程序容器刷新列表并返回；浏览器直开（无 wx.miniProgram）时降级为跳回列表页
     if(typeof wx!=='undefined'&&wx.miniProgram){
       wx.miniProgram.postMessage({data:{type:'expense-submitted',isEdit:isEdit}})
       setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
+    }else{
+      setTimeout(function(){
+        location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
+      },900)
     }
   }
   document.getElementById('submitBtn').addEventListener('click',submit)
