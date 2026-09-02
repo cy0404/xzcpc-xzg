@@ -18,6 +18,8 @@ api.interceptors.request.use((config) => {
 // 响应拦截器：业务 code 非 200 时拒绝并提示错误信息
 api.interceptors.response.use(
   (res) => {
+    // 导出文件等 blob 响应没有业务 code 字段，直接放行（否则 Blob.code 恒为 undefined → 永远 reject，导出必失败）
+    if (res.config.responseType === 'blob') return res.data
     if (res.data.code !== 200) {
       if (res.data.code === 401) {
         handle401()

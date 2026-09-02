@@ -291,8 +291,12 @@ async function exportFeedback() {
     const blob = await resp.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = '评价管理.xlsx'; a.click()
-    URL.revokeObjectURL(url)
+    a.href = url; a.download = '评价管理.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    // 延迟释放 URL：立即 revoke 可能赶在浏览器开始下载前销毁，导致静默无反应
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
   } catch { message.error('导出失败') }
   finally { exporting.value = false }
 }

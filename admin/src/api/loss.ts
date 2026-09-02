@@ -25,7 +25,7 @@ export function confirmLossReport(id: number) { return api.post(`/admin/loss-rep
 export function rejectLossReport(id: number, reason: string) { return api.post(`/admin/loss-report/${id}/reject`, { reason }) }
 
 export function getLossDashboard(params?: {
-  supervisorName?: string; lossType?: string; startDate?: string; endDate?: string
+  storeId?: string; supervisorName?: string; lossType?: string; startDate?: string; endDate?: string
 }) { return api.get('/admin/loss-report/dashboard', { params }) }
 
 export function getStandards(params?: { standardType?: string; materialId?: string; pageNum?: number; pageSize?: number }) {

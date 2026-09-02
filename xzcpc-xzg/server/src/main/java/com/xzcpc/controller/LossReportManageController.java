@@ -1,19 +1,26 @@
 package com.xzcpc.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.xzcpc.common.context.AdminContextHolder;
+import com.xzcpc.common.context.AdminUser;
+import com.xzcpc.common.model.StoreInfo;
 import com.xzcpc.common.response.R;
+import com.xzcpc.common.service.StoreAccessService;
 import com.xzcpc.mp.entity.ContainerConfig;
 import com.xzcpc.mp.entity.LossReport;
 import com.xzcpc.mp.entity.LossReportItem;
 import com.xzcpc.mp.entity.LossStandard;
 import com.xzcpc.mp.mapper.ContainerConfigMapper;
+import com.xzcpc.mp.mapper.LossReportItemMapper;
 import com.xzcpc.mp.mapper.LossStandardMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.xzcpc.mp.service.LossReportService;
+import com.xzcpc.task.service.StoreService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.OutputStream;
@@ -34,6 +41,9 @@ public class LossReportManageController {
     private final LossReportService lossReportService;
     private final ContainerConfigMapper containerConfigMapper;
     private final LossStandardMapper lossStandardMapper;
+    private final LossReportItemMapper lossReportItemMapper;
+    private final StoreService storeService;
+    private final StoreAccessService storeAccessService;
 
     /** 全门店报损列表 */
     @GetMapping("/list")
@@ -188,18 +198,25 @@ public class LossReportManageController {
     /** 报损统计看板 */
     @GetMapping("/dashboard")
     public R<Map<String, Object>> dashboard(
+            @RequestParam(required = false) String storeId,
             @RequestParam(required = false) String supervisorName,
             @RequestParam(required = false) String lossType,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate) {
 
+        // 全量报损记录（不按门店过滤：排行需对比全部门店）
         List<LossReport> all = lossReportService.pageAll(null, supervisorName, lossType, null, startDate, endDate, 1, 99999).getRecords();
+        // 选中门店时：汇总/类型分布/月度趋势只看该店，排行仍展示全部门店（含0报损门店）
+        List<LossReport> scope = all;
+        if (StringUtils.hasText(storeId)) {
+            scope = all.stream().filter(r -> storeId.equals(r.getStoreId())).collect(Collectors.toList());
+        }
 
         // 汇总指标
-        long totalCount = all.size();
-        Set<String> storeIds = all.stream().map(LossReport::getStoreId).filter(Objects::nonNull).collect(Collectors.toSet());
-        long dailyCount = all.stream().filter(r -> "daily".equals(r.getLossType())).count();
-        long arrivalCount = all.stream().filter(r -> "arrival".equals(r.getLossType())).count();
+        long totalCount = scope.size();
+        Set<String> storeIds = scope.stream().map(LossReport::getStoreId).filter(Objects::nonNull).collect(Collectors.toSet());
+        long dailyCount = scope.stream().filter(r -> "daily".equals(r.getLossType())).count();
+        long arrivalCount = scope.stream().filter(r -> "arrival".equals(r.getLossType())).count();
 
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("totalCount", totalCount);
@@ -207,22 +224,43 @@ public class LossReportManageController {
         summary.put("dailyCount", dailyCount);
         summary.put("arrivalCount", arrivalCount);
 
-        // 按门店排行（次数）
-        Map<String, Long> storeCountMap = all.stream()
-                .collect(Collectors.groupingBy(r -> r.getStoreName() != null ? r.getStoreName() : r.getStoreId(), Collectors.counting()));
-        Map<String, BigDecimal> storeWeightMap = all.stream()
-                .collect(Collectors.groupingBy(r -> r.getStoreName() != null ? r.getStoreName() : r.getStoreId(),
-                        Collectors.reducing(BigDecimal.ZERO, r -> r.getBaseQty() != null ? r.getBaseQty() : BigDecimal.ZERO, BigDecimal::add)));
+        // 按门店排行：全部门店参与（含0报损门店），次数 + 净重（克）
+        Map<String, Long> countByStore = new LinkedHashMap<>();
+        Map<String, BigDecimal> gramsByStore = new LinkedHashMap<>();
+        Map<String, String> nameByStore = new LinkedHashMap<>();
+        // 1) 门店全集（督导/管理员可见范围过滤），0 补全
+        for (StoreInfo s : scopedStores(supervisorName)) {
+            countByStore.put(s.getId(), 0L);
+            gramsByStore.put(s.getId(), BigDecimal.ZERO);
+            nameByStore.put(s.getId(), s.getMendianmingcheng() != null ? s.getMendianmingcheng() : s.getId());
+        }
+        // 2) 报损记录累计：次数 + 净重（报单级 netWeight；多物料报损净重在明细表，按报单汇总）
+        Map<Long, BigDecimal> itemGramsByReport = itemNetWeightByReport(all);
+        for (LossReport r : all) {
+            String key = r.getStoreId() != null && !r.getStoreId().isBlank() ? r.getStoreId() : r.getStoreName();
+            if (key == null) continue;
+            countByStore.merge(key, 1L, Long::sum);
+            BigDecimal grams = r.getNetWeight();
+            if (grams == null) grams = itemGramsByReport.getOrDefault(r.getId(), BigDecimal.ZERO);
+            gramsByStore.merge(key, grams, BigDecimal::add);
+            nameByStore.putIfAbsent(key, r.getStoreName() != null ? r.getStoreName() : key);
+        }
 
-        long maxCount = storeCountMap.values().stream().max(Long::compareTo).orElse(1L);
-        List<Map<String, Object>> storeRanking = storeCountMap.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-                .limit(20)
+        long maxCount = countByStore.values().stream().max(Long::compareTo).orElse(1L);
+        List<Map<String, Object>> storeRanking = countByStore.entrySet().stream()
+                .sorted((a, b) -> {
+                    int c = Long.compare(b.getValue(), a.getValue());
+                    if (c != 0) return c;
+                    return gramsByStore.getOrDefault(b.getKey(), BigDecimal.ZERO)
+                            .compareTo(gramsByStore.getOrDefault(a.getKey(), BigDecimal.ZERO));
+                })
                 .map(e -> {
+                    String key = e.getKey();
                     Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", e.getKey());
+                    m.put("id", key);
+                    m.put("name", nameByStore.getOrDefault(key, key));
                     m.put("count", e.getValue());
-                    m.put("weight", storeWeightMap.getOrDefault(e.getKey(), BigDecimal.ZERO));
+                    m.put("weight", gramsByStore.getOrDefault(key, BigDecimal.ZERO));
                     m.put("percent", (int) (e.getValue() * 100 / maxCount));
                     return m;
                 }).collect(Collectors.toList());
@@ -241,7 +279,7 @@ public class LossReportManageController {
         Map<String, Long> monthMap = new LinkedHashMap<>();
         LocalDate today = LocalDate.now();
         for (int i = 5; i >= 0; i--) monthMap.put(today.minusMonths(i).format(DateTimeFormatter.ofPattern("yyyy-MM")), 0L);
-        for (LossReport r : all) {
+        for (LossReport r : scope) {
             if (r.getCreatedAt() != null) {
                 String m = r.getCreatedAt().toLocalDate().format(DateTimeFormatter.ofPattern("yyyy-MM"));
                 monthMap.merge(m, 1L, Long::sum);
@@ -263,6 +301,39 @@ public class LossReportManageController {
         result.put("typeDistribution", typeDistribution);
         result.put("monthlyTrend", monthlyTrend);
         return R.ok(result);
+    }
+
+    /** 门店范围：管理员可见门店 ∩ 指定督导门店（传督导名时），用于排行0门店补全 */
+    private List<StoreInfo> scopedStores(String supervisorName) {
+        List<StoreInfo> stores = storeService.getAllStores();
+        AdminUser admin = AdminContextHolder.get();
+        final Set<String> adminScope;
+        if (admin != null && storeAccessService.isSupervisorOnly(admin)) {
+            adminScope = new HashSet<>(storeAccessService.getAccessibleStoreIds(admin.getOpenId()));
+        } else {
+            adminScope = null;
+        }
+        final Set<String> supervisorScope = StringUtils.hasText(supervisorName)
+                ? new HashSet<>(storeAccessService.getAccessibleStoreIdsBySupervisorName(supervisorName))
+                : null;
+        return stores.stream()
+                .filter(s -> adminScope == null || adminScope.contains(s.getId()))
+                .filter(s -> supervisorScope == null || supervisorScope.contains(s.getId()))
+                .collect(Collectors.toList());
+    }
+
+    /** 按报单汇总明细净重（克）：日常/多物料报损的净重存在明细表 */
+    private Map<Long, BigDecimal> itemNetWeightByReport(List<LossReport> reports) {
+        Map<Long, BigDecimal> map = new HashMap<>();
+        List<Long> ids = reports.stream().map(LossReport::getId).filter(Objects::nonNull).collect(Collectors.toList());
+        if (ids.isEmpty()) return map;
+        for (LossReportItem it : lossReportItemMapper.selectList(
+                new LambdaQueryWrapper<LossReportItem>().in(LossReportItem::getReportId, ids))) {
+            if (it.getNetWeight() != null) {
+                map.merge(it.getReportId(), it.getNetWeight(), BigDecimal::add);
+            }
+        }
+        return map;
     }
 
     /** H5 拒绝 */

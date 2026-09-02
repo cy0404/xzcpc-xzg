@@ -22,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpStatusCodeException;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
@@ -56,7 +57,12 @@ public class LossReportH5Controller {
                                             @RequestParam(defaultValue = "") String reason,
                                             @RequestParam(defaultValue = "") String materialId,
                                             @RequestParam(defaultValue = "") String uid,
-                                            jakarta.servlet.http.HttpServletRequest request) {
+                                            @RequestParam(defaultValue = "") String recheck,
+                                            @RequestParam(defaultValue = "") String region,
+                                            jakarta.servlet.http.HttpServletRequest request,
+                                            jakarta.servlet.http.HttpServletResponse response) {
+        // GET 接口禁止缓存：审核结果实时变化，浏览器/飞书 webview 缓存旧响应会导致看到过期数据
+        response.setHeader("Cache-Control", "no-store");
         log.info("H5页面访问 | IP={} | category={} | tab={} | reason={} | uid={} | UA={}",
                 request.getRemoteAddr(), category, tab, reason, uid,
                 request.getHeader("User-Agent") != null ? request.getHeader("User-Agent").substring(0, Math.min(80, request.getHeader("User-Agent").length())) : "");
@@ -82,9 +88,22 @@ public class LossReportH5Controller {
                 }
             }
         }
+        // 前端把 recheck 解析成布尔后 encodeURIComponent 会传 "true"，此处兼容 "1"/"true" 两种值
+        boolean isRecheck = "1".equals(recheck) || "true".equalsIgnoreCase(recheck);
         String statusFilter;
-        if ("audit".equals(tab)) {
+        if ("audit".equals(tab) && isRecheck) {
+            // 蓝蛙二次审核入口（E2 审核人卡片 / 蓝蛙群知会卡片）：只展示蓝蛙拒绝待复核 + 二次审核已通过单。
+            // 只显示二次复核启用（2026-09-01）后新拒绝进入复核队列的单——历史一审拒绝单（8/17 批、8/29 店长拒）不再展示；
+            // 已确认不通过（recheck_reject）的单不展示（门店重新提交，无复核意义）
+            statusFilter = "AND ("
+                    + "  (r.status = 'rejected' AND EXISTS (SELECT 1 FROM loss_report_log l2 WHERE l2.report_id = r.id"
+                    + "     AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00'))"
+                    + "  OR EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id = r.id AND l.action = 'recheck_pass')"
+                    + ") AND r.remark LIKE '厂家：蓝蛙%'";
+        } else if ("audit".equals(tab)) {
             statusFilter = "AND r.status IN ('pending','registered','rejected')";
+            // 已审批（registered/rejected）只展示近一个月（按审核确认时间 confirmed_at），待审核全部展示
+            statusFilter += " AND (r.status = 'pending' OR r.confirmed_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH))";
         } else if ("resend".equals(tab)) {
             statusFilter = "AND r.status IN ('registered','confirmed_resend','received','not_received')";
         } else {
@@ -97,11 +116,20 @@ public class LossReportH5Controller {
             reasonFilter = " AND r.reason != '运输破损-外包装'";
         }
         String materialFilter = materialId.isEmpty() ? "" : " AND r.material_id = '" + materialId.replace("'", "''") + "'";
-        // 审核Tab排除牛油果泥（有独立卡片E），补发Tab不排除
+        // 审核Tab排除牛油果泥（有独立卡片E），补发Tab不排除；复核入口（recheck=1）本就只看蓝蛙牛油果泥，不排除
         String avocadoId = fms.getAvocadoMaterialId();
         String avoFilter = "";
-        if (materialId.isEmpty() && !"resend".equals(tab) && !avocadoId.isEmpty()) {
+        if (materialId.isEmpty() && !"resend".equals(tab) && !isRecheck && !avocadoId.isEmpty()) {
             avoFilter = " AND r.material_id != '" + avocadoId.replace("'", "''") + "'";
+        }
+        // 牛油果泥审核页按厂家正匹配（无厂家标记的老单归入 HASS 入口）：
+        //   入口判定优先 region 参数（卡片链接带 region=lanwa/hass，飞书打开可能丢 uid）；region 缺失时回退 uid：
+        //   uid=群 → 蓝蛙；uid=个人/未带 → hass；复核页（recheck=1）走上方蓝蛙复核 SQL，不重复过滤
+        if ("audit".equals(tab) && !isRecheck && !materialId.isEmpty() && materialId.equals(avocadoId)) {
+            boolean lanwaEntry = "lanwa".equals(region) || (region.isEmpty() && uid.startsWith("chat_"));
+            materialFilter += lanwaEntry
+                    ? " AND r.remark LIKE '厂家：蓝蛙%'"
+                    : " AND (r.remark LIKE '厂家：hass牛油果%' OR r.remark IS NULL OR r.remark = '' OR r.remark NOT LIKE '厂家：%')";
         }
         String baseSql = "SELECT r.id, r.material_id, r.material_name, r.input_qty, r.input_unit, r.orig_qty, r.reason, r.remark, r.voucher_url, r.store_name, r.qimai_order_no, r.status, r.reject_reason, r.urgent, r.occurred_date, m.category, m.parent_category, m.qm_code, r.handler_name, r.submitted_by, " +
                 "o.outbound_no, o.status AS outbound_status, o.error AS outbound_error, o.warehouse_no AS outbound_warehouse_no " +
@@ -109,7 +137,9 @@ public class LossReportH5Controller {
                 "LEFT JOIN outbound_order o ON o.id = r.outbound_order_id " +
                 "WHERE r.loss_type='arrival' " + statusFilter + reasonFilter + materialFilter + avoFilter + " " +
                 catCondition +
-                " ORDER BY r.occurred_date DESC";
+                // 待审核按发生日期排序（原逻辑）；已审批按审核确认时间倒序（最新审批在前）
+                " ORDER BY CASE WHEN r.status = 'pending' THEN 0 ELSE 1 END, " +
+                "CASE WHEN r.status = 'pending' THEN r.occurred_date ELSE r.confirmed_at END DESC";
 
         List<Map<String, Object>> allRows = jdbcTemplate.queryForList(baseSql);
         // 批量预加载：下载标记 + 收货反馈日志 + 提交人手机号，避免逐条查库（原实现每条 2 次查询，量大时很慢）
@@ -122,17 +152,20 @@ public class LossReportH5Controller {
         }
         java.util.Set<Long> downloadedIds = new java.util.HashSet<>();
         Map<Long, Map<String, Object>> feedbackMap = new HashMap<>();
+        Map<Long, String> recheckMap = new HashMap<>(); // 蓝蛙二次审核标记：pass/reject
         Map<String, String> mobileMap = new HashMap<>();
         if (!idList.isEmpty()) {
             String inSql = idList.stream().map(String::valueOf).collect(Collectors.joining(","));
             List<Map<String, Object>> logs = jdbcTemplate.queryForList(
                     "SELECT report_id, action, operator, remark, created_at FROM loss_report_log " +
-                    "WHERE report_id IN (" + inSql + ") AND action IN ('download','receive','not_receive') " +
+                    "WHERE report_id IN (" + inSql + ") AND action IN ('download','receive','not_receive','recheck_pass','recheck_reject') " +
                     "ORDER BY created_at ASC");
             for (Map<String, Object> log : logs) {
                 long rid = ((Number) log.get("report_id")).longValue();
                 String action = (String) log.get("action");
                 if ("download".equals(action)) { downloadedIds.add(rid); continue; }
+                if ("recheck_pass".equals(action)) { recheckMap.put(rid, "pass"); continue; }
+                if ("recheck_reject".equals(action)) { recheckMap.put(rid, "reject"); continue; }
                 feedbackMap.put(rid, log); // created_at 升序，后写覆盖 = 最新一条
             }
             List<String> openids = new ArrayList<>();
@@ -306,6 +339,8 @@ public class LossReportH5Controller {
                 item.put("feedback", ("not_receive".equals(act) ? "门店未收到货" : "门店已收货") +
                         (log.get("remark") != null && !log.get("remark").toString().isEmpty() ? " — " + log.get("remark") : ""));
             }
+            // 蓝蛙拒绝二次审核标记（pass=已通过 / reject=已确认不通过 / 空=待复核）
+            item.put("rechecked", recheckMap.getOrDefault(id, ""));
             if ("pending".equals(status)) pending.add(item); else done.add(item);
         }
         List<Map<String, Object>> list = new ArrayList<>(pending);
@@ -379,6 +414,96 @@ public class LossReportH5Controller {
             addLog(id, "reject", "厂家", reason != null ? reason : "", attachmentUrl);
         }
         return Map.of("code", 200, "msg", "ok");
+    }
+
+    /** 蓝蛙拒绝二次审核：直接通过（rejected→registered，进入补发流程） */
+    @PostMapping("/api/public/loss-report/recheck-pass")
+    public Map<String, Object> recheckPass(@RequestBody Map<String, String> body) {
+        return recheckLanwa(body, true);
+    }
+
+    /** 蓝蛙拒绝二次审核：确定不通过（保持 rejected，门店重新提交） */
+    @PostMapping("/api/public/loss-report/recheck-reject")
+    public Map<String, Object> recheckReject(@RequestBody Map<String, String> body) {
+        return recheckLanwa(body, false);
+    }
+
+    /**
+     * 蓝蛙群拒绝的单，审核人二次审核。仅蓝蛙牛油果泥单、status=rejected、且未复核过（幂等）。
+     * 通过：status→registered，清 reject_reason；不通过：保持 rejected（门店端重新提交，现状已支持）。
+     */
+    private Map<String, Object> recheckLanwa(Map<String, String> body, boolean pass) {
+        long id = Long.parseLong(body.get("id"));
+        String uid = body.getOrDefault("uid", "");
+        String operator = uid.isEmpty() ? "审核人" : uid;
+        Map<String, Object> cur;
+        try {
+            cur = jdbcTemplate.queryForMap("SELECT status, remark FROM loss_report WHERE id=?", id);
+        } catch (Exception e) {
+            return Map.of("code", 500, "msg", "报损单不存在");
+        }
+        if (!"rejected".equals(String.valueOf(cur.get("status")))) return Map.of("code", 500, "msg", "仅已拒绝的单可二次审核");
+        String remark = cur.get("remark") != null ? String.valueOf(cur.get("remark")) : "";
+        if (!remark.startsWith("厂家：蓝蛙")) return Map.of("code", 500, "msg", "仅蓝蛙厂家单可二次审核");
+        List<Long> dup = jdbcTemplate.queryForList(
+                "SELECT id FROM loss_report_log WHERE report_id=? AND action IN ('recheck_pass','recheck_reject') LIMIT 1",
+                Long.class, id);
+        if (!dup.isEmpty()) return Map.of("code", 500, "msg", "该单已复核过");
+        if (pass) {
+            jdbcTemplate.update("UPDATE loss_report SET status='registered', confirmed_at=?, reject_reason=NULL WHERE id=?",
+                    LocalDateTime.now(), id);
+            addLog(id, "recheck_pass", operator, "二次审核直接通过", "");
+            notifyLanwaRecheckPass(id); // 即时知会蓝蛙群（厂家不补发，仅告知复核结论）
+        } else {
+            addLog(id, "recheck_reject", operator, "二次审核确定不通过（门店可重新提交）", "");
+        }
+        return Map.of("code", 200, "msg", pass ? "已通过，进入补发流程" : "已确认不通过，门店可重新提交");
+    }
+
+    /** 二次审核通过后即时知会蓝蛙群：厂家只审核不补发，补发由总部补发人走每日卡片 G；失败不阻断主流程 */
+    private void notifyLanwaRecheckPass(long id) {
+        try {
+            String chatTargets = fms.getCardUserId("其他类", "avocado_audit_lanwa");
+            if (chatTargets.isEmpty()) return;
+            Map<String, Object> cur = jdbcTemplate.queryForMap(
+                    "SELECT store_name, material_name, material_id, input_qty, input_unit, reason, "
+                    + "DATE_FORMAT(occurred_date, '%Y-%m-%d') AS occurred_date FROM loss_report WHERE id=?", id);
+            String token = fms.getTenantToken();
+            if (token == null) return;
+            String store = String.valueOf(cur.getOrDefault("store_name", ""));
+            String name = String.valueOf(cur.getOrDefault("material_name", ""));
+            String mid = String.valueOf(cur.getOrDefault("material_id", ""));
+            String unit = String.valueOf(cur.getOrDefault("input_unit", ""));
+            String qtyStr = "--";
+            Object qty = cur.get("input_qty");
+            if (qty != null) {
+                try {
+                    java.math.BigDecimal bd = fms.convertAvocadoQty(mid, new java.math.BigDecimal(qty.toString()), unit);
+                    qtyStr = bd.setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+                            + " " + fms.convertAvocadoUnit(mid, unit);
+                } catch (Exception ignored) { qtyStr = qty + " " + unit; }
+            }
+            String reason = String.valueOf(cur.getOrDefault("reason", ""));
+            String occurredDate = cur.get("occurred_date") == null ? "" : String.valueOf(cur.get("occurred_date"));
+            Map<String, Object> card = new LinkedHashMap<>();
+            card.put("header", fms.cardHeader("blue", "到货验收报损 · 牛油果泥（蓝蛙）二次审核通过"));
+            List<Map<String, Object>> els = new ArrayList<>();
+            els.add(fms.mdEl("**" + store + "**\n" + qtyStr + " · " + name +
+                    "\n原因：" + (reason.isEmpty() ? "--" : reason) +
+                    "\n\n该单已通过总部复核，报损成立。"));
+            if (!occurredDate.isEmpty() && !"null".equals(occurredDate)) {
+                String avocadoId = fms.getAvocadoMaterialId();
+                if (!avocadoId.isEmpty()) {
+                    els.add(fms.mdEl("[查看详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + occurredDate
+                            + "&category=其他类&tab=audit&materialId=" + avocadoId + "&recheck=1") + ")"));
+                }
+            }
+            card.put("elements", els);
+            fms.sendToCardTargets(token, chatTargets, card);
+            log.info("蓝蛙二次审核通过知会 id={} → {}", id, chatTargets);
+        } catch (Exception e) {
+            log.warn("蓝蛙二次审核通过知会失败 id={}", id, e);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -475,7 +600,7 @@ public class LossReportH5Controller {
             els.add(fms.mdEl("[查看详情](" + link + ")"));
             card.put("elements", els);
 
-            fms.sendToUser(token, userId, card);
+            fms.sendToCardTargets(token, userId, card);
             log.info("审核完成通知补发人 reportId={} → {}", reportId, userId);
         } catch (Exception e) {
             log.warn("发送审核完成通知失败 reportId={}", reportId, e);
@@ -516,14 +641,19 @@ public class LossReportH5Controller {
             return Map.of("code", 200, "msg", "水果蔬菜类无需加急");
         }
 
-        // 牛油果泥走独立卡片
+        // 牛油果泥走独立卡片（按 remark"厂家："前缀拆分：蓝蛙 → avocado_audit_lanwa，其余 → avocado_audit）
         String avoId = fms.getAvocadoMaterialId();
         String userId;
         String cardTitle;
         if (!avoId.isEmpty() && avoId.equals(
                 jdbcTemplate.queryForObject("SELECT material_id FROM loss_report WHERE id=?", String.class, reportId))) {
-            userId = fms.getCardUserId("其他类", "avocado_audit");
-            cardTitle = "加急到货报损 · 牛油果泥";
+            String remark = null;
+            try {
+                remark = jdbcTemplate.queryForObject("SELECT remark FROM loss_report WHERE id=?", String.class, reportId);
+            } catch (Exception ignored) {}
+            boolean lanwa = remark != null && remark.startsWith("厂家：蓝蛙");
+            userId = fms.getCardUserId("其他类", lanwa ? "avocado_audit_lanwa" : "avocado_audit");
+            cardTitle = "加急到货报损 · 牛油果泥" + (lanwa ? "（蓝蛙）" : "");
         } else {
             String cardType = "运输破损-外包装".equals(r.getReason()) ? "damage_audit" : "other_audit";
             userId = fms.getCardUserId("其他类", cardType);
@@ -566,7 +696,7 @@ public class LossReportH5Controller {
         card.put("header", fms.cardHeader("red", cardTitle));
         card.put("elements", els);
 
-        fms.sendToUser(token, userId, card);
+        fms.sendToCardTargets(token, userId, card);
         return Map.of("code", 200, "msg", "已发送加急卡片给 " + userId);
     }
 
@@ -1020,6 +1150,24 @@ public class LossReportH5Controller {
             method.setAccessible(true);
             method.invoke(job, token, java.time.LocalDate.now().toString());
             return Map.of("code", 200, "msg", "已触发牛油果泥审核卡片");
+        } catch (Exception e) {
+            return Map.of("code", 500, "msg", "调用失败: " + e.getMessage());
+        }
+    }
+
+    /** 手动触发蓝蛙拒绝二次复核卡片 E2（测试用）：与 trigger-avocado 同模式，只发 E2 */
+    @PostMapping("/api/public/loss-report/trigger-avocado-recheck")
+    @ResponseBody
+    public Map<String, Object> triggerAvocadoRecheck() {
+        com.xzcpc.job.LossReportDailySummaryJob job =
+                new com.xzcpc.job.LossReportDailySummaryJob(jdbcTemplate, fms);
+        String token = fms.getTenantToken();
+        if (token == null) return Map.of("code", 500, "msg", "飞书token获取失败");
+        try {
+            var method = com.xzcpc.job.LossReportDailySummaryJob.class.getDeclaredMethod("sendCardLanwaRecheck", String.class, String.class);
+            method.setAccessible(true);
+            method.invoke(job, token, java.time.LocalDate.now().toString());
+            return Map.of("code", 200, "msg", "已触发蓝蛙拒绝待复核卡片 E2");
         } catch (Exception e) {
             return Map.of("code", 500, "msg", "调用失败: " + e.getMessage());
         }

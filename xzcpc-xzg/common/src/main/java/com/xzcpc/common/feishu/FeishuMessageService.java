@@ -84,9 +84,28 @@ public class FeishuMessageService {
         return lastId;
     }
 
-    /** 发送交互卡片给群（chat_id）；返回消息 message_id（失败返回 null，可用于查询已读） */
+    /** 发送交互卡片给群（chat_id）；返回消息 message_id（失败返回 null，可用于查询已读）。
+     *  兼容配置值带 chat_ 前缀（如 sendToCardTargets 的群标记），发送前剥掉，避免把 chat_oc_xxx 当 chat_id 传给飞书 */
     public String sendToChat(String token, String chatId, Map<String, Object> card) {
-        return sendMessage(token, chatId, "chat_id", card);
+        String cid = chatId;
+        if (cid.startsWith("chat_")) cid = cid.substring("chat_".length());
+        return sendMessage(token, cid, "chat_id", card);
+    }
+
+    /**
+     * 按配置收件人发送卡片（逗号分隔，支持混合）：以 chat_ 开头的值视为群 chat_id（发群），
+     * 否则视为个人 open_id（发个人）。用于外部厂家等场景：把配置行的 feishu_user_id
+     * 改成 chat_<chat_id> 即可把该卡片改为发群，无需改代码。
+     */
+    public String sendToCardTargets(String token, String targets, Map<String, Object> card) {
+        String lastId = null;
+        if (targets == null || targets.isEmpty()) return null;
+        for (String t : targets.split(",")) {
+            String s = t.trim();
+            if (s.isEmpty()) continue;
+            lastId = s.startsWith("chat_") ? sendToChat(token, s, card) : sendToUser(token, s, card);
+        }
+        return lastId;
     }
 
     private String sendMessage(String token, String receiveId, String idType, Map<String, Object> card) {

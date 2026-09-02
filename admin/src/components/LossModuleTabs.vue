@@ -43,7 +43,8 @@ const activeKey = computed(() => {
 })
 
 function go(path: string) {
-  if (route.path !== path && !route.path.startsWith(path + '/')) {
+  // 仅同路径时跳过；不能按前缀判断，否则 /loss/dashboard 上点"报损列表"(/loss) 会被误判为已在该页
+  if (route.path !== path) {
     router.push(path)
   }
 }

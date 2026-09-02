@@ -251,6 +251,9 @@ var materialId = p.get('materialId') || '';
 var tab = p.get('tab') || '';
 var urgentId = p.get('urgentId') || '';
 var urgentOnly = p.get('urgent') || '';
+var uid = p.get('uid') || '';
+var region = p.get('region') || ''; // 牛油果泥厂家入口：lanwa=蓝蛙群 / hass=个人（卡片链接携带；飞书打开可能丢 uid，过滤不依赖 uid）
+var recheck = p.get('recheck') === '1'; // 蓝蛙拒绝二次审核入口（审核人卡片）
 var reports = [];
 var modalCb = null;
 var otherModalCb = null;
@@ -365,7 +368,12 @@ async function load() {
     var tabParam = tab ? ('&tab=' + tab) : '';
     var reasonParam = reason ? ('&reason=' + encodeURIComponent(reason)) : '';
     var matParam = materialId ? ('&materialId=' + encodeURIComponent(materialId)) : '';
-    var r = await fetch('/api/public/loss-report/daily-summary?date=' + date + catParam + tabParam + reasonParam + matParam + '&_t=' + Date.now());
+    // uid/region 必须传给接口：厂家入口过滤（region 优先，uid 兜底）与操作权限都依赖它们
+    var uidParam = uid ? ('&uid=' + encodeURIComponent(uid)) : '';
+    var regionParam = region ? ('&region=' + encodeURIComponent(region)) : '';
+    // recheck 是布尔，后端只认 "1"（不能 encodeURIComponent(recheck)，否则会传 "true" 导致回退到普通审核查询）
+    var recheckParam = recheck ? '&recheck=1' : '';
+    var r = await fetch('/api/public/loss-report/daily-summary?date=' + date + catParam + tabParam + reasonParam + matParam + uidParam + regionParam + recheckParam + '&_t=' + Date.now());
     var d = await r.json();
     reports = d.list;
     render(d);
@@ -859,7 +867,9 @@ function renderCard(r) {
   var isAudit = (tab === 'audit'), isResend = (tab === 'resend');
   var cls = matchSearch(r) ? 'rpt' : 'rpt hidden';
   var h = '<div class="' + cls + '" id="card' + r.id + '"><div class="rpt-check-row"><label>选择下载</label><input type="checkbox" class="rpt-check" onchange="onCheckChange()" value="' + r.id + '"></div><div class="top">' + tag(r.storeName, 'store') + ' ';
-  if (isAudit) {
+  if (recheck) {
+    // 蓝蛙复核页（知会/E2 卡片进入）：不显示卡片状态标签
+  } else if (isAudit) {
     if (r.result === '已登记' || (r.isAvocado && r.result === '补发')) h += tag('已通过', 'ok');
     else if (r.result === '拒绝') h += tag('已拒绝', 'no');
     else h += tag('待审核', 'wait');
@@ -914,6 +924,18 @@ function renderCard(r) {
   if ((isOther || isUrgent) && r.result === '已登记' && !isAudit && !isResend) {
     h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn btn-ok" onclick="onShip(' + r.id + ')">确认发货</button></div>';
   }
+  // 蓝蛙拒绝二次审核（recheck 入口：E2 审核人卡片 uid=个人 → 可操作；蓝蛙群知会卡片 uid 空 → 只读状态）
+  if (recheck && r.supplier && r.supplier.indexOf('蓝蛙') === 0 && (r.result === '拒绝' || r.rechecked)) {
+    if (!r.rechecked) {
+      if (uid && uid.indexOf('chat_') !== 0) {
+        h += '<div class="btns" id="btns' + r.id + '"><button class="btn btn-no" onclick="onRecheck(' + r.id + ',false)">确定不通过</button><button class="btn btn-ok" onclick="onRecheck(' + r.id + ',true)">直接通过</button></div>';
+      } else {
+        h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn btn-done" disabled>待复核</button></div>';
+      }
+    } else {
+      h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn btn-done" disabled>' + (r.rechecked === 'pass' ? '二次审核已通过' : '已确认不通过') + '</button></div>';
+    }
+  }
   if (r.feedback) {
     var isRed = r.feedback.indexOf('未收到货') !== -1;
     h += '<div class="feedback' + (isRed ? ' feedback-red' : '') + '">' + esc(r.feedback) + '</div>';
@@ -924,6 +946,7 @@ function renderCard(r) {
 
 var isOther = false;
 var isUrgent = false;
+var recheckOp = false; // 全局：E2 审核人入口（recheck=1 且 uid=个人）——switchTab 等全局函数依赖
 
 function render(d) {
   // 加急卡片：只展示加急报损（排除水果蔬菜类），3tab
@@ -946,6 +969,26 @@ function render(d) {
   isOther = (category === '其他类') || isUrgent;
   var isAudit = (tab === 'audit');
   var isResend = (tab === 'resend');
+  // 牛油果泥审核页按厂家正匹配兜底（与后端 dailySummary 过滤一致，防 uid 缺失/接口缓存导致混入）：
+  //   入口判定优先 region（lanwa=蓝蛙群 / hass=个人），缺失时回退 uid：群→蓝蛙，个人/无→HASS；
+  //   蓝蛙入口只收「厂家：蓝蛙」；HASS 入口收 hass + 无厂家标记的老单（非「厂家：蓝蛙」前缀即入）
+  if (isAudit && !!materialId && !recheck) {
+    var avoUidIsGroup = region === 'lanwa' || (!region && uid && uid.indexOf('chat_') === 0);
+    d.list = d.list.filter(function(r){
+      var remark = r.remark || '';
+      return avoUidIsGroup ? remark.indexOf('厂家：蓝蛙') === 0 : remark.indexOf('厂家：蓝蛙') !== 0;
+    });
+    d.pending = d.list.filter(function(r){ return !r.result; }).length;
+    d.done = d.list.filter(function(r){ return !!r.result; }).length;
+    d.stores = new Set(d.list.map(function(r){ return r.storeName; })).size;
+  }
+  // 蓝蛙二次审核入口：只展示复核相关单（蓝蛙拒绝待复核 + 已复核），与后端 recheck=1 过滤一致
+  if (recheck && isAudit) {
+    d.list = d.list.filter(function(r){ return r.supplier && r.supplier.indexOf('蓝蛙') === 0 && (r.result === '拒绝' || r.rechecked); });
+    d.pending = d.list.filter(function(r){ return !r.result; }).length;
+    d.done = d.list.filter(function(r){ return !!r.result; }).length;
+    d.stores = new Set(d.list.map(function(r){ return r.storeName; })).size;
+  }
   if (isResend) {
     // 蔬菜水果走月度发券流程，不进补发页（顶部统计与卡片列表都不计）
     d.list = d.list.filter(function(r){ return !r.isFruitVeg; });
@@ -977,7 +1020,9 @@ function render(d) {
     var rejectedCount = d.list.filter(function(x){return x.result==='拒绝'}).length;
     var dlCount = d.list.filter(function(x){return !x.result && x.downloaded}).length;
     var undlCount = d.list.filter(function(x){return !x.result && !x.downloaded}).length;
-    if (isAvocado) {
+    if (recheck) {
+      // 蓝蛙复核页（知会/E2 卡片进入）：不显示顶部统计数字
+    } else if (isAvocado) {
       h += '<div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr">';
       h += '<div><div class="stat-val" id="statPending">' + (undlCount+dlCount) + '</div><div class="stat-label">未审核</div></div>';
       h += '<div><div class="stat-val" style="color:#2F8F57" id="statPassed">' + passedCount + '</div><div class="stat-label">已通过</div></div>';
@@ -1070,7 +1115,9 @@ function render(d) {
     return;
   }
 
-  var activeTab = localStorage.getItem('activeTab') || 'pending';
+  recheckOp = recheck && uid && uid.indexOf('chat_') !== 0; // E2 审核人入口（uid=个人）可操作+双状态tab；知会入口（uid 空/群）只读
+  var activeTab = localStorage.getItem(recheckOp ? 'activeTab_recheck' : 'activeTab') || 'pending';
+  if (recheck && activeTab === 'rejected') activeTab = 'pending'; // 复核页已去掉「已拒绝」tab，残留旧选择修正
   localStorage.removeItem('activeTab');
 
   var tab1Label, tab2Label, tab3Label;
@@ -1092,6 +1139,15 @@ function render(d) {
   }
 
   // Tab 栏
+  if (recheck) {
+    // 蓝蛙复核页：审核人入口（E2 卡片，uid=个人）→ 待复核/已通过/已拒绝 三 tab；知会入口（uid 空/群）→ 不显示 tab
+    if (recheckOp) {
+      h += '<div class="tabs">';
+      h += '<div class="tab-btn' + (activeTab==='pending'?' active':'') + '" id="tabPendingBtn" onclick="switchTab(\'pending\')">待复核</div>';
+      h += '<div class="tab-btn' + (activeTab==='passed'?' active':'') + '" id="tabPassedBtn" onclick="switchTab(\'passed\')">已通过</div>';
+      h += '</div>';
+    }
+  } else {
   h += '<div class="tabs">';
   if (isAudit) {
     if (isAvocado) {
@@ -1112,9 +1168,36 @@ function render(d) {
     }
   }
   h += '</div>';
+  }
 
   // Tab 内容
-  if (isAudit && isAvocado) {
+  if (recheck) {
+    if (recheckOp) {
+      // 审核人入口（E2 卡片）：两个复核 tab——待复核（未复核）/已通过（recheck_pass）；已确认不通过的不展示
+      var recheckMain = { pending: [], passed: [] };
+      for (var i = 0; i < d.list.length; i++) {
+        var rr = d.list[i];
+        if (rr.rechecked === 'pass') recheckMain.passed.push(rr);
+        else recheckMain.pending.push(rr);
+      }
+      var recheckTabDefs = [
+        { key: 'pending', label: '待复核', arr: recheckMain.pending },
+        { key: 'passed', label: '已通过', arr: recheckMain.passed }
+      ];
+      for (var t = 0; t < recheckTabDefs.length; t++) {
+        var td = recheckTabDefs[t];
+        h += '<div class="tab-body' + (activeTab === td.key ? ' active' : '') + '" id="tab' + td.key.charAt(0).toUpperCase() + td.key.slice(1) + '">';
+        if (td.arr.length) { for (var k = 0; k < td.arr.length; k++) h += renderCard(td.arr[k]); }
+        else h += '<div class="loading" style="padding:40px 0">暂无' + td.label + '</div>';
+        h += '</div>';
+      }
+    } else if (d.list.length) {
+      // 知会入口（uid 空/群）：不分状态 tab，直接全部展示
+      for (var i = 0; i < d.list.length; i++) h += renderCard(d.list[i]);
+    } else {
+      h += '<div class="loading" style="padding:40px 0">暂无复核数据</div>';
+    }
+  } else if (isAudit && isAvocado) {
     // 三个主tab（未审核/已通过/已拒绝），每个主tab下都有 未下载/已下载 两个子tab
     // 已通过 = 已登记 或 补发（confirmed_resend/received/not_received 都已过审核，只是走完了补发流程）
     // 无视频的报损单（只有图片）算已下载：图片随 ZIP 一起打包，页面上也直接可见，无需下载动作
@@ -1207,7 +1290,7 @@ function render(d) {
 }
 
 function switchTab(tab) {
-  localStorage.setItem('activeTab', tab);
+  localStorage.setItem(recheckOp ? 'activeTab_recheck' : 'activeTab', tab);
   location.reload();
 }
 
@@ -1373,6 +1456,18 @@ function onReject(id) {
   openModal('确定拒绝？', function() {
     if (!ta.value.trim()) { alert('请填写拒绝原因'); return; }
     doMark(id, '拒绝', ta.value, null);
+  });
+}
+function onRecheck(id, pass) {
+  openModal(pass ? '确认直接通过该报损单？通过后进入补发流程。' : '确认不通过？门店将重新提交该报损单。', function() {
+    fetch('/api/public/loss-report/' + (pass ? 'recheck-pass' : 'recheck-reject'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: id, uid: uid})
+    }).then(function(res) { return res.json(); }).then(function(d) {
+      if (d.code !== 200) { alert(d.msg || '操作失败'); return; }
+      location.reload();
+    }).catch(function() { alert('操作失败，请重试'); });
   });
 }
 

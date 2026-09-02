@@ -7,7 +7,7 @@
         <h1 class="page-title">报损管理</h1>
         <p class="page-subtitle">查看全门店日常报损与到货验收报损，总部不做逐条审批。</p>
       </div>
-      <a-button type="primary" @click="exportLoss">导出报损记录</a-button>
+      <a-button type="primary" :loading="exporting" @click="exportLoss">导出报损记录</a-button>
     </div>
 
     <!-- 筛选 -->
@@ -264,26 +264,34 @@ async function loadStores() {
 
 function resetFilters() { filters.storeId = ''; filters.supervisorName = ''; filters.lossType = ''; filters.status = ''; dateRange.value = null; fetchList() }
 
+const exporting = ref(false)
+
 async function exportLoss() {
+  exporting.value = true
   try {
-    const params = new URLSearchParams()
-    if (filters.storeId) params.append('storeId', filters.storeId)
-    if (filters.supervisorName) params.append('supervisorName', filters.supervisorName)
-    if (filters.lossType) params.append('lossType', filters.lossType)
-    if (filters.status) params.append('status', filters.status)
-    if (filters.startDate) params.append('startDate', filters.startDate)
-    if (filters.endDate) params.append('endDate', filters.endDate)
-    const token = localStorage.getItem('admin_token')
-    const resp = await fetch(`/api/admin/loss-report/export?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token || ''}` }
+    const res: any = await exportLossReport({
+      storeId: filters.storeId || undefined,
+      supervisorName: filters.supervisorName || undefined,
+      lossType: filters.lossType || undefined,
+      status: filters.status || undefined,
+      startDate: filters.startDate || undefined,
+      endDate: filters.endDate || undefined,
     })
-    if (!resp.ok) { message.error('导出失败'); return }
-    const blob = await resp.blob()
+    const blob = res instanceof Blob ? res : new Blob([res])
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = '报损记录.xlsx'; a.click()
-    URL.revokeObjectURL(url)
-  } catch { message.error('导出失败') }
+    a.href = url
+    a.download = `报损记录_${dayjs().format('YYYY-MM-DD')}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    // 延迟释放 URL：立即 revoke 可能赶在浏览器开始下载前销毁，导致静默无反应
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
+  } catch (e: any) {
+    message.error(e?.message || '导出失败')
+  } finally {
+    exporting.value = false
+  }
 }
 
 function handleTable(p: any) { pagination.current = p.current; fetchList() }

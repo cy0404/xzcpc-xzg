@@ -167,7 +167,7 @@ function chooseImage() {
   }})
 }
 function openCamera() {
-  const h5url = H5_BASE + '/upload/h5/loss-arrival.html?v=2&token=' + encodeURIComponent(uni.getStorageSync('token') || '') + '&storeName=' + encodeURIComponent(userStore.storeName || '')
+  const h5url = H5_BASE + '/upload/h5/loss-arrival.html?v=3&token=' + encodeURIComponent(uni.getStorageSync('token') || '') + '&storeName=' + encodeURIComponent(userStore.storeName || '')
   uni.navigateTo({ url: '/pages/loss-report/camera-h5/index?url=' + encodeURIComponent(h5url) })
 }
 function onCameraRecorded(filePath: string, size: number, thumb?: string) {

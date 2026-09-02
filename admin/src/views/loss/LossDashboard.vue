@@ -12,6 +12,12 @@
     <a-card class="filter-card" :bordered="false" style="margin-bottom:16px">
       <a-row :gutter="[16, 12]">
         <a-col :xs="12" :md="4">
+          <div class="filter-label">门店</div>
+          <a-select v-model:value="storeId" placeholder="全部门店" style="width:100%" allow-clear show-search
+            :filter-option="(input:string, option:any) => (option.mendianmingcheng||'').includes(input)"
+            :field-names="{label:'mendianmingcheng',value:'id'}" :options="storeOptions" @change="fetchDashboard" />
+        </a-col>
+        <a-col :xs="12" :md="4">
           <div class="filter-label">督导</div>
           <a-select v-model:value="supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="fetchDashboard" />
         </a-col>
@@ -73,12 +79,12 @@
             </div>
           </template>
           <div class="bar-list">
-            <div v-for="item in storeRankView" :key="item.name" class="bar-row">
+            <div v-for="item in storeRankView" :key="item.id" class="bar-row" :class="{ selected: item.id === storeId }">
               <span class="bar-label">{{ item.name }}</span>
               <span class="bar-track">
                 <span class="bar-fill" :style="{ width: `${item.percent}%` }" />
               </span>
-              <strong>{{ storeRankDim === 'count' ? `${item.count} 次` : `${item.weight} kg` }}</strong>
+              <strong>{{ storeRankDim === 'count' ? `${item.count} 次` : formatWeight(item.weight) }}</strong>
             </div>
           </div>
         </a-card>
@@ -113,12 +119,15 @@
 import { computed, onMounted, ref } from 'vue'
 import LossModuleTabs from '../../components/LossModuleTabs.vue'
 import { getLossDashboard } from '../../api/loss'
+import { getStores } from '../../api/store'
 import { getSupervisorOptions } from '../../api/supervisor'
 import dayjs from 'dayjs'
 
 const dateRange = ref<any>([dayjs().startOf('month'), dayjs()])
+const storeId = ref('')
 const supervisorName = ref('')
 const lossType = ref('')
+const storeOptions = ref<any[]>([])
 const supervisorOptions = ref<{ label: string; value: string }[]>([])
 const storeRankDim = ref('count')
 
@@ -155,6 +164,7 @@ const donutStyle = computed(() => {
 async function fetchDashboard() {
   try {
     const params: any = {}
+    if (storeId.value) params.storeId = storeId.value
     if (supervisorName.value) params.supervisorName = supervisorName.value
     if (lossType.value) params.lossType = lossType.value
     if (dateRange.value && dateRange.value[0]) {
@@ -170,11 +180,26 @@ async function fetchDashboard() {
   } catch { /* ignore */ }
 }
 
+async function loadStores() {
+  try { const res: any = await getStores(); storeOptions.value = res.data || res || [] } catch { /* */ }
+}
+
 async function fetchSupervisors() {
   try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
 }
 
+/** 重量单位智能显示：后端返回克，≥1000g 转 kg */
+function formatWeight(g: number) {
+  const v = Number(g) || 0
+  if (v >= 1000) {
+    const kg = Math.round(v / 100) / 10
+    return `${kg} kg`
+  }
+  return `${v} g`
+}
+
 onMounted(async () => {
+  await loadStores()
   await fetchSupervisors()
   await fetchDashboard()
 })
@@ -194,7 +219,8 @@ onMounted(async () => {
 .metric-note { font-size: 12px; color: #9ca3af; margin-top: 4px; }
 
 .bar-list { display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; }
-.bar-row { display: flex; align-items: center; gap: 10px; }
+.bar-row { display: flex; align-items: center; gap: 10px; border-radius: 8px; padding: 4px 8px; }
+.bar-row.selected { background: #EAF5EE; outline: 1px solid #2F8F57; }
 .bar-label { width: 120px; flex-shrink: 0; font-size: 13px; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-track { flex: 1; height: 18px; border-radius: 9px; background: #f3f4f6; overflow: hidden; }
 .bar-fill { display: block; height: 100%; border-radius: 9px; background: linear-gradient(90deg, #2F8F57, #4db87a); transition: width .4s; }

@@ -35,6 +35,9 @@ public class LossReportDailySummaryJob {
 
         String today = LocalDate.now().toString();
 
+        // 卡片E2：蓝蛙拒绝待复核（蓝蛙群拒绝的单，提醒审核人二次审核；无 pending 单时也要发）
+        sendCardLanwaRecheck(token, today);
+
         List<Map<String, Object>> allReports = jdbcTemplate.queryForList(
                 "SELECT r.id, r.material_id, r.material_name, r.input_qty, r.input_unit, r.reason, r.remark, " +
                 "r.store_name, r.qimai_order_no, r.occurred_date, r.status, r.urgent, " +
@@ -84,7 +87,7 @@ public class LossReportDailySummaryJob {
             els.add(fms.mdEl("[查看详情并确认](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&uid=" + userId) + ")"));
         } catch (Exception ignored) {}
         card.put("elements", els);
-        fms.sendToUser(token, userId, card);
+        fms.sendToCardTargets(token, userId, card);
         log.info("卡片A 水果蔬菜 pending → {}", userId);
     }
 
@@ -187,7 +190,7 @@ public class LossReportDailySummaryJob {
             els.add(fms.mdEl("[查看" + tabMode + "详情](" + link + ")"));
         } catch (Exception ignored) {}
         card.put("elements", els);
-        fms.sendToUser(token, userId, card);
+        fms.sendToCardTargets(token, userId, card);
     }
 
     // ==================== 卡片 C：审核（按分类，各一张，跳过其他类） ====================
@@ -228,7 +231,7 @@ public class LossReportDailySummaryJob {
                 els.add(fms.mdEl("[查看审核详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=audit") + ")"));
             } catch (Exception ex) {}
             card.put("elements", els);
-            fms.sendToUser(token, uid, card);
+            fms.sendToCardTargets(token, uid, card);
             log.info("卡片C 审核 {} → {}", gk, uid);
         }
     }
@@ -271,42 +274,89 @@ public class LossReportDailySummaryJob {
                 els.add(fms.mdEl("[查看补发详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=resend") + ")"));
             } catch (Exception ex) {}
             card.put("elements", els);
-            fms.sendToUser(token, uid, card);
+            fms.sendToCardTargets(token, uid, card);
             log.info("卡片D 补发 {} → {}", gk, uid);
         }
     }
 
     // ==================== 卡片 E：牛油果泥审核 ====================
+    // 按厂家拆分：蓝蛙牛油果（remark 带"厂家：蓝蛙"前缀）→ 配置 avocado_audit_lanwa（值可为 chat_ 群）；
+    // 其余（hass 等）→ 配置 avocado_audit（个人 open_id）
     private void sendCardE(String token, String today) {
         String avocadoId = fms.getAvocadoMaterialId();
         if (avocadoId.isEmpty()) { log.info("卡片E 未配置 avocado_material_id，跳过"); return; }
+        sendCardERegion(token, today, avocadoId, true, "avocado_audit_lanwa", "蓝蛙");
+        sendCardERegion(token, today, avocadoId, false, "avocado_audit", "其他");
+    }
 
-        String uid = fms.getCardUserId("其他类", "avocado_audit");
-        if (uid.isEmpty()) { log.info("卡片E 未配置 avocado_audit 收件人，跳过"); return; }
+    private void sendCardERegion(String token, String today, String avocadoId, boolean lanwa, String cardType, String label) {
+        String uid = fms.getCardUserId("其他类", cardType);
+        if (uid.isEmpty()) { log.info("卡片E-{} 未配置 {} 收件人，跳过", label, cardType); return; }
 
+        // 蓝蛙入口只收蓝蛙厂家；HASS 入口收 hass 厂家 + 无厂家标记的老单（remark 空/非"厂家："前缀）
+        String manufacturerFilter = lanwa
+                ? "AND r.remark LIKE '厂家：蓝蛙%' "
+                : "AND (r.remark LIKE '厂家：hass牛油果%' OR r.remark IS NULL OR r.remark = '' OR r.remark NOT LIKE '厂家：%') ";
         List<Map<String, Object>> list = jdbcTemplate.queryForList(
                 "SELECT r.store_name, r.status FROM loss_report r " +
                 "WHERE r.loss_type='arrival' AND r.material_id=? AND r.status IN ('pending','registered','rejected') " +
+                manufacturerFilter +
                 "AND r.del_flag=0", avocadoId);
         long pendingCnt = list.stream().filter(r -> "pending".equals(r.get("status"))).count();
         // 待审核为 0 时不发卡片
-        if (pendingCnt == 0) { log.info("卡片E 无牛油果泥待审核数据，跳过"); return; }
+        if (pendingCnt == 0) { log.info("卡片E-{} 无待审核数据，跳过", label); return; }
         long doneCnt = list.size() - pendingCnt;
         int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
 
         Map<String, Object> card = new LinkedHashMap<>();
-        card.put("header", fms.cardHeader("blue", "到货验收报损 · 牛油果泥"));
+        card.put("header", fms.cardHeader("blue", "到货验收报损 · 牛油果泥" + (lanwa ? "（蓝蛙）" : "（HASS）")));
         List<Map<String, Object>> els = new ArrayList<>();
-        String info = "**牛油果泥审核清单**\n待审核 **" + pendingCnt + "** 条 · 已审核 **" + doneCnt + "** 条 · 涉及 **" + stores + "** 个门店";
+        String info = "**牛油果泥审核清单" + (lanwa ? "（蓝蛙）" : "（HASS）") + "**\n待审核 **" + pendingCnt + "** 条 · 已审核 **" + doneCnt + "** 条 · 涉及 **" + stores + "** 个门店";
         els.add(fms.mdEl(info));
         els.add(fms.tagEl("hr"));
         try {
             String name = java.net.URLEncoder.encode("其他类", "UTF-8");
-            els.add(fms.mdEl("[查看审核详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=audit&materialId=" + avocadoId + "&uid=" + uid) + ")"));
+            // region 参数标注厂家入口（lanwa=蓝蛙群 / hass=个人），页面过滤不依赖 uid（飞书打开可能丢 uid）
+            els.add(fms.mdEl("[查看审核详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=audit&materialId=" + avocadoId + "&uid=" + uid + "&region=" + (lanwa ? "lanwa" : "hass")) + ")"));
         } catch (Exception ignored) {}
         card.put("elements", els);
-        fms.sendToUser(token, uid, card);
-        log.info("卡片E 牛油果泥审核 pending={} done={} → {}", pendingCnt, doneCnt, uid);
+        fms.sendToCardTargets(token, uid, card);
+        log.info("卡片E-{} 牛油果泥审核 pending={} done={} → {}", label, pendingCnt, doneCnt, uid);
+    }
+
+    // ==================== 卡片 E2：蓝蛙拒绝待复核（审核人二次审核） ====================
+    // 蓝蛙群审核拒绝的单，每天 9:30 提醒牛油果泥审核人（个人）复核：
+    // 可直接通过（rejected→registered），或确定不通过（保持 rejected，门店重新提交）。
+    // 已复核过（recheck_pass/recheck_reject 日志）的不再提醒；近一个月提交的蓝蛙被拒单。
+    private void sendCardLanwaRecheck(String token, String today) {
+        String avocadoId = fms.getAvocadoMaterialId();
+        if (avocadoId.isEmpty()) { log.info("卡片E2 未配置 avocado_material_id，跳过"); return; }
+        String uid = fms.getCardUserId("其他类", "avocado_audit");
+        if (uid.isEmpty()) { log.info("卡片E2 未配置 avocado_audit 审核人，跳过"); return; }
+        // 只显示二次复核启用（2026-09-01）后新拒绝的单——历史一审拒绝单（8/17 批等）不进复核队列
+        List<Map<String, Object>> list = jdbcTemplate.queryForList(
+                "SELECT r.id, r.store_name FROM loss_report r " +
+                "WHERE r.loss_type='arrival' AND r.material_id=? AND r.status='rejected' " +
+                "AND r.remark LIKE '厂家：蓝蛙%' AND r.del_flag=0 " +
+                "AND EXISTS (SELECT 1 FROM loss_report_log l2 WHERE l2.report_id=r.id " +
+                "  AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00') " +
+                "AND NOT EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id=r.id " +
+                "  AND l.action IN ('recheck_pass','recheck_reject'))", avocadoId);
+        if (list.isEmpty()) { log.info("卡片E2 无蓝蛙拒绝待复核数据，跳过"); return; }
+        int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
+        Map<String, Object> card = new LinkedHashMap<>();
+        card.put("header", fms.cardHeader("red", "到货验收报损 · 牛油果泥（蓝蛙）拒绝待复核"));
+        List<Map<String, Object>> els = new ArrayList<>();
+        String info = "**蓝蛙拒绝待复核**\n待复核 **" + list.size() + "** 条 · 涉及 **" + stores + "** 个门店\n\n可直接通过进入补发；或确定不通过，门店重新提交";
+        els.add(fms.mdEl(info));
+        els.add(fms.tagEl("hr"));
+        try {
+            String name = java.net.URLEncoder.encode("其他类", "UTF-8");
+            els.add(fms.mdEl("[查看并复核](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=audit&materialId=" + avocadoId + "&recheck=1&uid=" + uid) + ")"));
+        } catch (Exception ignored) {}
+        card.put("elements", els);
+        fms.sendToCardTargets(token, uid, card);
+        log.info("卡片E2 蓝蛙拒绝待复核 n={} stores={} → {}", list.size(), stores, uid);
     }
 
     // ==================== 卡片 G：牛油果泥补发 ====================
@@ -338,7 +388,7 @@ public class LossReportDailySummaryJob {
             els.add(fms.mdEl("[查看补发详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=resend&materialId=" + avocadoId + "&uid=" + uid) + ")"));
         } catch (Exception ignored) {}
         card.put("elements", els);
-        fms.sendToUser(token, uid, card);
+        fms.sendToCardTargets(token, uid, card);
         log.info("卡片G 牛油果泥补发 pending={} done={} → {}", pendingCnt, doneCnt, uid);
     }
 

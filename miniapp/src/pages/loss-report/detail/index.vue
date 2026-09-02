@@ -68,7 +68,7 @@ const receiving = ref(false); const receiveRemark = ref('')
 async function doReceive() { if (actionLoading.value) return; actionLoading.value = true; try { await receiveLoss(id.value, receiveRemark.value); receiveRemark.value = ''; receiving.value = false; fetchDetail() } catch { fetchDetail() } finally { actionLoading.value = false } }
 async function doNotReceive() { if (actionLoading.value) return; if (!receiveRemark.value.trim()) { uni.showToast({ title: '请填写未收到货原因', icon: 'none' }); return }; actionLoading.value = true; try { await notReceiveLoss(id.value, receiveRemark.value); receiveRemark.value = ''; receiving.value = false; fetchDetail() } catch { fetchDetail() } finally { actionLoading.value = false } }
 async function doCloseLoss() { if (actionLoading.value) return; actionLoading.value = true; try { await closeLoss(id.value); uni.showToast({ title: '已关闭', icon: 'success' }); fetchDetail() } catch { fetchDetail() } finally { actionLoading.value = false } }
-function doResubmit() { const h5url = H5_BASE + '/upload/h5/loss-arrival.html?v=2&token=' + encodeURIComponent(uni.getStorageSync('token') || '') + '&storeName=' + encodeURIComponent(userStore.storeName || '') + '&resubmit=' + id.value; uni.navigateTo({ url: '/pages/loss-report/camera-h5/index?url=' + encodeURIComponent(h5url) }) }
+function doResubmit() { const h5url = H5_BASE + '/upload/h5/loss-arrival.html?v=3&token=' + encodeURIComponent(uni.getStorageSync('token') || '') + '&storeName=' + encodeURIComponent(userStore.storeName || '') + '&resubmit=' + id.value; uni.navigateTo({ url: '/pages/loss-report/camera-h5/index?url=' + encodeURIComponent(h5url) }) }
 
 const statusCfg = computed(() => {
   const s = report.value?.status
@@ -182,10 +182,10 @@ function playAttMedia(url: string) {
         <text class="card-title">处理流程</text>
         <view class="timeline">
           <view v-for="(l, idx) in logs" :key="idx" class="tl-item">
-            <view class="tl-dot" :class="{ 'tl-dot-end': idx === logs.length-1 }"></view>
+            <view class="tl-dot" :class="{ 'tl-dot-end': idx === logs.length-1, 'tl-dot-reject': l.action === 'reject' }"></view>
             <view class="tl-body">
               <view class="tl-head"><text class="tl-operator">{{ l.operator || '--' }}</text><text class="tl-time">{{ l.createdAt }}</text></view>
-              <text class="tl-action">{{ actionLabel(l.action) }}</text>
+              <text class="tl-action" :class="{ 'tl-action-reject': l.action === 'reject' }">{{ actionLabel(l.action) }}</text>
               <text class="tl-remark" v-if="l.remark">{{ l.remark }}</text>
               <view class="tl-attachments" v-if="l.attachmentUrl">
                 <view v-for="(u, ai) in l.attachmentUrl.split(',').filter(Boolean)" :key="ai" class="tl-att-item" @click="playAttMedia(u)">
@@ -304,7 +304,7 @@ $p:#2F8F57;$ps:#E7F4EB;$t1:#1F2421;$t2:#66706A;$t3:#98A19C;$b:#E8ECE9;$s:#fff;$b
 .ab-approve,.ab-reject{flex:1;height:88rpx;border-radius:12rpx;display:flex;align-items:center;justify-content:center;font-size:28rpx;font-weight:700}.ab-approve{background:$p;color:#fff}.ab-reject{background:#FFF4F2;color:$d}.ab-cancel{flex-shrink:0;width:120rpx;height:88rpx;border-radius:12rpx;display:flex;align-items:center;justify-content:center;font-size:26rpx;font-weight:600;background:#FAFBF9;color:$t2;border:1px solid $b}
 .receive-input{flex:1;height:88rpx;padding:0 16rpx;border:1px solid $b;border-radius:12rpx;font-size:26rpx;background:#FAFBF9;box-sizing:border-box}
 
-.timeline{padding-left:16rpx}.tl-item{display:flex;gap:16rpx;padding-bottom:8rpx}.tl-dot{width:16rpx;height:16rpx;border-radius:50%;background:$p;margin-top:6rpx;flex-shrink:0}.tl-dot-end{background:$t3}.tl-body{flex:1;padding-bottom:16rpx;border-left:2rpx solid $b;padding-left:16rpx}.tl-item:last-child .tl-body{border-left-color:transparent}.tl-head{display:flex;justify-content:space-between}.tl-operator{font-size:26rpx;font-weight:600;color:$t1}.tl-time{font-size:22rpx;color:$t3}.tl-action{font-size:24rpx;color:$p;margin-top:4rpx}.tl-remark{display:block;margin-top:8rpx;padding:10rpx 14rpx;border-radius:8rpx;background:#FAFBF9;border:1px solid $b;font-size:22rpx;color:$t2;line-height:1.5}.tl-dot-pending{background:$b;border:2rpx dashed $t3}.tl-pending .tl-body{border-left-style:dashed}.tl-action-pending{font-size:24rpx;color:$t3;margin-top:4rpx}
+.timeline{padding-left:16rpx}.tl-item{display:flex;gap:16rpx;padding-bottom:8rpx}.tl-dot{width:16rpx;height:16rpx;border-radius:50%;background:$p;margin-top:6rpx;flex-shrink:0}.tl-dot-end{background:$t3}.tl-body{flex:1;padding-bottom:16rpx;border-left:2rpx solid $b;padding-left:16rpx}.tl-item:last-child .tl-body{border-left-color:transparent}.tl-head{display:flex;justify-content:space-between}.tl-operator{font-size:26rpx;font-weight:600;color:$t1}.tl-time{font-size:22rpx;color:$t3}.tl-action{font-size:24rpx;color:$p;margin-top:4rpx}.tl-action-reject{color:$d}.tl-dot-reject{background:$d}.tl-remark{display:block;margin-top:8rpx;padding:10rpx 14rpx;border-radius:8rpx;background:#FAFBF9;border:1px solid $b;font-size:22rpx;color:$t2;line-height:1.5}.tl-dot-pending{background:$b;border:2rpx dashed $t3}.tl-pending .tl-body{border-left-style:dashed}.tl-action-pending{font-size:24rpx;color:$t3;margin-top:4rpx}
 .tl-attachments{display:flex;flex-wrap:wrap;gap:8rpx;margin-top:8rpx}
 .tl-att-item{width:120rpx;height:120rpx;border-radius:8rpx;overflow:hidden;border:1px solid $b}
 .tl-att-media{width:100%;height:100%;object-fit:cover}
