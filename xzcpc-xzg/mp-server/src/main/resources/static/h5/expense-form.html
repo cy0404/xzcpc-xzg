@@ -824,7 +824,10 @@ body.body-lock{overflow:hidden}
     var urls=vouchers.map(function(v){return v.url})
     var payload={
       typeId:filled[0].typeId,amount:groupAmount(filled[0]),occurredDate:occurredDate,
-      handlerName:handlerName||'--',voucherUrls:urls,remark:filled[0].remark||undefined
+      handlerName:handlerName||'--',voucherUrls:urls,
+      // 编辑（单组扁平）携带说明；新增 batch 不传整单说明——否则后端会把它回退给没有说明的组
+      // （如：首组货运物流费带说明、自购组无说明时，自购记录会错误拿到货运说明）
+      remark:EDIT_ID?(filled[0].remark||undefined):undefined
     }
     if(EDIT_ID){
       var g0=filled[0]
