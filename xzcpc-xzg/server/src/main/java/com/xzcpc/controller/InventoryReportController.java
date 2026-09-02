@@ -321,7 +321,7 @@ public class InventoryReportController {
         List<String> monthList = parseList(months);
         List<String> storeIdList = parseList(storeIds);
 
-        // 原生 SQL 绕过 @TableLogic：软删记录也下发（delFlag 由调用方自行判断，兑现接口文档承诺）；
+        // 原生 SQL 绕过 @TableLogic：软删记录同样下发（delFlag 由调用方自行判断，delFlag 字段保留在接口中）；
         // itemName 取当前有效明细的首条（明细软删重建后主表 item_name 已不维护，存量记录兜底主表值）
         // COLLATE 显式统一：expense_record.expense_id 为 utf8mb4_unicode_ci、expense_record_item.expense_id 为
         // utf8mb4_0900_ai_ci，直接比较报 1267（两库同病）；字面量比较同理，避免随连接 collation 变化再次报错
