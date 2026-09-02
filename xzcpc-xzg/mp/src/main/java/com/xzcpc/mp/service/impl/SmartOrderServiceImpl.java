@@ -1056,10 +1056,11 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         if (mids == null || mids.isEmpty()) return map;
         try {
             String inPh = mids.stream().map(m -> "?").collect(Collectors.joining(","));
-            String sql = "SELECT material_id, unit, COALESCE(SUM(purchase_qty),0) AS qty FROM self_purchase_material " +
-                    "WHERE store_id = ? AND del_flag = 0 AND purchase_date >= ? AND purchase_date < ? " +
-                    "AND material_id IN (" + inPh + ") " +
-                    "GROUP BY material_id, unit";
+            String sql = "SELECT i.material_id, i.unit, COALESCE(SUM(i.purchase_qty),0) AS qty " +
+                    "FROM self_purchase_material_item i JOIN self_purchase_material h ON h.biz_code = i.biz_code " +
+                    "WHERE h.store_id = ? AND h.del_flag = 0 AND h.purchase_date >= ? AND h.purchase_date < ? " +
+                    "AND i.material_id IN (" + inPh + ") AND i.del_flag = 0 " +
+                    "GROUP BY i.material_id, i.unit";
             List<Object> args = new ArrayList<>();
             args.add(storeId); args.add(startDate.toString()); args.add(endDate.toString()); args.addAll(mids);
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, args.toArray());

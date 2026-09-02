@@ -33,11 +33,14 @@ import java.util.*;
  *  3. 收集所有 supervisor.userId → 查 admin_permission.user_id 得到 open_id/name
  *  4. 门店按 code（S开头13位）对齐本地 store_info，取本地 store_id
  *  5. 逐店 upsert supervisor_store_access（source='auto'）+ 更新 store_info.supervisor_name
- *  6. 报告：未匹配督导、无督导门店、门店未对齐、名字不一致、失效 auto 行（不自动删）
+ *     + 收敛：软删该店其他督导的 auto 行（督导变更后自动归位，门店不会双挂）
+ *  6. 报告：未匹配督导、无督导门店、门店未对齐、名字不一致、收敛清单、失效 auto 行（仅报告）、manual 残留（仅报告）
  *
  * 安全策略：
- *  - 只重建 source='auto' 的行；手工维护行（督导领导→全部门店等）永不覆盖
- *  - 不删除任何行：接口已不存在的 auto 行只进报告，人工确认后再处理
+ *  - 只重建 source='auto' 的行；手工维护行（督导领导→全部门店等）永不覆盖、永不自动删
+ *  - 收敛只针对「接口本次返回的店」：接口数据不全时，未返回的店不会被误伤
+ *  - 接口返回中不存在、但本地有 auto 行的（店已关/接口下线）仅进报告，不自动删
+ *  - 双挂 manual 残留（该店另有其他督导的 manual 活跃行）仅进报告，人工确认后手动清理
  *  - apply=false（dry-run）时只拉取对账，不写库
  */
 @Slf4j
@@ -106,6 +109,8 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
         List<String> unmatchedSupervisors = new ArrayList<>();   // userId 本地匹配不到
         List<String> nameMismatches = new ArrayList<>();         // displayName ≠ admin_permission.name
         List<String> newStoreIds = new ArrayList<>();            // 新增门店（store_code + 生成的 store_id，供人工维护）
+        List<String> removedStaleRows = new ArrayList<>();       // 本次收敛软删的旧 auto 行（督导变更）
+        List<String> staleManualRows = new ArrayList<>();        // 双挂 manual 残留（仅报告，人工确认后手动清理）
         Set<String> currentAutoKeys = new HashSet<>();           // 本次接口确认的 (openId|storeId)
 
         for (Map<String, Object> item : items) {
@@ -161,6 +166,29 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
             if (apply) {
                 upsertAccess(ap, store);
                 updateStoreSupervisorName(store, ap.getName());
+                // 收敛：软删该店其他督导的 auto 行（接口确认督导之外），督导变更后自动归位、门店不双挂
+                List<SupervisorStoreAccess> others = accessMapper.selectList(
+                        new LambdaQueryWrapper<SupervisorStoreAccess>()
+                                .eq(SupervisorStoreAccess::getStoreId, store.getStoreId())
+                                .eq(SupervisorStoreAccess::getSource, "auto")
+                                .ne(SupervisorStoreAccess::getOpenId, ap.getOpenId()));
+                for (SupervisorStoreAccess other : others) {
+                    other.setDelFlag(1);
+                    accessMapper.updateById(other);
+                    removedStaleRows.add(other.getAdminName() + " → " + store.getStoreName()
+                            + " (storeId=" + store.getStoreId() + ")");
+                }
+                // 双挂 manual 残留：该店另有其他督导的 manual 活跃行（如已过时的手工分配）。
+                // manual 永不自动删（保护人工意图），仅进报告，人工确认后手动清理
+                List<SupervisorStoreAccess> manualOthers = accessMapper.selectList(
+                        new LambdaQueryWrapper<SupervisorStoreAccess>()
+                                .eq(SupervisorStoreAccess::getStoreId, store.getStoreId())
+                                .eq(SupervisorStoreAccess::getSource, "manual")
+                                .ne(SupervisorStoreAccess::getOpenId, ap.getOpenId()));
+                for (SupervisorStoreAccess m : manualOthers) {
+                    staleManualRows.add(m.getAdminName() + " → " + store.getStoreName()
+                            + " (storeId=" + store.getStoreId() + ", openId=" + m.getOpenId() + ")");
+                }
             }
         }
         report.put("matchedStores", matchedStores);
@@ -170,6 +198,8 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
         report.put("newStoreIds", newStoreIds); // 新店 store_id 清单，供人工后续维护
         report.put("unmatchedSupervisors", unmatchedSupervisors);
         report.put("nameMismatches", nameMismatches);
+        report.put("removedStaleAuto", removedStaleRows); // 收敛清单：旧督导 auto 行（软删）
+        report.put("staleManualRows", staleManualRows);    // 双挂 manual 残留（仅报告，人工确认后手动清理）
 
         // ---- 6. 失效 auto 行（接口已不存在，不自动删，报告人工确认） ----
         List<String> staleAuto = new ArrayList<>();
@@ -184,9 +214,9 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
                 });
         report.put("staleAutoRows", staleAuto);
 
-        log.info("督导同步完成：接口{}家 匹配{}家 无督导{}家 未对齐门店{} 未匹配督导{} 失效auto行{}",
+        log.info("督导同步完成：接口{}家 匹配{}家 无督导{}家 未对齐门店{} 未匹配督导{} 收敛旧auto行{} 失效auto行{} manual残留{}",
                 items.size(), matchedStores, noSupervisor, unmatchedByCode,
-                unmatchedSupervisors.size(), staleAuto.size());
+                unmatchedSupervisors.size(), removedStaleRows.size(), staleAuto.size(), staleManualRows.size());
         return report;
     }
 
@@ -194,9 +224,9 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
 
     @Transactional(rollbackFor = Exception.class)
     public void upsertAccess(AdminPermission ap, Store store) {
-        SupervisorStoreAccess ex = accessMapper.selectOne(new LambdaQueryWrapper<SupervisorStoreAccess>()
-                .eq(SupervisorStoreAccess::getOpenId, ap.getOpenId())
-                .eq(SupervisorStoreAccess::getStoreId, store.getStoreId()));
+        // 含逻辑删除行：收敛软删后同一 (openId, storeId) 再出现时复用软删行（复活），
+        // 否则 INSERT 会撞物理唯一键 uk_openid_store（open_id, store_id 不含 del_flag）
+        SupervisorStoreAccess ex = accessMapper.selectAnyByOpenIdAndStoreId(ap.getOpenId(), store.getStoreId());
         if (ex == null) {
             SupervisorStoreAccess a = new SupervisorStoreAccess();
             a.setOpenId(ap.getOpenId());
@@ -209,6 +239,7 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
             ex.setAdminName(ap.getName());
             ex.setStoreName(store.getStoreName());
             ex.setSource("auto");
+            ex.setDelFlag(0); // 复活被收敛软删的行（督导变更又换回来）
             accessMapper.updateById(ex);
         }
     }
