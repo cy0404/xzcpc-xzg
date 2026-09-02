@@ -1,1 +1,0 @@
-import{a as t}from"./index-FTpv1vFb.js";function a(e){return t.get("/employees",{params:e})}function r(e){return t.get(`/employees/${e}`)}function s(e){return t.get("/employees/dashboard",{params:e})}export{a,s as b,r as g};
