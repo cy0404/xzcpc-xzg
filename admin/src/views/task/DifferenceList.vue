@@ -25,6 +25,10 @@
           <div class="filter-label">督导</div>
           <a-select v-model:value="filters.supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" />
         </a-col>
+        <a-col :xs="24" :sm="12" :md="6" style="flex:none;width:140px">
+          <div class="filter-label">盘点月份</div>
+          <a-select v-model:value="filters.taskMonth" style="width:100%" allow-clear placeholder="全部月份" :options="monthOptions" />
+        </a-col>
         <div class="filter-actions">
           <a-button @click="handleReset">重置</a-button>
           <a-button type="primary" @click="handleSearch">查询</a-button>
@@ -189,7 +193,32 @@ const chartData = ref<any[]>([])
 const storesLoading = ref(false)
 const stores = ref<any[]>([])
 const supervisorOptions = ref<{ label: string; value: string }[]>([])
-const filters = reactive({ storeIds: [] as string[], supervisorName: '' as string })
+const filters = reactive({ storeIds: [] as string[], supervisorName: '' as string, taskMonth: '' as string })
+
+// 月份筛选选项（最近 12 个自然月），默认值 = 最新结算月（首次全量加载时取最大 task_month）
+const monthOptions = ref<{ label: string; value: string }[]>([])
+function buildMonthOptions() {
+  const arr: { label: string; value: string }[] = []
+  const now = new Date()
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    arr.push({ label: v, value: v })
+  }
+  monthOptions.value = arr
+}
+async function initDefaultMonth() {
+  // 全量取一次，找到有任务的最新月份作为默认筛选
+  const params: any = { pageNum: 1, pageSize: 1000 }
+  if (filters.storeIds.length) params.storeIds = filters.storeIds.join(',')
+  if (filters.supervisorName) params.supervisorName = filters.supervisorName
+  try {
+    const res: any = await getDiffTasks(params)
+    const records = res.data?.records || []
+    const months = [...new Set(records.map((r: any) => r.taskMonth).filter(Boolean))].sort()
+    if (months.length && !filters.taskMonth) filters.taskMonth = months[months.length - 1]
+  } catch { /* 取不到默认月份则展示全部 */ }
+}
 
 const columns = [
   { title: '门店', key: 'storeName', ellipsis: true, width: 160 },
@@ -208,6 +237,7 @@ async function fetchList() {
     const params: any = { pageNum: pagination.current, pageSize: pagination.pageSize }
     if (filters.storeIds.length) params.storeIds = filters.storeIds.join(',')
     if (filters.supervisorName) params.supervisorName = filters.supervisorName
+    if (filters.taskMonth) params.taskMonth = filters.taskMonth
     const res: any = await getDiffTasks(params)
     const data = res.data
     list.value = data.records || []
@@ -238,6 +268,7 @@ async function saveConfig() {
 
 function handleTableChange(p: any) { pagination.current = p.current; fetchList() }
 function handleSearch() { pagination.current = 1; fetchList(); fetchChart(); fetchMaterialChart() }
+// 重置只清门店/督导，保留月份筛选（页面级上下文）
 function handleReset() { filters.storeIds = []; filters.supervisorName = ''; handleSearch() }
 function onTabChange(key: string) { if (key === 'chart') { fetchChart(); fetchMaterialChart() } }
 function goDetail(record: any) { router.push(`/tasks/${record.taskId}/differences`) }
@@ -327,6 +358,7 @@ async function fetchChart() {
     const params: any = { pageNum: 1, pageSize: 1000 }
     if (filters.storeIds.length) params.storeIds = filters.storeIds.join(',')
     if (filters.supervisorName) params.supervisorName = filters.supervisorName
+    if (filters.taskMonth) params.taskMonth = filters.taskMonth
     const res: any = await getDiffTasks(params)
     const records = res.data?.records || []
     const agg: Record<string, any> = {}
@@ -347,7 +379,12 @@ async function fetchChart() {
   finally { chartLoading.value = false }
 }
 
-onMounted(() => { loadConfig(); fetchStores(); fetchSupervisors(); fetchList(); fetchChart() })
+onMounted(async () => {
+  buildMonthOptions()
+  loadConfig(); fetchStores(); fetchSupervisors()
+  await initDefaultMonth()   // 默认选中最新结算月
+  fetchList(); fetchChart(); fetchMaterialChart()
+})
 </script>
 
 <style scoped>

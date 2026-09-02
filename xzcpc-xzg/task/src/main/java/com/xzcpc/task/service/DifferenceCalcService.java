@@ -36,9 +36,14 @@ public interface DifferenceCalcService {
     int batchCalculateUncounted();
 
     /**
-     * 获取差异任务列表（按任务分组，仅 submitted 状态，支持门店/督导筛选）
+     * 按盘点月份批量重算差异（该月所有 submitted monthly 任务，已算任务覆盖重算）
      */
-    Map<String, Object> listDiffTasks(int pageNum, int pageSize, String storeIds, String supervisorName);
+    int recalculateByMonth(String taskMonth);
+
+    /**
+     * 获取差异任务列表（按任务分组，仅 submitted 状态，支持门店/督导/月份筛选）
+     */
+    Map<String, Object> listDiffTasks(int pageNum, int pageSize, String storeIds, String supervisorName, String taskMonth);
 
     /**
      * 获取某任务的所有差异项明细
@@ -46,7 +51,7 @@ public interface DifferenceCalcService {
     Map<String, Object> getDiffDetail(Integer taskId);
 
     /**
-     * 修改 adjusted_qty 并重算差异
+     * 修改 adjusted_qty 并重算差异（未计算差异行只改数量，不重算）
      */
     void modifyAdjustedQty(Long diffId, java.math.BigDecimal newAdjustedQty, String operator);
 

@@ -86,7 +86,7 @@ export function triggerDiffCalc(taskId: number) {
   return api.post(`/admin/inventory/diff-tasks/${taskId}/calculate`)
 }
 
-/** 修改 adjusted_qty 并重算差异 */
+/** 修改 adjusted_qty 并重算差异（未计算差异行只改数量，不重算） */
 export function modifyAdjustedQty(id: number, adjustedQty: number) {
   return api.put(`/admin/inventory/differences/${id}/adjust`, { adjustedQty })
 }

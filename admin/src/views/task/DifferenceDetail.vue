@@ -41,13 +41,13 @@
       </div>
     </a-card>
 
-    <!-- 差异明细表格 -->
+    <!-- 差异明细表格（含未计算差异的盘点物料） -->
     <a-card :bordered="false" :loading="loading">
       <a-table
         :columns="columns"
-        :data-source="filteredDifferences"
+        :data-source="filteredRows"
         :pagination="false"
-        row-key="id"
+        :row-key="rowKey"
         size="middle"
         :scroll="{ y: 'calc(100vh - 380px)' }"
         :row-class-name="rowClass"
@@ -56,9 +56,13 @@
           <template v-if="column.key === 'materialName'">
             <div class="strong-text">{{ record.materialName }}</div>
             <div class="sub-text" v-if="record.spec">{{ record.spec }}</div>
+            <a-tag v-if="record.diffQty == null" color="blue" style="margin-top:2px">未计算差异</a-tag>
           </template>
           <template v-else-if="column.key === 'unit'">{{ record.unit || '--' }}</template>
-          <template v-else-if="column.key === 'theoreticalQty'"><strong>{{ fmt(record.theoreticalQty) }}</strong></template>
+          <template v-else-if="column.key === 'theoreticalQty'">
+            <strong v-if="record.diffQty != null">{{ fmt(record.theoreticalQty) }}</strong>
+            <span v-else class="no-diff-text">--</span>
+          </template>
           <template v-else-if="column.key === 'actualQty'">
             <span v-if="editingId === record.id">
               <a-input-number v-model:value="editQty" :step="0.01" style="width:100px" size="small" />
@@ -69,10 +73,12 @@
             </template>
           </template>
           <template v-else-if="column.key === 'diffQty'">
-            <span :class="getDiffClass(record.diffQty)">{{ fmtSigned(record.diffQty) }}</span>
+            <span v-if="record.diffQty != null" :class="getDiffClass(record.diffQty)">{{ fmtSigned(record.diffQty) }}</span>
+            <span v-else class="no-diff-text">--</span>
           </template>
           <template v-else-if="column.key === 'diffRate'">
-            <span :class="record.isLarge === 1 ? 'diff-large' : ''">{{ rateFmt(record.diffRate) }}</span>
+            <span v-if="record.diffQty != null" :class="record.isLarge === 1 ? 'diff-large' : ''">{{ rateFmt(record.diffRate) }}</span>
+            <span v-else class="no-diff-text">--</span>
           </template>
           <template v-else-if="column.key === 'action'">
             <template v-if="editingId === record.id">
@@ -82,7 +88,7 @@
               </a-space>
             </template>
             <template v-else>
-              <a-tag class="action-tag action-view-tag" @click="showDetail(record)">查看</a-tag>
+              <a-tag v-if="record.diffQty != null" class="action-tag action-view-tag" @click="showDetail(record)">查看</a-tag>
               <a-tag class="action-tag action-edit-tag" @click="startEdit(record)">修改</a-tag>
             </template>
           </template>
@@ -134,11 +140,12 @@ const taskInfo = ref<any>({})
 const differences = ref<any[]>([])
 const largeCount = ref(0)
 const searchKeyword = ref('')
-const filteredDifferences = computed(() => {
+const filteredRows = computed(() => {
   if (!searchKeyword.value) return differences.value
   const kw = searchKeyword.value.toLowerCase()
   return differences.value.filter((d: any) => (d.materialName || '').toLowerCase().includes(kw))
 })
+function rowKey(record: any) { return record.id }
 
 const editingId = ref<number | null>(null)
 const editQty = ref<number>(0)
@@ -160,7 +167,10 @@ function fmtSigned(v: any) { if (v == null) return '0'; const n = Number(v); ret
 function rateFmt(v: any) { if (v == null || Number(v) === 0) return '0.00%'; return (Number(v) * 100).toFixed(2) + '%' }
 function getDiffClass(v: any) { return v != null && Number(v) >= 0 ? 'amount-positive' : 'amount-negative' }
 function formatDate(v: string | null) { if (!v) return '--'; return v.replace('T', ' ').substring(0, 16) }
-function rowClass(record: any) { return record.isLarge === 1 ? 'row-large-diff' : '' }
+function rowClass(record: any) {
+  if (record.diffQty == null) return 'row-uncalculated'
+  return record.isLarge === 1 ? 'row-large-diff' : ''
+}
 function fmtBreakdown(s: string | null) {
   if (!s) return '--'
   try {
@@ -174,20 +184,17 @@ function fmtBreakdown(s: string | null) {
 
 function showDetail(row: any) { detailRow.value = row; detailOpen.value = true }
 
+function applyDetail(res: any) {
+  taskInfo.value = res.data?.taskInfo || {}
+  differences.value = res.data?.differences || []
+  largeCount.value = res.data?.largeCount || 0
+}
+
 async function fetchDetail() {
   loading.value = true
   try {
     const res: any = await getDiffTaskDetail(taskId)
-    taskInfo.value = res.data?.taskInfo || {}
-    differences.value = res.data?.differences || []
-    largeCount.value = res.data?.largeCount || 0
-    if (differences.value.length === 0) {
-      await triggerDiffCalc(taskId)
-      const res2: any = await getDiffTaskDetail(taskId)
-      taskInfo.value = res2.data?.taskInfo || {}
-      differences.value = res2.data?.differences || []
-      largeCount.value = res2.data?.largeCount || 0
-    }
+    applyDetail(res)
   } catch { message.error('加载差异明细失败') }
   finally { loading.value = false }
 }
@@ -203,8 +210,12 @@ function startEdit(record: any) { editingId.value = record.id; editQty.value = N
 function cancelEdit() { editingId.value = null }
 
 async function saveEdit(record: any) {
-  try { await modifyAdjustedQty(record.id, editQty.value); message.success('修改成功'); editingId.value = null; fetchDetail() }
-  catch { message.error('修改失败') }
+  try {
+    await modifyAdjustedQty(record.id, editQty.value)
+    message.success('修改成功')
+    editingId.value = null
+    fetchDetail()
+  } catch { message.error('修改失败') }
 }
 
 onMounted(() => fetchDetail())
@@ -228,6 +239,9 @@ onMounted(() => fetchDetail())
 .diff-large { color: #E05A47; font-weight: 700 }
 :deep(.row-large-diff) { background: #FFF5F5 }
 :deep(.row-large-diff:hover) { background: #FFE8E8 !important }
+:deep(.row-uncalculated) { background: #F5FAFF }
+:deep(.row-uncalculated:hover) { background: #E8F3FF !important }
+.no-diff-text { color: #B8C0BB }
 .action-tag { cursor: pointer; border-radius: 4px; font-size: 12px; padding: 0 7px; line-height: 20px }
 .action-view-tag { color: #0d7a3d; background: rgba(13,122,61,0.1); border: 1px solid rgba(13,122,61,0.2) }
 .action-edit-tag { color: #356d91; background: rgba(53,109,145,0.1); border: 1px solid rgba(53,109,145,0.2) }

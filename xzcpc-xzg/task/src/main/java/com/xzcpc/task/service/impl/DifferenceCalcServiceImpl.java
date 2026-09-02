@@ -207,15 +207,20 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         BigDecimal loss = lossMap.getOrDefault(mid + "|" + storeId, BigDecimal.ZERO);
         BigDecimal selfPurchase = selfPurchaseMap.getOrDefault(mid + "|" + storeId, BigDecimal.ZERO);
 
-        // 消耗为0的不统计
-        if (consumption.compareTo(BigDecimal.ZERO) == 0) return;
         BigDecimal theoretical = lastMonth.add(purchase).add(order).add(transferNet).add(returnNet)
                 .subtract(loss).add(selfPurchase).subtract(consumption);
-        BigDecimal diff = actual.subtract(theoretical);
-        BigDecimal diffRate = BigDecimal.ZERO;
-        if (theoretical.compareTo(BigDecimal.ZERO) != 0)
-            diffRate = diff.abs().divide(theoretical.abs(), 4, RoundingMode.HALF_UP);
-        boolean isLarge = diffRate.compareTo(BigDecimal.valueOf(threshold)) > 0;
+        // 消耗为0的物料：仍生成差异行（可在明细页修改数量），但差异值不计算（diffQty/diffRate 为 NULL，不参与大差异）
+        boolean noConsumption = consumption.compareTo(BigDecimal.ZERO) == 0;
+        BigDecimal diff = null;
+        BigDecimal diffRate = null;
+        int isLarge = 0;
+        if (!noConsumption) {
+            diff = actual.subtract(theoretical);
+            diffRate = BigDecimal.ZERO;
+            if (theoretical.compareTo(BigDecimal.ZERO) != 0)
+                diffRate = diff.abs().divide(theoretical.abs(), 4, RoundingMode.HALF_UP);
+            isLarge = diffRate.compareTo(BigDecimal.valueOf(threshold)) > 0 ? 1 : 0;
+        }
 
         InventoryDifference d = new InventoryDifference();
         d.setTaskId(taskId); d.setMaterialId(mid); d.setMaterialName(matName != null ? matName : "");
@@ -224,8 +229,8 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         d.setLossQty(loss); d.setSelfPurchaseQty(selfPurchase);
         d.setPurchaseQty(purchase); d.setOrderQty(order); d.setConsumptionQty(consumption);
         d.setTheoreticalQty(theoretical); d.setActualQty(actual);
-        d.setDiffQty(diff); d.setDiffRate(diffRate); d.setIsLarge(isLarge ? 1 : 0);
-        d.setOriginalIsLarge(isLarge ? 1 : 0);
+        d.setDiffQty(diff); d.setDiffRate(diffRate); d.setIsLarge(isLarge);
+        d.setOriginalIsLarge(isLarge);
         d.setStatus("pending");
         d.setCreatedAt(LocalDateTime.now()); d.setUpdatedAt(LocalDateTime.now());
         diffList.add(d);
@@ -263,6 +268,23 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
     }
 
     @Override
+    public int recalculateByMonth(String taskMonth) {
+        if (taskMonth == null || taskMonth.isEmpty()) return 0;
+        List<Integer> taskIds = mysqlJdbc.queryForList(
+                "SELECT id FROM task WHERE status = 'submitted' AND del_flag = 0 AND task_type = 'monthly' " +
+                "AND task_month = '" + taskMonth.trim() + "' ORDER BY id", Integer.class);
+        log.info("按月份重算 {}：{} 个任务", taskMonth, taskIds.size());
+        int done = 0;
+        synchronized (calcLock) {
+            for (Integer id : taskIds) {
+                try { doCalculate(id); done++; }
+                catch (Exception e) { log.error("任务 {} 重算失败: {}", id, e.getMessage()); }
+            }
+        }
+        return done;
+    }
+
+    @Override
     public void updateThresholdRate(double rate) {
         mysqlJdbc.update(
                 "INSERT INTO sys_config (config_key, config_value, description) VALUES ('diff_threshold_rate', ?, '盘点差异阈值') ON DUPLICATE KEY UPDATE config_value = ?",
@@ -290,7 +312,7 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
     // ==================== 列表查询 ====================
 
     @Override
-    public Map<String, Object> listDiffTasks(int pageNum, int pageSize, String storeIds, String supervisorName) {
+    public Map<String, Object> listDiffTasks(int pageNum, int pageSize, String storeIds, String supervisorName, String taskMonth) {
         // 督导角色：只查询自己管理的门店
         String storeFilter = "";
         AdminUser admin = AdminContextHolder.get();
@@ -309,6 +331,10 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
             List<String> svStoreIds = storeAccessService.getAccessibleStoreIdsBySupervisorName(supervisorName);
             if (svStoreIds.isEmpty()) return Map.of("records", List.of(), "total", 0, "current", pageNum, "pages", 0);
             storeFilter += " AND t.store_id IN (" + svStoreIds.stream().map(s -> "'" + s + "'").collect(Collectors.joining(",")) + ")";
+        }
+        // 前端筛选：盘点月份（如 2026-08）
+        if (taskMonth != null && !taskMonth.isEmpty()) {
+            storeFilter += " AND t.task_month = '" + taskMonth.trim() + "'";
         }
         String countSql = "SELECT COUNT(*) FROM task t WHERE t.status = 'submitted' AND t.submitted_at >= '2026-07-20' AND t.del_flag = 0 AND t.task_type = 'monthly' " + storeFilter;
         int total = mysqlJdbc.queryForObject(countSql, Integer.class);
@@ -401,23 +427,27 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         // 更新 task_material_summary 的 adjusted_qty
         summaryMapper.updateAdjustedQty(diff.getTaskId(), diff.getMaterialId(), newAdjustedQty);
 
-        // 重算差异
-        BigDecimal theoretical = diff.getTheoreticalQty();
-        BigDecimal diffQty = newAdjustedQty.subtract(theoretical);
-        BigDecimal diffRate = BigDecimal.ZERO;
-        if (theoretical.compareTo(BigDecimal.ZERO) != 0) {
-            diffRate = diffQty.abs().divide(theoretical.abs(), 4, RoundingMode.HALF_UP);
-        }
-        double threshold = getThresholdRate();
-        boolean isLarge = diffRate.compareTo(BigDecimal.valueOf(threshold)) > 0;
+        // 未计算差异行（diffQty 为 NULL，如消耗为0的物料）：只改盘点数量，不重算差异
+        boolean uncounted = diff.getDiffQty() == null;
+        if (!uncounted) {
+            // 重算差异
+            BigDecimal theoretical = diff.getTheoreticalQty();
+            BigDecimal diffQty = newAdjustedQty.subtract(theoretical);
+            BigDecimal diffRate = BigDecimal.ZERO;
+            if (theoretical.compareTo(BigDecimal.ZERO) != 0) {
+                diffRate = diffQty.abs().divide(theoretical.abs(), 4, RoundingMode.HALF_UP);
+            }
+            double threshold = getThresholdRate();
+            boolean isLarge = diffRate.compareTo(BigDecimal.valueOf(threshold)) > 0;
 
+            diff.setDiffQty(diffQty);
+            diff.setDiffRate(diffRate);
+            diff.setIsLarge(isLarge ? 1 : 0);
+            diff.setStatus("adjusted");
+            diff.setHandler(operator);
+            diff.setHandledAt(LocalDateTime.now());
+        }
         diff.setActualQty(newAdjustedQty);
-        diff.setDiffQty(diffQty);
-        diff.setDiffRate(diffRate);
-        diff.setIsLarge(isLarge ? 1 : 0);
-        diff.setStatus("adjusted");
-        diff.setHandler(operator);
-        diff.setHandledAt(LocalDateTime.now());
         diffMapper.updateById(diff);
 
         // 查询门店名和初始值
@@ -454,7 +484,9 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         log.setDiffId(diffId);
         log.setAction("adjust");
         log.setOperator(operator);
-        log.setRemark("修改 adjusted_qty 为 " + newAdjustedQty);
+        log.setRemark(uncounted
+                ? "修改未计算差异物料「" + diff.getMaterialName() + "」盘点数量为 " + newAdjustedQty + "（原 " + oldQty + "，不计算差异）"
+                : "修改 adjusted_qty 为 " + newAdjustedQty);
         log.setCreatedAt(LocalDateTime.now());
         logMapper.insert(log);
     }
@@ -681,9 +713,11 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
         if (storeIds.isEmpty()) return map;
         try {
             String inStores = storeIds.stream().map(s -> "'" + s + "'").collect(Collectors.joining(","));
-            String sql = "SELECT material_id, store_id, unit, COALESCE(SUM(purchase_qty),0) AS qty FROM self_purchase_material " +
-                    "WHERE store_id IN (" + inStores + ") AND purchase_date >= ? AND purchase_date < ? AND del_flag = 0 " +
-                    "GROUP BY material_id, store_id, unit";
+            String sql = "SELECT i.material_id, h.store_id, i.unit, COALESCE(SUM(i.purchase_qty),0) AS qty " +
+                    "FROM self_purchase_material_item i JOIN self_purchase_material h ON h.biz_code = i.biz_code " +
+                    "WHERE h.store_id IN (" + inStores + ") AND h.purchase_date >= ? AND h.purchase_date < ? " +
+                    "AND h.del_flag = 0 AND i.del_flag = 0 " +
+                    "GROUP BY i.material_id, h.store_id, i.unit";
             List<Map<String, Object>> rows = mysqlJdbc.queryForList(sql, startDate, endDate);
             for (Map<String, Object> row : rows) {
                 String mid = (String) row.get("material_id");
@@ -1050,9 +1084,10 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
     private Map<String, BigDecimal> querySelfPurchase(String storeId, String taskMonth) {
         Map<String, BigDecimal> map = new HashMap<>();
         try {
-            String sql = "SELECT material_id, COALESCE(SUM(purchase_qty), 0) AS qty FROM self_purchase_material " +
-                    "WHERE store_id = ? AND purchase_month = ? AND del_flag = 0 " +
-                    "GROUP BY material_id";
+            String sql = "SELECT i.material_id, COALESCE(SUM(i.purchase_qty), 0) AS qty " +
+                    "FROM self_purchase_material_item i JOIN self_purchase_material h ON h.biz_code = i.biz_code " +
+                    "WHERE h.store_id = ? AND h.purchase_month = ? AND h.del_flag = 0 AND i.del_flag = 0 " +
+                    "GROUP BY i.material_id";
             List<Map<String, Object>> rows = mysqlJdbc.queryForList(sql, storeId, taskMonth);
             for (Map<String, Object> row : rows) {
                 String mid = (String) row.get("material_id");
@@ -1279,11 +1314,18 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                         .subtract(loss).add(selfPurchase).subtract(consumption);
                 BigDecimal actual = sm.getAdjustedQty() != null ? sm.getAdjustedQty() : sm.getTotalQty();
                 actual = actual.add(explodedActualMap.getOrDefault(mid, BigDecimal.ZERO));
-                BigDecimal diff = actual.subtract(theoretical);
-                BigDecimal diffRate = BigDecimal.ZERO;
-                if (theoretical.compareTo(BigDecimal.ZERO) != 0)
-                    diffRate = diff.abs().divide(theoretical.abs(), 4, RoundingMode.HALF_UP);
-                boolean isLarge = diffRate.compareTo(BigDecimal.valueOf(threshold)) > 0;
+                // 消耗为0的物料：仍生成差异行（可在明细页修改数量），但差异值不计算（diffQty/diffRate 为 NULL）
+                boolean noConsumption = consumption.compareTo(BigDecimal.ZERO) == 0;
+                BigDecimal diff = null;
+                BigDecimal diffRate = null;
+                int isLarge = 0;
+                if (!noConsumption) {
+                    diff = actual.subtract(theoretical);
+                    diffRate = BigDecimal.ZERO;
+                    if (theoretical.compareTo(BigDecimal.ZERO) != 0)
+                        diffRate = diff.abs().divide(theoretical.abs(), 4, RoundingMode.HALF_UP);
+                    isLarge = diffRate.compareTo(BigDecimal.valueOf(threshold)) > 0 ? 1 : 0;
+                }
 
                 InventoryDifference d = new InventoryDifference();
                 d.setTaskId(taskId);
@@ -1303,8 +1345,8 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
                 d.setActualQty(actual);
                 d.setDiffQty(diff);
                 d.setDiffRate(diffRate);
-                d.setIsLarge(isLarge ? 1 : 0);
-                d.setOriginalIsLarge(isLarge ? 1 : 0);
+                d.setIsLarge(isLarge);
+                d.setOriginalIsLarge(isLarge);
                 d.setStatus("pending");
                 d.setCreatedAt(LocalDateTime.now());
                 d.setUpdatedAt(LocalDateTime.now());
@@ -1503,10 +1545,11 @@ public class DifferenceCalcServiceImpl implements DifferenceCalcService {
             String inStores = storeIds.stream().map(s -> "'" + s + "'").collect(Collectors.joining(","));
             String inMonths = months.stream().map(m -> "'" + m + "'").collect(Collectors.joining(","));
 
-            String sql = "SELECT material_id, store_id, purchase_month, COALESCE(SUM(purchase_qty), 0) AS qty " +
-                    "FROM self_purchase_material WHERE store_id IN (" + inStores + ") " +
-                    "AND purchase_month IN (" + inMonths + ") AND del_flag = 0 " +
-                    "GROUP BY material_id, store_id, purchase_month";
+            String sql = "SELECT i.material_id, h.store_id, h.purchase_month, COALESCE(SUM(i.purchase_qty), 0) AS qty " +
+                    "FROM self_purchase_material_item i JOIN self_purchase_material h ON h.biz_code = i.biz_code " +
+                    "WHERE h.store_id IN (" + inStores + ") AND h.purchase_month IN (" + inMonths + ") " +
+                    "AND h.del_flag = 0 AND i.del_flag = 0 " +
+                    "GROUP BY i.material_id, h.store_id, h.purchase_month";
             List<Map<String, Object>> rows = mysqlJdbc.queryForList(sql);
             for (Map<String, Object> row : rows) {
                 String mid = (String) row.get("material_id");

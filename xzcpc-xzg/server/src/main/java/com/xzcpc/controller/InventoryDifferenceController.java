@@ -21,14 +21,15 @@ public class InventoryDifferenceController {
 
     // ==================== 差异任务列表 ====================
 
-    /** 盘点差异任务列表（按任务分组） */
+    /** 盘点差异任务列表（按任务分组，支持月份筛选） */
     @GetMapping("/diff-tasks")
     public R<Map<String, Object>> listDiffTasks(
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String storeIds,
-            @RequestParam(required = false) String supervisorName) {
-        return R.ok(diffCalcService.listDiffTasks(pageNum, pageSize, storeIds, supervisorName));
+            @RequestParam(required = false) String supervisorName,
+            @RequestParam(required = false) String taskMonth) {
+        return R.ok(diffCalcService.listDiffTasks(pageNum, pageSize, storeIds, supervisorName, taskMonth));
     }
 
     /** 某任务的差异明细（含任务信息和所有差异项） */
@@ -51,6 +52,13 @@ public class InventoryDifferenceController {
         return R.ok(Map.of("count", count, "msg", "批量计算完成，共计算 " + count + " 个任务"));
     }
 
+    /** 按盘点月份批量重算差异（如半成品爆炸口径上线后重算当月任务；已算任务会被覆盖） */
+    @PostMapping("/diff-tasks/recalculate")
+    public R<Map<String, Object>> recalculateByMonth(@RequestParam String taskMonth) {
+        int count = diffCalcService.recalculateByMonth(taskMonth);
+        return R.ok(Map.of("count", count, "msg", "按月份重算完成，共重算 " + count + " 个任务"));
+    }
+
     /** 按物料维度聚合差异（跨任务/跨门店），返回材料汇总+可用月份 */
     @GetMapping("/diff-materials")
     public R<Map<String, Object>> listDiffMaterials(
@@ -62,7 +70,7 @@ public class InventoryDifferenceController {
 
     // ==================== 差异处理 ====================
 
-    /** 修改 adjusted_qty 并重算差异 */
+    /** 修改 adjusted_qty 并重算差异（未计算差异行只改数量，不重算） */
     @PutMapping("/differences/{id}/adjust")
     public R<Void> adjustQty(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         BigDecimal newQty = new BigDecimal(body.get("adjustedQty").toString());
