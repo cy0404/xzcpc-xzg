@@ -856,9 +856,7 @@ body.body-lock{overflow:hidden}
       wx.miniProgram.postMessage({data:{type:'expense-submitted',isEdit:isEdit}})
       setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
     }else{
-      setTimeout(function(){
-        location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
-      },900)
+      location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
     }
   }
   document.getElementById('submitBtn').addEventListener('click',submit)

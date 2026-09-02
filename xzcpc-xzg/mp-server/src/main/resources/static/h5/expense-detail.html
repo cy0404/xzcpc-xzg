@@ -233,9 +233,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
           wx.miniProgram.postMessage({data:{type:'expense-submitted',deleted:true}})
           setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
         }else{
-          setTimeout(function(){
-            location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
-          },900)
+          location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
         }
       })
       .catch(function(e){handleErr(e);deleting=false;document.getElementById('delConfirm').textContent='确认删除'})
