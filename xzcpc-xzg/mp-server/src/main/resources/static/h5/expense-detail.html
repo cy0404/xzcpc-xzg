@@ -228,9 +228,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
       .then(function(){
         closeDel()
         showToast('已删除')
+        // 小程序容器内通知刷新并返回；浏览器直开时降级为跳回列表页
         if(typeof wx!=='undefined'&&wx.miniProgram){
           wx.miniProgram.postMessage({data:{type:'expense-submitted',deleted:true}})
           setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
+        }else{
+          setTimeout(function(){
+            location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
+          },900)
         }
       })
       .catch(function(e){handleErr(e);deleting=false;document.getElementById('delConfirm').textContent='确认删除'})
