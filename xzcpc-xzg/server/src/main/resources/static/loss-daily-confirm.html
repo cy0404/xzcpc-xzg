@@ -982,9 +982,14 @@ function render(d) {
     d.done = d.list.filter(function(r){ return !!r.result; }).length;
     d.stores = new Set(d.list.map(function(r){ return r.storeName; })).size;
   }
-  // 蓝蛙二次审核入口：只展示复核相关单（蓝蛙拒绝待复核 + 已复核），与后端 recheck=1 过滤一致
+  // 蓝蛙二次审核入口（与后端 recheck=1 过滤一致）：E2 审核人入口（uid=个人）→ 待复核队列 + 已复核；
+  // 蓝蛙群知会入口（uid 空/群）→ 只展示二次审核已通过单（待复核单不展示）
   if (recheck && isAudit) {
-    d.list = d.list.filter(function(r){ return r.supplier && r.supplier.indexOf('蓝蛙') === 0 && (r.result === '拒绝' || r.rechecked); });
+    var recheckAuditor = uid && uid.indexOf('chat_') !== 0;
+    d.list = d.list.filter(function(r) {
+      if (!r.supplier || r.supplier.indexOf('蓝蛙') !== 0) return false;
+      return recheckAuditor ? (r.result === '拒绝' || r.rechecked) : r.rechecked === 'pass';
+    });
     d.pending = d.list.filter(function(r){ return !r.result; }).length;
     d.done = d.list.filter(function(r){ return !!r.result; }).length;
     d.stores = new Set(d.list.map(function(r){ return r.storeName; })).size;

@@ -90,9 +90,13 @@ public class LossReportH5Controller {
         }
         // 前端把 recheck 解析成布尔后 encodeURIComponent 会传 "true"，此处兼容 "1"/"true" 两种值
         boolean isRecheck = "1".equals(recheck) || "true".equalsIgnoreCase(recheck);
+        // 蓝蛙二次复核页入口判定（与 HTML 端 recheckOp 一致）：E2 审核人卡片链接带 uid=审核人个人 open_id；
+        // 蓝蛙群知会卡片不带 uid（或 uid=群 chat_ 开头）。知会入口只展示二次审核已通过单，作为结果查阅页
+        boolean isRecheckAudit = "audit".equals(tab) && isRecheck;
+        boolean recheckAuditor = isRecheckAudit && !uid.isEmpty() && !uid.startsWith("chat_");
         String statusFilter;
-        if ("audit".equals(tab) && isRecheck) {
-            // 蓝蛙二次审核入口（E2 审核人卡片 / 蓝蛙群知会卡片）：只展示蓝蛙拒绝待复核 + 二次审核已通过单。
+        if (recheckAuditor) {
+            // E2 审核人入口：只展示蓝蛙拒绝待复核 + 二次审核已通过单。
             // 只显示二次复核启用（2026-09-01）后新拒绝进入复核队列的单——历史一审拒绝单（8/17 批、8/29 店长拒）不再展示；
             // 已确认不通过（recheck_reject）的单不展示（门店重新提交，无复核意义）
             statusFilter = "AND ("
@@ -100,10 +104,19 @@ public class LossReportH5Controller {
                     + "     AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00'))"
                     + "  OR EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id = r.id AND l.action = 'recheck_pass')"
                     + ") AND r.remark LIKE '厂家：蓝蛙%'";
+        } else if (isRecheckAudit) {
+            // 蓝蛙群知会入口：只展示二次审核已通过（recheck_pass）的单——待复核队列与已确认不通过均不展示，
+            // 蓝蛙被拒的单门店直接重新提交，知会页仅作结果查阅
+            statusFilter = "AND EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id = r.id AND l.action = 'recheck_pass')"
+                    + " AND r.remark LIKE '厂家：蓝蛙%'";
         } else if ("audit".equals(tab)) {
             statusFilter = "AND r.status IN ('pending','registered','rejected')";
-            // 已审批（registered/rejected）只展示近一个月（按审核确认时间 confirmed_at），待审核全部展示
-            statusFilter += " AND (r.status = 'pending' OR r.confirmed_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH))";
+            // 已审批（registered/rejected）只展示近一个月：registered 按确认时间 confirmed_at；
+            // 一审直接拒绝的单 confirmed_at 为空（拒绝不写确认时间），按最近 reject/audit_reject 日志时间判定展示
+            statusFilter += " AND (r.status = 'pending'"
+                    + " OR r.confirmed_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)"
+                    + " OR (r.status = 'rejected' AND EXISTS (SELECT 1 FROM loss_report_log l2 WHERE l2.report_id = r.id"
+                    + "     AND l2.action IN ('reject','audit_reject') AND l2.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH))))";
         } else if ("resend".equals(tab)) {
             statusFilter = "AND r.status IN ('registered','confirmed_resend','received','not_received')";
         } else {
@@ -137,9 +150,12 @@ public class LossReportH5Controller {
                 "LEFT JOIN outbound_order o ON o.id = r.outbound_order_id " +
                 "WHERE r.loss_type='arrival' " + statusFilter + reasonFilter + materialFilter + avoFilter + " " +
                 catCondition +
-                // 待审核按发生日期排序（原逻辑）；已审批按审核确认时间倒序（最新审批在前）
-                " ORDER BY CASE WHEN r.status = 'pending' THEN 0 ELSE 1 END, " +
-                "CASE WHEN r.status = 'pending' THEN r.occurred_date ELSE r.confirmed_at END DESC";
+                (isRecheckAudit && !recheckAuditor
+                    // 知会入口只展示二次审核已通过单，按二次审核通过时间（recheck_pass 时写入 confirmed_at）倒序
+                    ? " ORDER BY r.confirmed_at DESC"
+                    // 待审核按发生日期排序（原逻辑）；已审批按审核确认时间倒序（最新审批在前）
+                    : " ORDER BY CASE WHEN r.status = 'pending' THEN 0 ELSE 1 END, "
+                    + "CASE WHEN r.status = 'pending' THEN r.occurred_date ELSE r.confirmed_at END DESC");
 
         List<Map<String, Object>> allRows = jdbcTemplate.queryForList(baseSql);
         // 批量预加载：下载标记 + 收货反馈日志 + 提交人手机号，避免逐条查库（原实现每条 2 次查询，量大时很慢）
