@@ -114,7 +114,8 @@ public class SelfPurchaseMaterialServiceImpl implements SelfPurchaseMaterialServ
                     r.setTotalAmount(it.getTotalAmount());
                     r.setHandlerName(h.getHandlerName());
                     r.setVoucherUrl(h.getVoucherUrl());
-                    r.setRemark(h.getRemark());
+                    // 说明列取物料明细说明（H5 多物料提交后整单说明已停用，明细级说明才有内容）
+                    r.setRemark(it.getRemark());
                     r.setCreatedAt(h.getCreatedAt());
                     records.add(r);
                 }
