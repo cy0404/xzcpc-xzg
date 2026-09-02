@@ -325,7 +325,7 @@ public class InventoryReportController {
         // itemName 取当前有效明细的首条（明细软删重建后主表 item_name 已不维护，存量记录兜底主表值）
         StringBuilder sql = new StringBuilder(
                 "SELECT e.store_id, e.store_miniapp_no, e.store_name, e.expense_id, e.first_type_name,"
-                        + " e.type_name, e.item_name, e.amount, e.occurred_date, e.created_at, e.del_flag,"
+                        + " e.type_name, e.item_name, e.amount, e.occurred_date, e.created_at, e.del_flag, e.remark,"
                         + " (SELECT eri.item_name FROM expense_record_item eri"
                         + "   WHERE eri.expense_id = e.expense_id AND eri.del_flag = 0"
                         + "   ORDER BY eri.sort_no ASC, eri.id ASC LIMIT 1) AS first_item_name"
@@ -376,6 +376,8 @@ public class InventoryReportController {
             String createdAt = r.get("created_at") != null ? r.get("created_at").toString() : "";
             item.put("createdAt", createdAt.length() > 19 ? createdAt.substring(0, 19) : createdAt);
             item.put("delFlag", r.get("del_flag") != null ? r.get("del_flag") : 0);
+            // 说明列：分组/整单说明（H5 提交的普通支出说明写入 expense_record.remark）
+            item.put("remark", nvl((String) r.get("remark")));
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> expenses = (List<Map<String, Object>>) store.get("expenses");
             expenses.add(item);
