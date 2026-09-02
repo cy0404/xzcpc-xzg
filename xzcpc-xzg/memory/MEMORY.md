@@ -16,7 +16,7 @@
 
 ## 🆕 近期变更
 
-### 2026-08-29 补发联动企迈出库单：换算失败可重试策略 + 7张错单处置 + 启动/编译修复（详见 dateMemory/2026-08-29.md）
+### 2026-08-29 补发联动企迈出库单 + 统计报表督导视图 + 评价管理渠道化/督导范围 + 物料同步增强（详见 dateMemory/2026-08-29.md）
 
 - **出库口径定稿（用户两次纠正强制）**：数量按**库存单位**（stock_unit，回退 purchase_unit）经换算链换算；单价用**采购单价 purchase_price**；❌ 绝不 order_unit/order_price
 - **企迈 9.2.4 建出库单**：`externalNo=BF{id}-{seq}` 幂等 + `outbound_order` 表 upsert；`autoOutbound=1` 立即扣库存；仓库映射：冷冻类/牛油果泥等→冷冻仓 PSCK000149，鲜奶类→PSCK000070，其余（固体/茶叶/液体…）→总仓 PSCK000023
@@ -25,6 +25,9 @@
 - **7 张历史错单**（数量错 24/16/12/5 倍）：错误金额 20,545.60 → 正确 871.80 元；处置 = `database/fix-7-bad-outbound.sql`（success→failed）+ H5 点重新补发按正确数量建新单；**企迈旧单无 API 撤销，需仓配人工处理**
 - **启动失败修复**：① m2 依赖 jar 落后工作区（8/11 旧 common 无 feedbackNotifyExecutor）→ `mvn install -pl common,template,task,expense,people` ② IssueFeedbackServiceImpl final+@Qualifier+Lombok 构造注入丢注解 → 改 @Autowired 字段注入（见 patterns.md）
 - **mp 编译修复**：唯一真错误 SmartOrderServiceImpl:372 `Task.getId()` Integer→Long（`.longValue()`）；其余「找不到符号」是旧 task jar 缺新方法，install 后自动消失；mp 修好后**全量打包可行**，server/mp-server 两 jar 全最新
+- **统计报表督导视图**：总部下拉选督导 / 督导登录自动锁定（前端 `isSupervisorOnlyRole` + 后端 openId 强制过滤）；CSS conic-gradient 饼图 + 状态 chips 点击切换门店列表（含**督导列**）；固定 340px 高内部滚动——**坑：a-row/a-col 组件根元素不携带父 scoped data-v，scoped 样式不命中导致溢出，改纯 div flex 布局解决**
+- **评价管理渠道化 + 督导数据范围**：issue_feedback 加 `channel`（默认 scan，美团/小红书预留；迁移脚本 `migration-add-feedback-channel.sql` **待执行**）；列表按渠道筛选 + Excel 导出；**督导只能看自己负责门店的反馈**（storeScope + adminPage in 过滤 + 详情/改状态越权校验）；入口对督导开放
+- **物料同步增强**：源集合改按 **qm_code** 匹配（接口 id 会随上游换体系，按 id 匹配会误删存量）；半成品关闭时仍拉接口仅做保护 + del_flag 归位（ENABLED→0 复活、DISABLED→1）；新增生产→测试库镜像脚本 `migration-sync-material-prod-to-test.sql`
 
 ### 2026-08-28 未验收问题提醒：门店 chatId 过滤 + 单群触发 + 旧卡片撤回（详见 dateMemory/2026-08-28.md）
 

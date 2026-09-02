@@ -106,3 +106,10 @@ importance: 4
 - mp 编译错误挡全量构建时，先修 mp 或单独 install 其他模块；mp 修好后直接 `mvn clean package -DskipTests` 全量最稳（server/mp-server 两 jar 全最新）
 - 排查手段：启动异常 `jar:file:/.../.m2/repository/...` 路径 = 旧 jar；看报错 bean 名是否在工作区新增代码里
 
+
+## P016 — ant-design-vue 组件根元素无父 scoped data-v：布局样式静默失效
+
+- 场景：给 `a-row`/`a-col`/`a-card` 等 ant-design-vue 组件加 class（如 `.report-body-row{height:340px}`），scoped CSS 里 `.report-body-row[data-v-xxx]` 命中不了 → 样式**静默不生效**（组件根元素只带组件自己的 scopeId，不携带父组件 data-v）
+- 后果：固定高度/display:flex 失效 → 内容多时溢出视口；数据少时视觉正常，**数据量上去才暴露**，很难排查
+- **修复**：布局类样式别依赖组件根元素——改用**原生 div + flex**（`.report-body-row{display:flex;height:340px}` + 列 div flex:1/min-width:0）；或对组件根元素用 `:deep()`/内联 style
+- 排查：内容少量正常、多量溢出的布局问题，优先怀疑 scoped 选择器未命中组件根
