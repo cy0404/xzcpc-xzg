@@ -1658,6 +1658,53 @@ public class LossReportH5Controller {
         return Map.of("code", 200, "msg", "已触发每周门店操作预警");
     }
 
+    /** 手动触发周期到货报损汇总卡片（测试用）：type=week 上周三~本周二；type=month 上月整月 */
+    @PostMapping("/api/public/loss-report/trigger-period-summary")
+    @ResponseBody
+    public Map<String, Object> triggerPeriodSummary(@RequestParam(defaultValue = "week") String type) {
+        com.xzcpc.job.LossReportPeriodSummaryJob job =
+                new com.xzcpc.job.LossReportPeriodSummaryJob(jdbcTemplate, fms);
+        if ("month".equals(type)) {
+            job.doSendMonth();
+            return Map.of("code", 200, "msg", "已触发月度到货报损汇总（上月整月）");
+        }
+        job.doSendWeek();
+        return Map.of("code", 200, "msg", "已触发周度到货报损汇总（上周三~本周二）");
+    }
+
+    /**
+     * 周期汇总卡「到象子掌柜查看详情」跳转中介。
+     * 原因：卡片按钮经飞书 applink 打开时，lk_target_url 带 # 的 hash 路由（/#/loss?…）会被解析失败，
+     * 飞书报「重定向 URL 有误」；改为按钮先指向本无 # 接口，服务端 302 到后台 hash 路由（相对 Location 同 host 生效）。
+     */
+    @GetMapping("/api/public/loss-report/loss-list-link")
+    public void lossListLink(@RequestParam String startDate, @RequestParam String endDate,
+                             @RequestParam(defaultValue = "arrival") String lossType,
+                             jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        response.sendRedirect("/#/loss?startDate=" + startDate + "&endDate=" + endDate + "&lossType=" + lossType);
+    }
+
+    /**
+     * 每周门店操作预警卡「查看支出明细」跳转中介。
+     * 同 lossListLink：applink 不能带 # 直达 hash 路由，按钮先指向本无 # 接口，服务端 302 到 #/expense。
+     * 不带 lossType/门店参数，落到支出列表后由督导在页内自行筛选门店核实。
+     */
+    @GetMapping("/api/public/weekly-warning/expense-list-link")
+    public void weeklyWarningExpenseListLink(@RequestParam String startDate, @RequestParam String endDate,
+                                             jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        response.sendRedirect("/#/expense?startDate=" + startDate + "&endDate=" + endDate);
+    }
+
+    /**
+     * 每周门店操作预警卡「查看报损明细」跳转中介。
+     * 报损页不传 lossType（区别于 lossListLink 默认 arrival），展示该周全部类型报损记录。
+     */
+    @GetMapping("/api/public/weekly-warning/loss-list-link")
+    public void weeklyWarningLossListLink(@RequestParam String startDate, @RequestParam String endDate,
+                                          jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        response.sendRedirect("/#/loss?startDate=" + startDate + "&endDate=" + endDate);
+    }
+
     /**
      * 手动触发未验收问题提醒（测试用）。
      * 带 chatId 参数时只发指定门店群（按钮带 ?chatId= 过滤，仅该群可见本店问题）；
