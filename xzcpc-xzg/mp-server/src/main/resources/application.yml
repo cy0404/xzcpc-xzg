@@ -50,6 +50,13 @@ mp:
   jwt:
     expire-hours: 168
 
+# 小程序订阅消息（用户在 mp.weixin.qq.com 功能-订阅消息 申请"一次性订阅消息"模板后填入 template-id；
+# 模板字段按序取 3 个关键词：thing1 标题 / thing2 说明 / time1 时间，与 SubscribeMessageService.data 组装一致）
+notify:
+  subscribe:
+    template-id: ${NOTIFY_SUBSCRIBE_TEMPLATE_ID:}
+    miniprogram-state: ${NOTIFY_SUBSCRIBE_MINIPROGRAM_STATE:formal}   # 体验版调试改 trial
+
 # 飞书异常告警 → 飞书群自定义机器人 Webhook
 feishu:
   alert:

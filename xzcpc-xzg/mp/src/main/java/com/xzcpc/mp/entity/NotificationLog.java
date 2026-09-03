@@ -17,6 +17,7 @@ public class NotificationLog {
     private String targetOpenid;
     private String title;
     private String content;
+    private String pagePath;       // 订阅消息点击跳转小程序页面（含参数，如 /pages/loss-report/list/index?tab=pending_approval）
     private String sourceId;       // 来源业务ID
     private Integer status;        // 0待发送 1成功 2失败
     private String failReason;
