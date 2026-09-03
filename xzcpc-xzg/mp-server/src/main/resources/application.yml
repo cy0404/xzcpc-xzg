@@ -54,7 +54,8 @@ mp:
 # 模板字段按序取 3 个关键词：thing1 标题 / thing2 说明 / time1 时间，与 SubscribeMessageService.data 组装一致）
 notify:
   subscribe:
-    template-id: ${NOTIFY_SUBSCRIBE_TEMPLATE_ID:}
+    # 订阅消息模板「工作任务待办通知」#49925（2026-09-03 申请）：thing1 待办类型 / thing2 待办内容 / time3 时间
+    template-id: qOc6NgXrAjFSqZNJ8SQnwMPAt-7bfkiBdk72bSNGzKU
     miniprogram-state: ${NOTIFY_SUBSCRIBE_MINIPROGRAM_STATE:formal}   # 体验版调试改 trial
 
 # 飞书异常告警 → 飞书群自定义机器人 Webhook

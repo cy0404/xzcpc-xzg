@@ -26,10 +26,9 @@ const CODE_MAP: Record<number, string> = {
 
 export { BASE_URL, H5_BASE, IS_PROD, CODE_MAP }
 
-// 订阅消息模板 ID（一次性订阅，7 个业务场景共用同一模板）：
-// 到 mp.weixin.qq.com → 功能 → 订阅消息 申请后填入（后端 mp-server application.yml 同步一份 NOTIFY_SUBSCRIBE_TEMPLATE_ID）；
-// 为空 = 未申请/开发期，前端跳过 requestSubscribeMessage，不打扰用户
-export const SUBSCRIBE_TEMPLATE_ID = ''
+// 订阅消息模板 ID（一次性订阅，7 个业务场景共用「工作任务待办通知」#49925，
+// 字段：thing1 待办类型 / thing2 待办内容 / time3 时间）——与后端 mp-server application.yml 的 notify.subscribe.template-id 同步
+export const SUBSCRIBE_TEMPLATE_ID = 'qOc6NgXrAjFSqZNJ8SQnwMPAt-7bfkiBdk72bSNGzKU'
 
 export const TASK_STATUS_MAP: Record<string, string> = {
   not_started: '未开始',
