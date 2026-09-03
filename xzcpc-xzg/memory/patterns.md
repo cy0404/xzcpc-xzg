@@ -113,3 +113,13 @@ importance: 4
 - 后果：固定高度/display:flex 失效 → 内容多时溢出视口；数据少时视觉正常，**数据量上去才暴露**，很难排查
 - **修复**：布局类样式别依赖组件根元素——改用**原生 div + flex**（`.report-body-row{display:flex;height:340px}` + 列 div flex:1/min-width:0）；或对组件根元素用 `:deep()`/内联 style
 - 排查：内容少量正常、多量溢出的布局问题，优先怀疑 scoped 选择器未命中组件根
+
+
+## P017 — 飞书卡片带跳转按钮：schema 2.0 不支持 action，走 1.0 + 302 中介
+
+- **schema 2.0 卡片不支持 `action` 元素**：发送 HTTP 400 `ErrCode 200861 unsupported tag action`（2.0 的表格/markdown 都可用，唯独按钮不支持）——探针实证
+- **带按钮卡必须走 schema 1.0**：`{config:{wide_screen_mode:true}, header:{...}, elements:[...]}`（无 `schema` 字段、`elements` 顶层），与 LossReportPeriodSummaryJob/周期汇总卡同款；header/markdown/hr 在 1.0/2.0 结构兼容
+- **按钮结构**：`{"tag":"action","actions":[{"tag":"button","text":{"tag":"plain_text","content":"..."},"type":"primary|default","url":applink}]}`（type 有 primary/default/danger）
+- **applink 不能带 # 直达**：按钮 url 若含 `/#/hash路由`，飞书报「重定向 URL 有误」→ 按钮先指向同 host **无 # 的 302 中介接口**（`/api/public/xxx/list-link?…` → `response.sendRedirect("/#/…?…")`），相对 Location 同 host 生效
+- **URL 封装**：`fms.buildApplink(path)` = `https://applink.feishu.cn/client/web_app/open?appId={appId}&lk_target_url={urlencode(serverUrl+path)}`；serverUrl 来自 `app.server-url`（默认 profile=http://162.14.122.80:4026，local=127.0.0.1:4026）
+- 验证：先发探针卡到测试群确认 schema 被接受，再批量发正式

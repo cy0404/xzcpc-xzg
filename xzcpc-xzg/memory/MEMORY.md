@@ -16,6 +16,22 @@
 
 ## 🆕 近期变更
 
+### 2026-09-03 月度发券卡移除 @提及 + 汇总卡定稿交付生产（详见 dateMemory/2026-09-03.md）
+
+- **月度发券确认卡不再 @人**：LossReportMonthlyVoucherJob 删 getAtUsers/appendAtMentions（9/3 10:00 生产旧 jar 已带 @ 发过一张，修复从下次部署起生效）
+- **构建卡点复盘**：`clean package` 在 task testCompile/mp compile 连挂——真因是 **MpWebMvcConfig 缺 `import org.springframework.http.CacheControl`**（加 /upload/h5 no-cache 时漏 import，该改动从未成功编译）；补 import 后全量通过，no-cache 逻辑首次真正进 jar
+- **到货报损汇总卡（周/月）口径定稿**：排除蔬菜水果类；**按物料聚合三列**（物料名 | 到货报损次数 | 报损总数量，无门店维度）；牛油果泥「件」×24 换算到包再聚合（134 包 + 2 件 ≠ 136，需先换算）；`period_loss_summary` 周/月共用一行收件人配置
+- 新 jar（含全部卡片 + @移除 + no-cache）已构建交付，待用户部署 4026；8 月月汇总可手动补发：`POST /api/public/loss-report/trigger-period-summary?type=month`
+
+### 2026-09-02 门店操作预警卡定稿（文本清单 + 查看跳转按钮）+ 支出页带参直达（详见 dateMemory/2026-09-02.md）
+
+- **WeeklyStoreWarningJob 定稿**：每周一 8:30（`0 30 8 ? * MON`）；报损/支出分开判定，**缺任一即上榜（并集）**；文本分行清单（用户否决表格）：每督导一段 `**名**（N家）🔵无支出x·🟠无报损y`，每店一行 `店名｜无支出、无报损`
+- **⚠️ schema 2.0 不支持 action 按钮（200861）**：跳转按钮卡走 **schema 1.0**（无 schema 字段、elements 顶层），与 LossReportPeriodSummaryJob 同款（见 patterns P017）
+- **双按钮**：「查看支出明细/查看报损明细」→ 302 中介 `/api/public/weekly-warning/{expense,loss}-list-link`（applink 不能带 # 直达；报损**不传 lossType**=全部类型）
+- **个人卡零配置**（supervisor_store_access 映射 open_id）；**群卡读 sys_config.feishu_supervisor_group_chat_id**（空则跳过；生产库需确认真实督导群，勿指测试群）
+- **ExpenseList.vue 补带参直达**（仿 LossList 读 route.query startDate/endDate → dateRange）；LossList 早已支持
+- 9/3 发版验证两个 302 正常；⚠️ trigger-weekly-warning 会真发生产督导，测试禁用
+
 ### 2026-08-29 补发联动企迈出库单 + 统计报表督导视图 + 评价管理渠道化/督导范围 + 物料同步增强（详见 dateMemory/2026-08-29.md）
 
 - **出库口径定稿（用户两次纠正强制）**：数量按**库存单位**（stock_unit，回退 purchase_unit）经换算链换算；单价用**采购单价 purchase_price**；❌ 绝不 order_unit/order_price
