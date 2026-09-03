@@ -326,7 +326,7 @@ public class LossReportDailySummaryJob {
 
     // ==================== 卡片 E2：蓝蛙拒绝待复核（审核人二次审核） ====================
     // 蓝蛙群审核拒绝的单，每天 9:30 提醒牛油果泥审核人（个人）复核：
-    // 可直接通过（rejected→registered），或确定不通过（保持 rejected，门店重新提交）。
+    // 不同意 = 报损成立（rejected→registered 进补发，recheck_pass）；同意 = 维持拒绝（保持 rejected，recheck_reject）。
     // 已复核过（recheck_pass/recheck_reject 日志）的不再提醒；近一个月提交的蓝蛙被拒单。
     private void sendCardLanwaRecheck(String token, String today) {
         String avocadoId = fms.getAvocadoMaterialId();
@@ -347,7 +347,7 @@ public class LossReportDailySummaryJob {
         Map<String, Object> card = new LinkedHashMap<>();
         card.put("header", fms.cardHeader("red", "到货验收报损 · 牛油果泥（蓝蛙）拒绝待复核"));
         List<Map<String, Object>> els = new ArrayList<>();
-        String info = "**蓝蛙拒绝待复核**\n待复核 **" + list.size() + "** 条 · 涉及 **" + stores + "** 个门店\n\n可直接通过进入补发；或确定不通过，门店重新提交";
+        String info = "**蓝蛙拒绝待复核**\n待复核 **" + list.size() + "** 条 · 涉及 **" + stores + "** 个门店\n\n不同意 = 报损成立，进入补发；同意 = 报损维持拒绝";
         els.add(fms.mdEl(info));
         els.add(fms.tagEl("hr"));
         try {

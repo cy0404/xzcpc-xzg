@@ -34,7 +34,7 @@ main{width:40%;margin:0 auto;min-height:100dvh} @media(max-width:768px){main{wid
 .video-modal-close{position:absolute;top:16px;right:16px;color:#fff;font-size:28px;cursor:pointer;z-index:1}
 .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .btn{padding:10px;border-radius:8px;font-size:14px;font-weight:500;text-align:center;cursor:pointer;border:none}
-.btn-ok{background:#2F8F57;color:#fff}.btn-no{background:#fff;color:#E05A47;border:1px solid #E8ECE9}.btn-done{background:#E7F4EB;color:#2F8F57;cursor:default}
+.btn-ok{background:#2F8F57;color:#fff}.btn-no{background:#fff;color:#E05A47;border:1px solid #E8ECE9}.btn-done{background:#E7F4EB;color:#2F8F57;cursor:default}.btn-gray{background:#F5F6F5;color:#98A19C;cursor:default}
 .feedback{padding:10px 12px;margin-top:10px;border-radius:8px;background:#E7F4EB;border:1px solid #CBEED8;font-size:13px;color:#1F2421;font-weight:500;line-height:1.5}
 .feedback-red{background:#FFF4F2;border:1px solid #FDDDD8;color:#E05A47}
 .banner{display:none;align-items:flex-start;gap:12px;padding:16px;margin:12px 8px;background:#E7F4EB;border-radius:12px;border:1px solid #CBEED8}
@@ -928,12 +928,13 @@ function renderCard(r) {
   if (recheck && r.supplier && r.supplier.indexOf('蓝蛙') === 0 && (r.result === '拒绝' || r.rechecked)) {
     if (!r.rechecked) {
       if (uid && uid.indexOf('chat_') !== 0) {
-        h += '<div class="btns" id="btns' + r.id + '"><button class="btn btn-no" onclick="onRecheck(' + r.id + ',false)">确定不通过</button><button class="btn btn-ok" onclick="onRecheck(' + r.id + ',true)">直接通过</button></div>';
+        // 语义：同意 = 同意该拒绝（报损维持拒绝）；不同意 = 不同意该拒绝（报损成立，进入补发）
+        h += '<div class="btns" id="btns' + r.id + '"><button class="btn btn-ok" onclick="onRecheck(' + r.id + ',false)">同意</button><button class="btn btn-no" onclick="onRecheck(' + r.id + ',true)">不同意</button></div>';
       } else {
         h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn btn-done" disabled>待复核</button></div>';
       }
     } else {
-      h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn btn-done" disabled>' + (r.rechecked === 'pass' ? '二次审核已通过' : '已确认不通过') + '</button></div>';
+      h += '<div class="btns" style="grid-template-columns:1fr" id="btns' + r.id + '"><button class="btn ' + (r.rechecked === 'pass' ? 'btn-done' : 'btn-gray') + '" disabled>' + (r.rechecked === 'pass' ? '二次审核已通过' : '已同意拒绝') + '</button></div>';
     }
   }
   if (r.feedback) {
@@ -1464,7 +1465,7 @@ function onReject(id) {
   });
 }
 function onRecheck(id, pass) {
-  openModal(pass ? '确认直接通过该报损单？通过后进入补发流程。' : '确认不通过？门店将重新提交该报损单。', function() {
+  openModal(pass ? '确认不同意该拒绝？报损将成立并进入补发流程。' : '确认同意该拒绝？该报损维持拒绝。', function() {
     fetch('/api/public/loss-report/' + (pass ? 'recheck-pass' : 'recheck-reject'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
