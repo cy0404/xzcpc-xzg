@@ -40,6 +40,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .field-value{display:block;font-size:14px;margin-top:2px}
 .field-value.placeholder{color:var(--t3)}
 .field-arrow{font-size:16px;color:var(--p);flex-shrink:0}
+/* 支出日期卡片：绿色渐变主卡（呼应详情页金额头部），中文日期大字居中，点击整卡弹滚轮 */
+.date-hero{background:linear-gradient(135deg,#2F8F57,#247847);border:none;text-align:center;padding:16px;cursor:pointer}
+.date-hero:active{opacity:.92}
+.dh-label{font-size:12px;color:rgba(255,255,255,.85)}
+.dh-value{display:block;margin-top:6px;font-size:26px;font-weight:800;color:#fff;letter-spacing:1px}
+.dh-hint{margin-top:4px;font-size:11px;color:rgba(255,255,255,.6)}
 .field-input{width:100%;font-size:14px;background:transparent;border:none;outline:none;height:24px;line-height:24px;color:var(--t1)}
 .field-input::placeholder{color:var(--t3)}
 .form-body{display:flex;flex-direction:column;gap:6px}
@@ -149,19 +155,30 @@ body.body-lock{overflow:hidden}
 .sab.cancel{background:#FAFBF9;color:var(--t1)}
 .sab.danger{background:var(--p);color:#fff}
 .sab.danger:active{opacity:.9}
+/* 登录过期弹窗（自包含样式，不依赖页面 .mask/.sheet，可整块复制到其他 H5） */
+.lg-mask{position:fixed;inset:0;z-index:300;background:rgba(31,36,33,.4);display:none;align-items:flex-end;justify-content:center}
+.lg-mask.show{display:flex}
+.lg-sheet{width:100%;max-width:520px;margin:0 auto;background:#fff;border-radius:16px 16px 0 0;padding:10px 20px calc(env(safe-area-inset-bottom) + 18px);text-align:center;box-shadow:0 -4px 24px rgba(31,36,33,.12)}
+.lg-sh{width:40px;height:3px;border-radius:999px;background:#E8ECE9;margin:2px auto 12px}
+.lg-title{font-size:17px;font-weight:700}
+.lg-desc{font-size:13px;color:#66706A;margin:8px 0 18px;line-height:1.6}
+.lg-btns{display:flex;gap:10px}
+.lg-btn{flex:1;height:44px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:none;background:#F7F8F6;color:#1F2421;cursor:pointer}
+.lg-btn:active{opacity:.85}
+.lg-btn.lg-primary{background:#2F8F57;color:#fff}
 </style>
+<!-- 微信 JSSDK：web-view 内需先引入才能使用 wx.miniProgram（postMessage/navigateBack） -->
+<script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js" defer></script>
 </head>
 <body>
 <div class="page">
   <div id="tips"></div>
 
-  <!-- 支出日期（顶部） -->
-  <div class="card date-card">
-    <div class="field" onclick="openDatePicker()">
-      <div class="field-text"><span class="field-label">📅 支出日期 <b class="required">*</b></span></div>
-      <span class="field-value" id="dateText" style="font-size:14px">--</span>
-      <span class="field-arrow">›</span>
-    </div>
+  <!-- 支出日期（顶部）：绿色渐变主卡，中文日期大字居中，点击整卡弹出日期滚轮 -->
+  <div class="card date-hero" onclick="openDatePicker()">
+    <div class="dh-label">📅 支出日期 <b class="required">*</b></div>
+    <div class="dh-value" id="dateText">--</div>
+    <div class="dh-hint">轻触选择日期</div>
   </div>
 
   <div id="groupsBox"></div>
@@ -292,6 +309,19 @@ body.body-lock{overflow:hidden}
 <div class="loading-overlay" id="loadingOverlay"><div class="loading-box">提交中...</div></div>
 <div class="toast" id="toast"></div>
 
+<!-- 登录过期提示 -->
+<div class="lg-mask" id="lgMask">
+  <div class="lg-sheet">
+    <div class="lg-sh"></div>
+    <div class="lg-title">登录已过期</div>
+    <div class="lg-desc">当前页面已失效，无法继续操作</div>
+    <div class="lg-btns">
+      <button class="lg-btn" id="lgCancel">取消</button>
+      <button class="lg-btn lg-primary" id="lgOk">去登录</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   'use strict'
@@ -337,17 +367,46 @@ body.body-lock{overflow:hidden}
   function post(url,data){return fetchJSON(url,{method:'POST',headers:H(),body:JSON.stringify(data||{})})}
   function put(url,data){return fetchJSON(url,{method:'PUT',headers:H(),body:JSON.stringify(data||{})})}
   function handleErr(e){
-    if(e.status===401){showToast('登录已过期，请重新进入小程序');return}
+    if(e.status===401){sessionExpired();return}
     showToast(e.message||'网络异常，请重试')
   }
+  // 登录过期：弹确认框，点「去登录」回小程序登录页（对齐小程序原生 401 的 reLaunch 行为）
+  // 弹出瞬间 500ms 内忽略关闭动作：提交按钮在底部，弹窗弹出时用户手指/双击可能落在遮罩上导致「闪现即消失」
+  var lgLockUntil=0
+  function sessionExpired(){
+    var el=document.getElementById('lgMask')
+    if(!el){showToast('登录已过期，请重新进入小程序');return}
+    el.className='lg-mask show'
+    lgLockUntil=Date.now()+500
+    lockScroll(true)
+  }
+  function lgCancel(){
+    if(Date.now()<lgLockUntil)return
+    var el=document.getElementById('lgMask');if(el)el.className='lg-mask'
+    lockScroll(false)
+  }
+  function lgGoLogin(){
+    lgLockUntil=0;lgCancel() // 按钮显式选择，不受弹出保护锁限制
+    if(typeof wx!=='undefined'&&wx.miniProgram){
+      // 双通道幂等跳登录页：① postMessage 通知容器（容器收到会清 token + reLaunch 登录页）；
+      // ② 400ms 后 H5 侧直接 reLaunch 保底——任一生效都会销毁 web-view，另一通道随之失效，不会双跳。
+      // （此前「直跳不稳」结论源于 JSSDK 缺失时代 wx.miniProgram 不存在，实际走的是 else 分支）
+      wx.miniProgram.postMessage({data:{type:'relogin'}})
+      setTimeout(function(){wx.miniProgram.reLaunch({url:'/pages/login/index'})},400)
+    }else{
+      showToast('登录已过期，请重新进入小程序')
+    }
+  }
   function todayStr(){var n=new Date(),m=String(n.getMonth()+1).padStart(2,'0'),d=String(n.getDate()).padStart(2,'0');return n.getFullYear()+'-'+m+'-'+d}
+  // 展示用中文日期（内部仍用 yyyy-MM-dd 传后端）
+  function fmtDate(s){var m=s?String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/):null;if(!m)return s||'--';return m[1]+'年'+Number(m[2])+'月'+Number(m[3])+'日'}
 
   // ---------- 状态 ----------
   var types=[],groups=[],occurredDate=todayStr(),handlerName=''
   // vouchers: {file,url,status:done|uploading,progress}
   var vouchers=[]
   // 弹窗状态
-  var activeGroupIdx=0,matGroupIdx=0,editingItemIdx=-1,matResults=[],matSearchTimer=null
+  var activeGroupIdx=0,matGroupIdx=0,editingItemIdx=-1,matResults=[],matSearchTimer=null,matSearchSeq=0
   var pGroupIdx=0,pEditIdx=-1
   var drawerItem=null
 
@@ -446,7 +505,9 @@ body.body-lock{overflow:hidden}
       get('/expense-types').then(function(d){
         types=Array.isArray(d)?d:[]
         renderTypeList()
-      }).catch(function(){
+      }).catch(function(e){
+        // 401 时类型弹窗要收起（z-index 低于登录过期弹窗），统一走会话过期提示
+        if(e&&e.status===401){closeTypePicker();sessionExpired();return}
         document.getElementById('typeList').innerHTML='<div class="search-status">类型加载失败，请关闭弹窗后重试</div>'
       })
     }
@@ -545,7 +606,7 @@ body.body-lock{overflow:hidden}
   }
   function confirmDatePicker(){
     occurredDate=datePicker.y+'-'+pad2(datePicker.m)+'-'+pad2(datePicker.d)
-    document.getElementById('dateText').textContent=occurredDate
+    document.getElementById('dateText').textContent=fmtDate(occurredDate)
     closeDatePicker()
   }
   function closeDatePicker(){document.getElementById('dateMask').className='mask';lockScroll(false)}
@@ -575,14 +636,31 @@ body.body-lock{overflow:hidden}
     setTimeout(function(){document.getElementById('matSearchInput').focus()},150)
   }
   function closeMatSearch(){document.getElementById('matMask').className='mask';lockScroll(false)}
-  document.getElementById('matSearchInput').addEventListener('input',function(){
+  // 搜索闪烁修复：
+  // 1. 中文输入法 composition 期间不触发（拼音逐字母 input 会连环发请求导致结果狂闪）
+  // 2. 请求序号递增，只接受最新请求的响应（乱序返回会互相覆盖、列表跳变）
+  // 3. 新结果到达前不清空已有列表（避免「搜索中...」与结果反复交替闪烁）
+  var matComposing=false
+  var matInputEl=document.getElementById('matSearchInput')
+  matInputEl.addEventListener('compositionstart',function(){matComposing=true})
+  matInputEl.addEventListener('compositionend',function(){
+    matComposing=false
+    clearTimeout(matSearchTimer)
+    doMatSearch(matInputEl.value)
+  })
+  matInputEl.addEventListener('input',function(e){
+    if(matComposing||e.isComposing)return
     clearTimeout(matSearchTimer)
     var v=this.value
     matSearchTimer=setTimeout(function(){doMatSearch(v)},150)
   })
   function doMatSearch(kw){
-    document.getElementById('matList').innerHTML='<div class="search-status">搜索中...</div>'
+    var seq=++matSearchSeq
+    var listEl=document.getElementById('matList')
+    // 列表已有内容时保留旧结果（避免清空重绘闪烁），新结果到达后整体替换
+    if(!listEl.children.length)listEl.innerHTML='<div class="search-status">搜索中...</div>'
     get('/materials/by-category?parentCategory='+encodeURIComponent(PARENT)+'&keyword='+encodeURIComponent(kw||'')).then(function(d){
+      if(seq!==matSearchSeq)return // 过期响应丢弃
       matResults=Array.isArray(d)?d:[]
       var html=''
       if(!matResults.length)html='<div class="search-status">暂无匹配物料</div>'
@@ -592,8 +670,8 @@ body.body-lock{overflow:hidden}
           +'<span class="si-meta">'+esc(m.leibie2||m.category||'')+'</span></div></div>'
       })
       html+='<div class="search-item other-item" id="otherMat"><div class="si-info"><span class="si-name">其他</span></div></div>'
-      document.getElementById('matList').innerHTML=html
-    }).catch(handleErr)
+      listEl.innerHTML=html
+    }).catch(function(e){if(seq===matSearchSeq)handleErr(e)})
   }
   function openAddDrawer(m){
     var g=groups[matGroupIdx]
@@ -625,12 +703,30 @@ body.body-lock{overflow:hidden}
     updateDrawerTotal()
     document.getElementById('drawerMask').className='mask show'
     lockScroll(true)
+    // 键盘遮挡修复：等弹层显示后自动聚焦重量框并滚动到可视区。
+    // iOS 键盘首次弹出动画期间 fixed 底部弹层会被键盘盖住（二次点击键盘已开则不遮），
+    // focus 后延迟滚动补偿，确保输入框不被遮挡
+    setTimeout(function(){
+      var w=document.getElementById('drawerWeight')
+      w.focus()
+      setTimeout(function(){ensureInputVisible(w)},380)
+    },200)
   }
   function closeDrawer(){document.getElementById('drawerMask').className='mask';lockScroll(false);drawerItem=null;editingItemIdx=-1}
   function updateDrawerTotal(){
     var w=parseFloat(document.getElementById('drawerWeight').value),p=parseFloat(document.getElementById('drawerPrice').value)
     document.getElementById('drawerTotal').textContent='小计：¥'+((w>0&&p>0)?(w*p).toFixed(2):'0.00')
   }
+  // 键盘遮挡兜底：任何输入框手动聚焦（键盘动画中）都延迟滚动到可视区
+  function ensureInputVisible(el){
+    try{if(el&&el.scrollIntoView)el.scrollIntoView({block:'center'})}catch(e){}
+  }
+  function bindFocusScroll(id){
+    var el=document.getElementById(id)
+    el.addEventListener('focus',function(){setTimeout(function(){ensureInputVisible(el)},380)})
+  }
+  bindFocusScroll('drawerWeight')
+  bindFocusScroll('drawerPrice')
   document.getElementById('drawerWeight').addEventListener('input',updateDrawerTotal)
   document.getElementById('drawerPrice').addEventListener('input',updateDrawerTotal)
   function confirmDrawer(){
@@ -660,6 +756,12 @@ body.body-lock{overflow:hidden}
     document.getElementById('plainTotal').textContent='小计：¥0.00'
     document.getElementById('plainMask').className='mask show'
     lockScroll(true)
+    // 键盘遮挡修复：自动聚焦名称框（必填首个字段）
+    setTimeout(function(){
+      var n=document.getElementById('plainName')
+      n.focus()
+      setTimeout(function(){ensureInputVisible(n)},380)
+    },200)
   }
   function openPlainEditDrawer(gIdx,pIdx){
     pGroupIdx=gIdx;pEditIdx=pIdx
@@ -671,6 +773,8 @@ body.body-lock{overflow:hidden}
     lockScroll(true)
   }
   function closePlainDrawer(){document.getElementById('plainMask').className='mask';lockScroll(false);pEditIdx=-1}
+  bindFocusScroll('plainName')
+  bindFocusScroll('plainAmount')
   document.getElementById('plainName').addEventListener('input',function(){
     var a=document.getElementById('plainAmount').value
     document.getElementById('plainTotal').textContent='小计：¥'+((parseFloat(a)>0)?fmtMoney(a):'0.00')
@@ -797,6 +901,7 @@ body.body-lock{overflow:hidden}
   document.getElementById('fileInput').addEventListener('change',function(){addFiles(this)})
 
   // ---------- 提交 ----------
+  var lastOpStart=0 // 提交开始时刻：本地请求过快时补足「提交中」遮罩展示时长，避免一闪而过
   function submit(){
     var btn=document.getElementById('submitBtn')
     if(btn.classList.contains('disabled'))return
@@ -820,6 +925,7 @@ body.body-lock{overflow:hidden}
       if(vouchers[u].status==='uploading'){showToast('请等待凭证上传完成');return}
     }
     btn.classList.add('disabled')
+    lastOpStart=Date.now()
     showLoading(EDIT_ID?'保存中...':'提交中...')
     var urls=vouchers.map(function(v){return v.url})
     var payload={
@@ -836,7 +942,8 @@ body.body-lock{overflow:hidden}
           return{materialId:it.materialId||undefined,materialName:it.materialName,parentCategory:it.parentCategory||undefined,category:it.category||undefined,weight:parseFloat(it.weight),unitPrice:parseFloat(it.unitPrice),remark:it.remark||undefined}
         })
       }
-      return put('/expenses/'+EDIT_ID,payload).then(function(){done(true)}).catch(function(e){handleErr(e);btn.classList.remove('disabled')}).finally(hideLoading)
+      // 成功后不 hideLoading：遮罩保持到 done() 跳转列表页，页面切换时自然消失
+      return put('/expenses/'+EDIT_ID,payload).then(function(){done(true)}).catch(function(e){handleErr(e);btn.classList.remove('disabled');hideLoading()})
     }
     payload.records=filled.map(function(g){
       var rec={typeId:g.typeId,amount:groupAmount(g),remark:g.remark||undefined}
@@ -847,17 +954,16 @@ body.body-lock{overflow:hidden}
       }
       return rec
     })
-    return post('/expenses/batch',payload).then(function(){done(false)}).catch(function(e){handleErr(e);btn.classList.remove('disabled')}).finally(hideLoading)
+    // 成功后不 hideLoading：遮罩保持到 done() 跳转列表页，页面切换时自然消失
+    return post('/expenses/batch',payload).then(function(){done(false)}).catch(function(e){handleErr(e);btn.classList.remove('disabled');hideLoading()})
   }
   function done(isEdit){
-    showToast(isEdit?'修改成功':'登记成功')
-    // 通知小程序容器刷新列表并返回；浏览器直开（无 wx.miniProgram）时降级为跳回列表页
-    if(typeof wx!=='undefined'&&wx.miniProgram){
-      wx.miniProgram.postMessage({data:{type:'expense-submitted',isEdit:isEdit}})
-      setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
-    }else{
-      location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
-    }
+    // 成功反馈 = 跳回列表页：页面重载后新记录直接可见（小程序 web-view 内 H5 内部跳转同样生效，
+    // 容器不退出，无需容器 toast/postMessage）。「提交中」遮罩保持到跳转前一刻
+    // 用 location.replace 替换当前表单层：若用 href 压栈，web-view 返回会逐层退 H5 历史，
+    // 用户提交后点返回会退回「已提交的表单页」。replace 后返回路径只剩入口列表，再返回即退出小程序
+    var wait=Math.max(0,800-(Date.now()-lastOpStart)) // 请求过快时补足展示时长，避免提示一闪而过
+    setTimeout(function(){location.replace('expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE))},wait)
   }
   document.getElementById('submitBtn').addEventListener('click',submit)
 
@@ -867,6 +973,9 @@ body.body-lock{overflow:hidden}
   document.getElementById('matMask').addEventListener('click',function(e){if(e.target===this)closeMatSearch()})
   document.getElementById('drawerMask').addEventListener('click',function(e){if(e.target===this)closeDrawer()})
   document.getElementById('plainMask').addEventListener('click',function(e){if(e.target===this)closePlainDrawer()})
+  document.getElementById('lgCancel').addEventListener('click',lgCancel)
+  document.getElementById('lgOk').addEventListener('click',lgGoLogin)
+  // 会话过期弹窗不响应遮罩点击关闭（防误触丢掉「去登录」路径），只能点按钮
 
   // ---------- 导出到 window（inline onclick 需全局可见） ----------
   window.addGroup=addGroup
@@ -885,6 +994,8 @@ body.body-lock{overflow:hidden}
   window.previewVoucher=previewVoucher
   window.removeGroup=removeGroup
   window.removeVoucher=removeVoucher
+  window.removeItem=removeItem
+  window.removePlainItem=removePlainItem
   window.onManualAmount=onManualAmount
   window.onGroupRemark=onGroupRemark
   window.openDatePicker=openDatePicker
@@ -892,12 +1003,18 @@ body.body-lock{overflow:hidden}
   window.confirmDatePicker=confirmDatePicker
 
   function boot(){
-    if(!TOKEN){showToast('登录已过期，请重新进入小程序')}
-    document.getElementById('dateText').textContent=occurredDate
-    var p1=get('/expense-types').then(function(d){types=Array.isArray(d)?d:[]}).catch(function(e){showToast('支出类型加载失败：'+(e.message||'网络异常'));throw e})
+    if(!TOKEN){sessionExpired()}
+    document.getElementById('dateText').textContent=fmtDate(occurredDate)
+    // 401 一律升级为会话过期弹窗：catch 内先判 401 再走普通失败提示，避免登录过期被局部提示吞掉
+    var p1=get('/expense-types').then(function(d){types=Array.isArray(d)?d:[]}).catch(function(e){
+      if(e&&e.status===401){sessionExpired();throw e}
+      showToast('支出类型加载失败：'+(e.message||'网络异常'));throw e
+    })
     var p2=get('/auth/me').then(function(d){
       handlerName=(d&&d.employeeName)||''
-    }).catch(function(){})
+    }).catch(function(e){
+      if(e&&e.status===401)sessionExpired() // me 失败不阻断页面渲染，但 401 仍需提示
+    })
     if(EDIT_ID){
       document.getElementById('submitBtn').textContent='保存修改'
       // 编辑回填：详情 + 明细 → 单组
@@ -916,7 +1033,7 @@ body.body-lock{overflow:hidden}
         g.remark=d.remark||''
         occurredDate=d.occurredDate||''
         handlerName=d.handlerName||handlerName
-        document.getElementById('dateText').textContent=occurredDate
+        document.getElementById('dateText').textContent=fmtDate(occurredDate)
         var urls=(d.voucherUrls&&d.voucherUrls.length)?d.voucherUrls:(d.voucherUrl?[d.voucherUrl]:[])
         vouchers=(Array.isArray(urls)?urls:[]).map(function(u){return{file:null,url:u,thumb:'',status:'done',progress:100}})
         if(d.typeName===SELF&&Array.isArray(its)&&its.length){
@@ -932,11 +1049,11 @@ body.body-lock{overflow:hidden}
       }).catch(handleErr)
     }else{
       groups=[newGroup()]
-      Promise.all([p1,p2]).catch(function(){}).then(function(){
-        renderGroups();renderVouchers()
-        // 新增时自动弹出类型选择，减少一步操作
+      renderGroups();renderVouchers()
+      // 新增时自动弹出类型选择（仅在类型数据加载成功后弹出；401/失败时不弹，避免弹窗刚开就盖会话过期提示）
+      p1.then(function(){
         setTimeout(function(){openTypePicker(0)},350)
-      })
+      }).catch(function(){})
     }
   }
   boot()

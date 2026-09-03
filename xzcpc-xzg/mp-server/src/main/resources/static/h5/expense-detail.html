@@ -56,7 +56,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 .toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:200;background:rgba(31,36,33,.88);color:#fff;font-size:14px;padding:10px 20px;border-radius:10px;display:none;max-width:80%;text-align:center;pointer-events:none}
 .toast.show{display:block}
 .preview-img{max-width:92vw;max-height:92vh;border-radius:8px}
+/* 登录过期弹窗（自包含样式，不依赖页面 .mask/.sheet，可整块复制到其他 H5） */
+.lg-mask{position:fixed;inset:0;z-index:300;background:rgba(31,36,33,.4);display:none;align-items:flex-end;justify-content:center}
+.lg-mask.show{display:flex}
+.lg-sheet{width:100%;max-width:520px;margin:0 auto;background:#fff;border-radius:16px 16px 0 0;padding:10px 20px calc(env(safe-area-inset-bottom) + 18px);text-align:center;box-shadow:0 -4px 24px rgba(31,36,33,.12)}
+.lg-sh{width:40px;height:3px;border-radius:999px;background:#E8ECE9;margin:2px auto 12px}
+.lg-title{font-size:17px;font-weight:700}
+.lg-desc{font-size:13px;color:#66706A;margin:8px 0 18px;line-height:1.6}
+.lg-btns{display:flex;gap:10px}
+.lg-btn{flex:1;height:44px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:none;background:#F7F8F6;color:#1F2421;cursor:pointer}
+.lg-btn:active{opacity:.85}
+.lg-btn.lg-primary{background:#2F8F57;color:#fff}
 </style>
+<!-- 微信 JSSDK：web-view 内需先引入才能使用 wx.miniProgram（postMessage/navigateBack） -->
+<script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js" defer></script>
 </head>
 <body>
 <div class="page" id="pageBox"></div>
@@ -87,6 +100,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
 
 <div class="loading-overlay" id="loadingOverlay"><div class="loading-box">加载中...</div></div>
 <div class="toast" id="toast"></div>
+
+<!-- 登录过期提示 -->
+<div class="lg-mask" id="lgMask">
+  <div class="lg-sheet">
+    <div class="lg-sh"></div>
+    <div class="lg-title">登录已过期</div>
+    <div class="lg-desc">当前页面已失效，无法继续操作</div>
+    <div class="lg-btns">
+      <button class="lg-btn" id="lgCancel">取消</button>
+      <button class="lg-btn lg-primary" id="lgOk">去登录</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -125,8 +151,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   function get(url){return fetchJSON(url,{headers:H()})}
   function del(url){return fetchJSON(url,{method:'DELETE',headers:H()})}
   function handleErr(e){
-    if(e.status===401){showToast('登录已过期，请重新进入小程序');return}
+    if(e.status===401){sessionExpired();return}
     showToast(e.message||'网络异常，请重试')
+  }
+  // 登录过期：弹确认框，点「去登录」回小程序登录页（对齐小程序原生 401 的 reLaunch 行为）
+  // 弹出瞬间 500ms 内忽略关闭动作：按钮在底部，弹窗弹出时手指/双击可能落在遮罩上导致「闪现即消失」
+  var lgLockUntil=0
+  function sessionExpired(){
+    var el=document.getElementById('lgMask')
+    if(!el){showToast('登录已过期，请重新进入小程序');return}
+    el.className='lg-mask show'
+    lgLockUntil=Date.now()+500
+  }
+  function lgCancel(){
+    if(Date.now()<lgLockUntil)return
+    var el=document.getElementById('lgMask');if(el)el.className='lg-mask'
+  }
+  function lgGoLogin(){
+    lgLockUntil=0;lgCancel() // 按钮显式选择，不受弹出保护锁限制
+    if(typeof wx!=='undefined'&&wx.miniProgram){
+      // 双通道幂等跳登录页：① postMessage 通知容器（容器收到会清 token + reLaunch 登录页）；
+      // ② 400ms 后 H5 侧直接 reLaunch 保底——任一生效都会销毁 web-view，另一通道随之失效，不会双跳。
+      // （此前「直跳不稳」结论源于 JSSDK 缺失时代 wx.miniProgram 不存在，实际走的是 else 分支）
+      wx.miniProgram.postMessage({data:{type:'relogin'}})
+      setTimeout(function(){wx.miniProgram.reLaunch({url:'/pages/login/index'})},400)
+    }else{
+      showToast('登录已过期，请重新进入小程序')
+    }
   }
   // 图片/视频区分：带视频扩展名视为视频，否则按图处理
   function isVideoUrl(u){
@@ -215,7 +266,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   // ---------- 操作 ----------
   function goEdit(){
     if(!detail)return
-    location.href='expense-form.html?expenseId='+encodeURIComponent(EXPENSE_ID)+'&token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
+    // replace 替换详情层：编辑保存成功后表单会 replace 回列表，若此处用 href 压栈，
+    // 保存后返回会先退到「修改前的旧详情」再退列表，用户会误以为修改没生效
+    location.replace('expense-form.html?expenseId='+encodeURIComponent(EXPENSE_ID)+'&token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE))
   }
   function openDel(){document.getElementById('delMask').className='mask show'}
   function closeDel(){document.getElementById('delMask').className='mask'}
@@ -223,27 +276,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
     if(deleting)return
     deleting=true
     document.getElementById('delConfirm').textContent='删除中...'
+    closeDel() // 确认弹窗先收起（z-index 高于 loading 遮罩），避免盖住「删除中」提示
+    var opStart=Date.now()
     showLoading('删除中...')
     del('/expenses/'+EXPENSE_ID)
       .then(function(){
-        closeDel()
-        showToast('已删除')
-        // 小程序容器内通知刷新并返回；浏览器直开时降级为跳回列表页
-        if(typeof wx!=='undefined'&&wx.miniProgram){
-          wx.miniProgram.postMessage({data:{type:'expense-submitted',deleted:true}})
-          setTimeout(function(){wx.miniProgram.navigateBack({delta:1})},600)
-        }else{
-          location.href='expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE)
-        }
+        // 成功反馈 = 跳回列表页：重载后该记录消失即结果可见（小程序 web-view 内 H5 内部跳转同样生效）
+        // 遮罩不主动隐藏，保持到跳转页面切换时自然消失
+        // 用 location.replace 替换当前详情层：否则删除后点返回会退回「已删除记录的旧详情页」
+        var wait=Math.max(0,800-(Date.now()-opStart)) // 请求过快时补足展示时长，避免提示一闪而过
+        setTimeout(function(){location.replace('expense-list.html?token='+encodeURIComponent(TOKEN)+'&storeName='+encodeURIComponent(STORE))},wait)
       })
-      .catch(function(e){handleErr(e);deleting=false;document.getElementById('delConfirm').textContent='确认删除'})
-      .finally(hideLoading)
+      .catch(function(e){handleErr(e);deleting=false;document.getElementById('delConfirm').textContent='确认删除';hideLoading()})
   }
 
   document.getElementById('editBtn').addEventListener('click',goEdit)
   document.getElementById('delBtn').addEventListener('click',openDel)
   document.getElementById('delConfirm').addEventListener('click',doDelete)
   document.getElementById('delMask').addEventListener('click',function(e){if(e.target===this)closeDel()})
+  document.getElementById('lgCancel').addEventListener('click',lgCancel)
+  document.getElementById('lgOk').addEventListener('click',lgGoLogin)
+  // 会话过期弹窗不响应遮罩点击关闭（防误触丢掉「去登录」路径），只能点按钮
   document.getElementById('pageBox').addEventListener('click',function(e){
     var img=e.target.closest('.voucher-photo');if(!img)return
     var idx=Array.prototype.indexOf.call(e.target.parentNode.children,img)
@@ -256,7 +309,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue'
   window.preview=preview
 
   // ---------- 启动 ----------
-  if(!TOKEN){showToast('登录已过期，请重新进入小程序')}
+  if(!TOKEN){sessionExpired()}
   load()
 })()
 </script>
