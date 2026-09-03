@@ -4,6 +4,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { fetchTransferDetail, confirmTransfer, shipTransfer, receiveTransfer, cancelTransfer, rejectTransfer, type TransferOrder, type TransferOrderItem } from '@/api/transfer'
 import { useUserStore } from '@/store/user'
 import Skeleton from '@/components/Skeleton.vue'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const transferId = ref<number>(0)
@@ -199,6 +200,7 @@ async function doAction(fn: () => Promise<any>, msg: string) {
   acting.value = true
   try {
     await fn()
+    topUpSubscribeOnce() // 调货动作成功（确认/发货/收货/取消/拒绝）→ 补订阅授权
     uni.showToast({ title: msg, icon: 'success' })
     await loadDetail()
   } catch { /* handled */ }

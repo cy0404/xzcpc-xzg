@@ -5,6 +5,7 @@ import { createTransfer } from '@/api/transfer'
 import { useUserStore } from '@/store/user'
 import { useTransferStore } from '@/store/transfer'
 import { fetchStores } from '@/api/store'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const transferStore = useTransferStore()
@@ -111,6 +112,7 @@ async function submit() {
       items: transferStore.getFormItems(),
     })
     transferStore.clearItems()
+    topUpSubscribeOnce() // 调货发起成功 → 补订阅授权（对端店长将收到待确认提醒）
     uni.showToast({ title: '调货申请已提交', icon: 'success' })
     setTimeout(() => uni.navigateBack(), 800)
   } catch { /* handled */ }

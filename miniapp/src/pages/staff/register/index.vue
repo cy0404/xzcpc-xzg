@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { submitStaffRegistration, checkExistingApplication, checkApplicationStatus } from '@/api/staff'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const storeId = ref('')
@@ -90,6 +91,7 @@ async function submit() {
     const body: any = { ...form.value, storeId: storeId.value, wxCode: loginRes.code }
     if (reapplyId.value) body.applicationId = reapplyId.value
     const res: any = await submitStaffRegistration(body)
+    topUpSubscribeOnce() // 员工登记提交成功 → 补订阅授权（店长将收到审批提醒）
     uni.redirectTo({ url: `/pages/staff/register-success/index?applicationId=${res?.applicationId || ''}&name=${encodeURIComponent(form.value.name)}&storeName=${encodeURIComponent(storeName.value)}` })
   } finally { saving.value = false }
 }

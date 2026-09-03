@@ -6,6 +6,7 @@ import { useUserStore } from '@/store/user'
 import { fetchMyStores, switchStore } from '@/api/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const allMode = ref(false)
@@ -204,6 +205,7 @@ async function handleConfirm(item: TransferOrder) {
   acting.value = true
   try {
     await confirmTransfer(item.id)
+    topUpSubscribeOnce() // 确认发货 → 补订阅授权（调入方将收到待收货提醒）
     uni.showToast({ title: '已确认', icon: 'success' })
     await loadAll()
   } catch { /* handled */ }
@@ -215,6 +217,7 @@ async function handleReceive(item: TransferOrder) {
   acting.value = true
   try {
     await receiveTransfer(item.id)
+    topUpSubscribeOnce() // 确认收货 → 补订阅授权（后续调货流转通知）
     uni.showToast({ title: '已收货', icon: 'success' })
     await loadAll()
   } catch { /* handled */ }

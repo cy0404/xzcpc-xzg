@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const src = ref('')
 
 onLoad((q: any) => {
   src.value = q?.url ? decodeURIComponent(q.url) : ''
+  // 进入 H5 前补一次订阅授权（H5 内无法调 requestSubscribeMessage，智能订货确认/付款等动作的授权点放容器页）
+  topUpSubscribeOnce()
   // 可选动态标题（智能订货等 H5 复用本页时传入；不传则保持 pages.json 默认标题）
   if (q?.title) {
     uni.setNavigationBarTitle({ title: decodeURIComponent(q.title) })

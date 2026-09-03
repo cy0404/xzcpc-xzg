@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { createDailyLoss, updateDailyLoss, getLossDetail, searchMaterials, getContainers, uploadLossImage } from '@/api/loss-report'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const editId = ref(0)
@@ -227,6 +228,7 @@ async function submitLoss() {
     }
     if (isEdit.value) { await updateDailyLoss(editId.value, payload) }
     else { await createDailyLoss(payload) }
+    topUpSubscribeOnce() // 报损提交成功 → 补订阅授权（店长将收到待审批提醒）
     uni.showToast({ title: isEdit.value ? '修改成功' : '提交成功', icon: 'success' }); setTimeout(() => uni.navigateBack(), 800)
   } catch { uni.showToast({ title: '提交失败', icon: 'none' }) }
   finally { submitting.value = false }

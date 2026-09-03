@@ -4,6 +4,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { fetchTaskSummary, submitTask, fetchUnenteredMaterials } from '@/api/task'
 import BrandDialog from '@/components/BrandDialog.vue'
 import { materialDisplayName } from '@/utils/formatter'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const taskId = ref(0)
 const loading = ref(true)
@@ -52,6 +53,7 @@ async function handleSubmit() {
   submitting.value = true
   try {
     await submitTask(taskId.value)
+    topUpSubscribeOnce() // 盘点提交成功 → 补订阅授权（订货单生成/盘点类后续通知）
     uni.redirectTo({ url: `/pages/task/result/index?taskId=${taskId.value}&justSubmitted=1` })
   } catch {
     submitting.value = false

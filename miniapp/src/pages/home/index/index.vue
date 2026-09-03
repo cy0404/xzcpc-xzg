@@ -15,6 +15,7 @@ import { fetchTaskDetail } from '@/api/task'
 import { fetchHomeOverview } from '@/api/business'
 import { fetchFeedbackOverview, fetchFeedbackOverviewStores } from '@/api/feedback'
 import { H5_BASE } from '@/utils/constants'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
@@ -78,6 +79,7 @@ onShow(async () => {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
+  topUpSubscribeOnce() // 订阅授权充值（静默；accept → 额度 +1，发送时 -1）
   await userStore.fetchMe()
   const prevScope = scope.value
   // 单门店默认选该门店；多门店恢复上次选中的门店，否则全部门店
@@ -103,9 +105,8 @@ async function loadDataForScope() {
         wrap(getLossOverview(true)),
         wrap(fetchStaffOverview(true)),
         wrap(fetchIssueOverviewStores()),
-        // 智能订货员工 403，仅店长/老板请求；暂隐藏智能订货，不请求
-        // isManagerOrOwner.value ? wrap(fetchSmartOrderOverview(true)) : Promise.resolve(null),
-        Promise.resolve(null),
+        // 智能订货员工 403，仅店长/老板请求
+        isManagerOrOwner.value ? wrap(fetchSmartOrderOverview(true)) : Promise.resolve(null),
       ])
       allTransferStores.value = Array.isArray(tData) ? tData : []
       allLossStores.value = Array.isArray(lData) ? lData : []
@@ -125,7 +126,7 @@ async function loadDataForScope() {
         loadApprovalPending()
         loadIssuePending()
         loadSupervisorPending()
-        // loadSmartOrderPending()  // 暂隐藏智能订货，不请求待确认数
+        loadSmartOrderPending()
         loadComplaintOverview()
       }
       try {
@@ -276,14 +277,14 @@ const storePendingItems = computed<PendingItem[]>(() => {
         btn: '查看', url: '/pages/transfer/list/index', storeId: s.storeId,
       })
     }
-    // 智能订货：有待确认单据才展示（仅店长/老板，数据源已按角色门控；H5 入口）——暂隐藏，需要时恢复
-    // for (const s of allSmartOrderStores.value) {
-    //   items.push({
-    //     icon: '🛒', title: '智能订货',
-    //     desc: `${s.storeName} · ${s.pending || 0} 张订货单待确认`,
-    //     btn: '去确认', url: '', h5: true, storeId: s.storeId,
-    //   })
-    // }
+    // 智能订货：有待确认单据才展示（仅店长/老板，数据源已按角色门控；H5 入口）
+    for (const s of allSmartOrderStores.value) {
+      items.push({
+        icon: '🛒', title: '智能订货',
+        desc: `${s.storeName} · ${s.pending || 0} 张订货单待确认`,
+        btn: '去确认', url: '', h5: true, storeId: s.storeId,
+      })
+    }
     // 员工审批：有 pending 才展示（仅店长/老板可见）
     for (const s of allStaffStores.value) {
       items.push({
@@ -316,11 +317,11 @@ const storePendingItems = computed<PendingItem[]>(() => {
         icon: '📦', title: '调货待处理', desc: `${tCount} 单需要操作`, btn: '去处理', url: '/pages/transfer/list/index',
       })
     }
-    // if (smartOrderPending.value > 0) {  // 暂隐藏智能订货，需要时恢复
-    //   items.push({
-    //     icon: '🛒', title: '智能订货', desc: `${smartOrderPending.value} 张订货单待确认`, btn: '去确认', url: '', h5: true,
-    //   })
-    // }
+    if (smartOrderPending.value > 0) {
+      items.push({
+        icon: '🛒', title: '智能订货', desc: `${smartOrderPending.value} 张订货单待确认`, btn: '去确认', url: '', h5: true,
+      })
+    }
     if (lossPending.value > 0) {
       items.push({
         icon: '📋', title: '报损记录', desc: `${lossPending.value} 条报损记录`, btn: '查看', url: '/pages/loss-report/list/index',

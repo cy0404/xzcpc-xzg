@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onShow, onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { getLossList, createLoss, getContainers, searchMaterials, uploadLossVideo, uploadLossImage, appendLossVoucher, closeLoss, approveLoss, rejectApproval, receiveLoss, notReceiveLoss, batchApproveLoss } from '@/api/loss-report'
 import { BASE_URL, H5_BASE } from '@/utils/constants'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -340,6 +341,7 @@ async function submitLoss() {
       urgent: lossType.value === 'arrival' && isUrgent.value ? 1 : 0,
     })
     const reportId = result?.id || result?.data?.id
+    topUpSubscribeOnce() // 报损提交成功 → 补订阅授权（店长将收到待审批提醒）
     uni.showToast({ title: '提交成功', icon: 'success' })
     showSheet.value = false; fetchList()
 
@@ -381,6 +383,14 @@ const tabRecords = computed(() => {
   return records.value.filter(r => r.status === activeTab.value)
 })
 const actionLoadingId = ref(0)
+
+// 订阅消息跳转支持：?tab=pending_approval 直达"待审核"（场景1 报损待审批提醒）
+onLoad((q: any) => {
+  const tab = q?.tab
+  if (tab && tabs.some(t => t.key === tab)) {
+    activeTab.value = tab
+  }
+})
 
 // ============ 批量审批（店长/老板） ============
 const batchMode = ref(false)
@@ -427,6 +437,7 @@ function doBatch(action: 'approve' | 'reject') {
         // success 字段缺失时按 0 计（不猜测全成功），跳过数缺失按 0
         const ok = r?.success ?? 0
         const skip = r?.skipped ?? 0
+        topUpSubscribeOnce() // 批量审批完成 → 补订阅授权
         uni.showToast({ title: `已${label} ${ok} 条${skip ? `，跳过 ${skip} 条` : ''}`, icon: 'none', duration: 2500 })
         // 乐观更新：本地立即将选中记录置为终态，操作按钮马上消失（fetchList 结果回来再校准）
         const idSet = new Set(ids)
@@ -444,14 +455,14 @@ function doBatch(action: 'approve' | 'reject') {
 async function doApprove(r: any) {
   if (actionLoadingId.value) return
   actionLoadingId.value = r.id
-  try { await approveLoss(r.id); uni.showToast({ title: '已通过', icon: 'success' }); r.status = r.lossType === 'arrival' ? 'pending' : 'completed'; fetchList() }
+  try { await approveLoss(r.id); topUpSubscribeOnce(); uni.showToast({ title: '已通过', icon: 'success' }); r.status = r.lossType === 'arrival' ? 'pending' : 'completed'; fetchList() }
   catch { fetchList() }  // 并发冲突时静默刷新
   finally { actionLoadingId.value = 0 }
 }
 async function doReject(r: any) {
   if (actionLoadingId.value) return
   actionLoadingId.value = r.id
-  try { await rejectApproval(r.id); uni.showToast({ title: '已拒绝', icon: 'success' }); r.status = 'rejected'; fetchList() }
+  try { await rejectApproval(r.id); topUpSubscribeOnce(); uni.showToast({ title: '已拒绝', icon: 'success' }); r.status = 'rejected'; fetchList() }
   catch { fetchList() }
   finally { actionLoadingId.value = 0 }
 }
