@@ -14,6 +14,7 @@ import com.xzcpc.mp.entity.Issue;
 import com.xzcpc.mp.mapper.IssueMapper;
 import com.xzcpc.mp.service.IssueService;
 import com.xzcpc.mp.service.MpStaffService;
+import com.xzcpc.mp.service.NotificationService;
 import com.xzcpc.mp.service.XiangmuSyncService;
 import com.xzcpc.task.entity.Store;
 import com.xzcpc.task.mapper.StoreMapper;
@@ -44,6 +45,7 @@ public class IssueServiceImpl implements IssueService {
     private final RestTemplate restTemplate;
     private final StoreAccessService storeAccessService;
     private final StoreMapper storeMapper;
+    private final NotificationService notificationService;
 
     @Value("${xiangmu.base-url:http://127.0.0.1:9000}")
     private String xiangmuBaseUrl;
@@ -68,6 +70,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setSubType(req.getSubType());
         issue.setUrgency(req.getUrgency());
         issue.setDescription(req.getDescription());
+        issue.setSubmitterOpenid(user.getOpenid());
         issue.setStatus("pending");
         issue.setSyncStatus("pending");
         issue.setSource("MINI_PROGRAM");
@@ -288,6 +291,7 @@ public class IssueServiceImpl implements IssueService {
         issue.setSyncStatus("synced");
         issue.setUpdatedAt(LocalDateTime.now());
         updateWithRetry(issue);
+        notifySubmitterOnStatus(issue, extStatus);
         return issue;
     }
 
@@ -339,6 +343,7 @@ public class IssueServiceImpl implements IssueService {
             existing.setSyncStatus("synced");
             existing.setUpdatedAt(LocalDateTime.now());
             updateWithRetry(existing);
+            notifySubmitterOnStatus(existing, existing.getStatus());
             return existing;
         }
         // 新问题 → 插入
@@ -409,6 +414,27 @@ public class IssueServiceImpl implements IssueService {
             issue.setVersion(fresh.getVersion());
         }
         log.warn("[issue] updateWithRetry failed after 3 attempts, id={}", issue.getId());
+    }
+
+    /**
+     * 订阅消息：问题状态推进到 待联系(PENDING_CONTACT)/待验收(PENDING_ACCEPTANCE) 时，通知问题提交人。
+     * 两个状态是需要提交人配合的回环状态（联系补上/请验收）；仅小程序上报的问题存有提交人 openid。
+     */
+    private void notifySubmitterOnStatus(Issue issue, String newStatus) {
+        if (issue == null || !StringUtils.hasText(newStatus)
+                || !StringUtils.hasText(issue.getSubmitterOpenid())) {
+            return;
+        }
+        boolean acceptance = newStatus.equalsIgnoreCase("PENDING_ACCEPTANCE");
+        boolean contact = newStatus.equalsIgnoreCase("PENDING_CONTACT");
+        if (!acceptance && !contact) return;
+        String label = acceptance ? "请验收" : "需联系补上";
+        notificationService.enqueue(issue.getSubmitterOpenid(), issue.getStoreId(),
+                acceptance ? "ISSUE_PENDING_ACCEPTANCE" : "ISSUE_PENDING_CONTACT",
+                "【问题】您上报的问题" + label,
+                "请打开小程序查看问题详情并处理",
+                String.valueOf(issue.getId()),
+                "/pages/issue/detail/index?id=" + issue.getId());
     }
 
     @Override

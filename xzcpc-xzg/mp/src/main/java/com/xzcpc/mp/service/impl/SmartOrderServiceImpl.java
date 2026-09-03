@@ -19,6 +19,7 @@ import com.xzcpc.mp.mapper.InboundOrderMapper;
 import com.xzcpc.mp.mapper.SmartOrderItemMapper;
 import com.xzcpc.mp.mapper.SmartOrderMapper;
 import com.xzcpc.mp.service.MpStaffService;
+import com.xzcpc.mp.service.NotificationService;
 import com.xzcpc.mp.service.SmartOrderService;
 import com.xzcpc.mp.util.ConversionFactorUtil;
 import com.xzcpc.task.entity.Task;
@@ -96,6 +97,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
     private final MpStaffService staffService;
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
+    private final NotificationService notificationService;
 
     /** 企迈 PG 数据源（dwd.store_item_sales / purchase_order / purchase） */
     @Resource(name = "pgJdbcTemplate")
@@ -722,6 +724,13 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         }
         log.info("SMART_ORDER_GEN storeId={} 生成建议单 {} 品项={} 数量={} 金额={}",
                 store.getId(), order.getBizCode(), items.size(), totalQty, amount);
+
+        // 订阅消息：建议单生成（凌晨3点 job / 周盘提交补触发都走 persistOrder）→ 通知该店店长确认
+        notificationService.enqueueToStoreManagers(order.getStoreId(), "ORDER_CONFIRM",
+                "【订货】本周订货单已生成",
+                "请查看本周建议订货单并确认",
+                String.valueOf(order.getId()),
+                null);
         return true;
     }
 

@@ -20,6 +20,7 @@ import com.xzcpc.task.mapper.TaskMapper;
 import com.xzcpc.task.mapper.TaskZoneMapper;
 import com.xzcpc.task.mapper.TaskZoneMaterialMapper;
 import com.xzcpc.task.service.StoreService;
+import com.xzcpc.task.service.TaskNotifyService;
 import com.xzcpc.task.service.TaskService;
 import com.xzcpc.template.entity.Material;
 import com.xzcpc.template.entity.MaterialInventoryRule;
@@ -75,6 +76,7 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
     private final StoreAccessService storeAccessService;
     private final StoreMapper storeMapper;
     private final StoreOrderCycleMapper storeOrderCycleMapper;
+    private final TaskNotifyService taskNotifyService;
 
     /** 星期名称（1周一-7周日），用于周盘任务名区分同周多次 */
     private static final String[] WEEK_DAY_NAMES = {"", "周一", "周二", "周三", "周四", "周五", "周六", "周日"};
@@ -287,6 +289,11 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
             taskMapper.insert(task);
 
             snapshotTemplate(task.getId(), task.getTemplateId());
+
+            // 订阅消息（场景2 盘点任务下发）：店级广播行入队（target_openid=NULL），
+            // 由 mp-server NotificationSenderJob 展开为店长/老板逐人发送；同事务，业务回滚则通知不产生
+            taskNotifyService.enqueueTaskCreated(storeId, task.getTaskName(),
+                    deadline.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
             count++;
         }
         if (!noDayStores.isEmpty()) {

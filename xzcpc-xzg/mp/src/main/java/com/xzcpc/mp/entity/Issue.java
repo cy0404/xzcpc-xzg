@@ -28,6 +28,9 @@ public class Issue {
     /** 门店名称 */
     private String storeName;
 
+    /** 提交人 openid（订阅消息：状态推进到 待联系/待验收 时通知提交人；飞书群H5/总部上报来源的为空） */
+    private String submitterOpenid;
+
     /** 问题标题 */
     private String title;
 

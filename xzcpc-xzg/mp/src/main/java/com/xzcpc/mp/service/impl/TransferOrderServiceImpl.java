@@ -14,6 +14,7 @@ import com.xzcpc.mp.entity.TransferOrderItem;
 import com.xzcpc.mp.mapper.TransferOrderItemMapper;
 import com.xzcpc.mp.mapper.TransferOrderMapper;
 import com.xzcpc.mp.service.MpStaffService;
+import com.xzcpc.mp.service.NotificationService;
 import com.xzcpc.mp.service.TransferOrderService;
 import com.xzcpc.people.entity.Employee;
 import com.xzcpc.people.mapper.EmployeeMapper;
@@ -37,6 +38,7 @@ public class TransferOrderServiceImpl implements TransferOrderService {
     private final EmployeeMapper employeeMapper;
     private final MpStaffService staffService;
     private final StoreAccessService storeAccessService;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -98,6 +100,21 @@ public class TransferOrderServiceImpl implements TransferOrderService {
             orderMapper.updateById(order);
         }
 
+        // 订阅消息：本店主动调出（自动发货）→ 通知调入方待收货；申请调货 → 通知调出方确认
+        if (order.getFromStoreId().equals(user.getStoreId())) {
+            notificationService.enqueueToStoreManagers(order.getToStoreId(), "TRANSFER_RECEIVE",
+                    "【调货】有一笔调货待收货",
+                    "调出方已发货，请及时确认收货",
+                    String.valueOf(order.getId()),
+                    "/pages/transfer/list/index");
+        } else {
+            notificationService.enqueueToStoreManagers(order.getFromStoreId(), "TRANSFER_CONFIRM",
+                    "【调货】收到一笔调货申请",
+                    "请确认后安排发货",
+                    String.valueOf(order.getId()),
+                    "/pages/transfer/list/index");
+        }
+
         return order;
     }
 
@@ -123,6 +140,13 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         }
         order.setUpdatedAt(LocalDateTime.now());
         orderMapper.updateById(order);
+
+        // 订阅消息：调出方确认（自动发货）→ 通知调入方待收货
+        notificationService.enqueueToStoreManagers(order.getToStoreId(), "TRANSFER_RECEIVE",
+                "【调货】有一笔调货待收货",
+                "调出方已确认发货，请及时确认收货",
+                String.valueOf(order.getId()),
+                "/pages/transfer/list/index");
         return order;
     }
 
@@ -198,6 +222,13 @@ public class TransferOrderServiceImpl implements TransferOrderService {
         order.setCancelledAt(LocalDateTime.now());
         order.setUpdatedAt(LocalDateTime.now());
         orderMapper.updateById(order);
+
+        // 订阅消息：调货被拒 → 通知发起方店长
+        notificationService.enqueueToStoreManagers(order.getCreatorStoreId(), "TRANSFER_REJECT",
+                "【调货】您的调货申请被拒绝",
+                "请查看原调货单，可联系对方沟通",
+                String.valueOf(order.getId()),
+                "/pages/transfer/list/index");
         return order;
     }
 

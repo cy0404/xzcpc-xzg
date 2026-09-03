@@ -11,6 +11,7 @@ import com.xzcpc.mp.dto.StaffUpdateReq;
 import com.xzcpc.mp.entity.EmployeeRegistrationApplication;
 import com.xzcpc.mp.mapper.EmployeeRegistrationApplicationMapper;
 import com.xzcpc.mp.service.MpStaffService;
+import com.xzcpc.mp.service.NotificationService;
 import com.xzcpc.people.entity.Employee;
 import com.xzcpc.people.mapper.EmployeeMapper;
 import com.xzcpc.task.service.StoreService;
@@ -50,6 +51,17 @@ public class MpStaffServiceImpl implements MpStaffService {
         }
         log.info("定时任务：{} 名员工 leaveDate 到期，已自动变更为离职", expired.size());
     }
+    /** 订阅消息：店员登记申请（新提交/驳回重提）→ 通知该店店长/老板审批 */
+    private void notifyStaffApply(EmployeeRegistrationApplication application) {
+        if (application == null || !StringUtils.hasText(application.getStoreId())) return;
+        String name = application.getName() != null ? application.getName() : "";
+        notificationService.enqueueToStoreManagers(application.getStoreId(), "STAFF_APPLY",
+                "【员工审批】" + name + " 申请登记",
+                "请审批店员登记申请",
+                application.getApplicationId(),
+                "/pages/staff/approval/index");
+    }
+
     private static final String APP_PENDING = "pending";
     private static final String APP_APPROVED = "approved";
     private static final String APP_REJECTED = "rejected";
@@ -58,15 +70,18 @@ public class MpStaffServiceImpl implements MpStaffService {
     private final EmployeeRegistrationApplicationMapper applicationMapper;
     private final StoreService storeService;
     private final JdbcTemplate jdbcTemplate;
+    private final NotificationService notificationService;
 
     public MpStaffServiceImpl(EmployeeMapper employeeMapper,
             EmployeeRegistrationApplicationMapper applicationMapper,
             StoreService storeService,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            NotificationService notificationService) {
         this.employeeMapper = employeeMapper;
         this.applicationMapper = applicationMapper;
         this.storeService = storeService;
         this.jdbcTemplate = jdbcTemplate;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -167,6 +182,7 @@ public class MpStaffServiceImpl implements MpStaffService {
             application.setStatus(APP_PENDING);
             application.setRejectReason(null);
             applicationMapper.updateById(application);
+            notifyStaffApply(application);
             return toApplicationMap(application);
         }
 
@@ -202,6 +218,7 @@ public class MpStaffServiceImpl implements MpStaffService {
         applicationMapper.insert(application);
         application.setApplicationId("STA" + String.format("%08d", application.getId()));
         applicationMapper.updateById(application);
+        notifyStaffApply(application);
         return toApplicationMap(application);
     }
 
