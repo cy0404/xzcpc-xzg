@@ -67,8 +67,6 @@ public class LossReportMonthlyVoucherJob {
         card.put("header", fms.cardHeader("yellow", "月度发券确认 · 水果蔬菜"));
         List<Map<String, Object>> els = new ArrayList<>();
         String info = "**水果蔬菜报损发券清单**\n累计已登记 **" + fruitList.size() + "** 条 · 涉及 **" + stores + "** 个门店\n\n请逐条确认发券。确认后门店会看到补发结果。";
-        String atUsers = fms.getAtUsers("水果蔬菜");
-        info = fms.appendAtMentions(info, atUsers);
         els.add(fms.mdEl(info));
         els.add(fms.tagEl("hr"));
         try {
