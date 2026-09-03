@@ -1,1 +1,0 @@
-import{u as e}from"./index-i5wRJtHH.js";import{_ as t}from"./_plugin-vue_export-helper-DlAUqK2U.js";const a=e({__name:"TemplateDetail",setup(_){return(o,p)=>null}}),s=t(a,[["__scopeId","data-v-d2bc8aa2"]]);export{s as default};
