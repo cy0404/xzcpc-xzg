@@ -247,6 +247,8 @@ public class LossReportManageController {
         }
 
         long maxCount = countByStore.values().stream().max(Long::compareTo).orElse(1L);
+        // 全部门店 0 报损时 maxCount=0，percent 直接给 0，避免除零 500
+        long rankBase = Math.max(maxCount, 1L);
         List<Map<String, Object>> storeRanking = countByStore.entrySet().stream()
                 .sorted((a, b) -> {
                     int c = Long.compare(b.getValue(), a.getValue());
@@ -261,7 +263,7 @@ public class LossReportManageController {
                     m.put("name", nameByStore.getOrDefault(key, key));
                     m.put("count", e.getValue());
                     m.put("weight", gramsByStore.getOrDefault(key, BigDecimal.ZERO));
-                    m.put("percent", (int) (e.getValue() * 100 / maxCount));
+                    m.put("percent", (int) (e.getValue() * 100 / rankBase));
                     return m;
                 }).collect(Collectors.toList());
 

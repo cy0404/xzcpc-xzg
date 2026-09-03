@@ -19,7 +19,7 @@
         </a-col>
         <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">督导</div>
-          <a-select v-model:value="filters.supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="fetchList" />
+          <a-select v-model:value="filters.supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="onSupervisorChange" />
         </a-col>
         <a-col :xs="24" :sm="12" :md="5">
           <div class="filter-label">报损类型</div>
@@ -161,6 +161,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { getLossManageList, exportLossReport } from '../../api/loss'
 import { getStores } from '../../api/store'
@@ -175,6 +176,7 @@ const pagination = reactive({ current: 1, pageSize: 20, total: 0 })
 const filters = reactive({ storeId: '', supervisorName: '', lossType: '', status: '', startDate: '', endDate: '' })
 const supervisorOptions = ref<{ label: string; value: string }[]>([])
 const dateRange = ref<any>(null)
+const route = useRoute()
 const drawerOpen = ref(false)
 const cur = ref<any>(null)
 function isVideoUrl(url: string) { return /\.(mp4|mov|avi|mkv|webm)($|\?)/i.test(url) }
@@ -258,11 +260,21 @@ async function fetchList() {
   } finally { loading.value = false }
 }
 
-async function loadStores() {
-  try { const res: any = await getStores(); storeOptions.value = res.data || res || [] } catch { /* */ }
+async function loadStores(supervisor?: string) {
+  try {
+    const res: any = await getStores(supervisor ? { supervisorName: supervisor } : undefined)
+    storeOptions.value = res.data || res || []
+  } catch { /* */ }
 }
 
-function resetFilters() { filters.storeId = ''; filters.supervisorName = ''; filters.lossType = ''; filters.status = ''; dateRange.value = null; fetchList() }
+/** 督导变化：门店下拉收窄到该督导名下门店，已选门店重置后重新查询 */
+function onSupervisorChange() {
+  filters.storeId = ''
+  loadStores(filters.supervisorName || undefined)
+  fetchList()
+}
+
+function resetFilters() { filters.storeId = ''; filters.supervisorName = ''; filters.lossType = ''; filters.status = ''; dateRange.value = null; loadStores(); fetchList() }
 
 const exporting = ref(false)
 
@@ -301,7 +313,25 @@ async function fetchSupervisors() {
   try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
 }
 
-onMounted(() => { loadStores(); fetchSupervisors(); fetchList() })
+onMounted(() => {
+  loadStores()
+  fetchSupervisors()
+  // 支持卡片/外部链接带参直达：/#/loss?lossType=arrival&startDate=…&endDate=…
+  // 须先设 filters/dateRange 再 fetchList()（fetchList 以 dateRange 为唯一事实源反写 startDate/endDate）
+  // 不主动清 URL 参数：保留刷新后筛选与登录 OAuth 回跳两轮加载的参数连续性
+  const q = route.query
+  const qv = (v: unknown) => (Array.isArray(v) ? (v[0] || '') : (v || '')) as string
+  const lossType = qv(q.lossType)
+  const status = qv(q.status)
+  const startDate = qv(q.startDate)
+  const endDate = qv(q.endDate)
+  if (lossType) filters.lossType = lossType
+  if (status) filters.status = status
+  if (startDate && endDate && dayjs(startDate).isValid() && dayjs(endDate).isValid()) {
+    dateRange.value = [dayjs(startDate), dayjs(endDate)]
+  }
+  fetchList()
+})
 </script>
 
 <style scoped>

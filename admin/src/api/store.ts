@@ -1,7 +1,7 @@
 import api from './index'
 
-// 获取门店列表（用于创建任务时选择门店范围）
-export function getStores(params?: { keyword?: string }) {
+// 获取门店列表（传 supervisorName 时只返回该督导名下门店，用于门店-督导联动筛选）
+export function getStores(params?: { keyword?: string; supervisorName?: string }) {
   return api.get('/stores', { params })
 }
 

@@ -2,6 +2,7 @@
   <div class="loss-page">
     <LossModuleTabs />
 
+    <a-spin :spinning="loading" tip="数据加载中..." wrapper-class-name="dashboard-loading">
     <div class="page-title-row">
       <div>
         <h1 class="page-title">报损统计看板</h1>
@@ -19,7 +20,7 @@
         </a-col>
         <a-col :xs="12" :md="4">
           <div class="filter-label">督导</div>
-          <a-select v-model:value="supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="fetchDashboard" />
+          <a-select v-model:value="supervisorName" placeholder="全部督导" style="width:100%" allow-clear :options="supervisorOptions" @change="onSupervisorChange" />
         </a-col>
         <a-col :xs="12" :md="4">
           <div class="filter-label">报损类型</div>
@@ -112,17 +113,20 @@
         </div>
       </div>
     </a-card>
+    </a-spin>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { message } from 'ant-design-vue'
 import LossModuleTabs from '../../components/LossModuleTabs.vue'
 import { getLossDashboard } from '../../api/loss'
 import { getStores } from '../../api/store'
 import { getSupervisorOptions } from '../../api/supervisor'
 import dayjs from 'dayjs'
 
+const loading = ref(false)
 const dateRange = ref<any>([dayjs().startOf('month'), dayjs()])
 const storeId = ref('')
 const supervisorName = ref('')
@@ -145,7 +149,9 @@ const arrivalPct = computed(() => {
 
 const storeRankView = computed(() => {
   const dim = storeRankDim.value
-  return [...storeRanking.value].sort((a, b) => {
+  // 选中门店后只看该门店的对比条；未选时展示全部门店排行
+  const rows = storeId.value ? storeRanking.value.filter((r: any) => r.id === storeId.value) : [...storeRanking.value]
+  return rows.sort((a, b) => {
     const va = dim === 'count' ? a.count : a.weight
     const vb = dim === 'count' ? b.count : b.weight
     return vb - va
@@ -162,6 +168,7 @@ const donutStyle = computed(() => {
 })
 
 async function fetchDashboard() {
+  loading.value = true
   try {
     const params: any = {}
     if (storeId.value) params.storeId = storeId.value
@@ -177,15 +184,29 @@ async function fetchDashboard() {
     storeRanking.value = data.storeRanking || []
     typeDistribution.value = data.typeDistribution || []
     monthlyTrend.value = data.monthlyTrend || []
-  } catch { /* ignore */ }
+  } catch (e: any) {
+    message.error(e?.message || '看板数据加载失败')
+  } finally {
+    loading.value = false
+  }
 }
 
-async function loadStores() {
-  try { const res: any = await getStores(); storeOptions.value = res.data || res || [] } catch { /* */ }
+async function loadStores(supervisor?: string) {
+  try {
+    const res: any = await getStores(supervisor ? { supervisorName: supervisor } : undefined)
+    storeOptions.value = res.data || res || []
+  } catch { /* */ }
 }
 
 async function fetchSupervisors() {
   try { const res: any = await getSupervisorOptions(); supervisorOptions.value = res.data || [] } catch { /* */ }
+}
+
+/** 督导变化：门店下拉收窄到该督导名下门店，已选门店重置后重新查询 */
+function onSupervisorChange() {
+  storeId.value = ''
+  loadStores(supervisorName.value || undefined)
+  fetchDashboard()
 }
 
 /** 重量单位智能显示：后端返回克，≥1000g 转 kg */
@@ -207,6 +228,8 @@ onMounted(async () => {
 
 <style scoped>
 .loss-page { max-width: 1280px; }
+/* 数据加载中遮罩：内容为空时也要占满可视区域，保证转圈图层可见 */
+.loss-page :deep(.ant-spin-container) { min-height: 60vh; }
 .page-title-row { margin-bottom: 16px; }
 .page-title { margin: 0; font-size: 24px; font-weight: 600; color: #111827; }
 .page-subtitle { margin: 6px 0 0; color: #6b7280; }

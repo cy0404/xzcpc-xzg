@@ -127,7 +127,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
+import { useRoute } from 'vue-router'
 import ExpenseModuleTabs from '../../components/ExpenseModuleTabs.vue'
 import { getExpenseRecords, getExpenseTypes } from '../../api/expense'
 import { getStores } from '../../api/store'
@@ -159,6 +161,8 @@ const currentVoucher = ref<any>(null)
 const records = ref<any[]>([])
 const stores = ref<StoreOption[]>([])
 const expenseTypes = ref<ExpenseType[]>([])
+
+const route = useRoute()
 
 const filters = reactive({
   storeIds: [] as string[],
@@ -397,6 +401,15 @@ async function fetchSupervisors() {
 }
 
 onMounted(async () => {
+  // 支持卡片/外部链接带参直达：/#/expense?startDate=…&endDate=…（与 LossList 同款，
+  // 预警卡「查看支出明细」按钮经 302 中介跳转后带上周日期自动查询；不带参则查全部）
+  const q = route.query
+  const qv = (v: unknown) => (Array.isArray(v) ? (v[0] || '') : (v || '')) as string
+  const startDate = qv(q.startDate)
+  const endDate = qv(q.endDate)
+  if (startDate && endDate && dayjs(startDate).isValid() && dayjs(endDate).isValid()) {
+    filters.dateRange = [dayjs(startDate), dayjs(endDate)]
+  }
   await fetchOptions()
   await fetchSupervisors()
   await fetchRecords()

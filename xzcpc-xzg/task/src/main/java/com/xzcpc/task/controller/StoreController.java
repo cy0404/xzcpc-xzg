@@ -3,12 +3,17 @@ package com.xzcpc.task.controller;
 import com.xzcpc.common.annotation.OpLog;
 import com.xzcpc.common.model.StoreInfo;
 import com.xzcpc.common.response.R;
+import com.xzcpc.common.service.StoreAccessService;
 import com.xzcpc.task.service.StoreService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/stores")
@@ -16,11 +21,18 @@ import java.util.Map;
 public class StoreController {
 
     private final StoreService storeService;
+    private final StoreAccessService storeAccessService;
 
+    /** 门店列表；传 supervisorName 时只返回该督导名下的门店（supervisor_store_access 映射） */
     @OpLog(module = "门店", operation = "查询")
     @GetMapping
-    public R<List<StoreInfo>> list() {
-        return R.ok(storeService.getAllStores());
+    public R<List<StoreInfo>> list(@RequestParam(required = false) String supervisorName) {
+        List<StoreInfo> stores = storeService.getAllStores();
+        if (StringUtils.hasText(supervisorName)) {
+            Set<String> ids = new HashSet<>(storeAccessService.getAccessibleStoreIdsBySupervisorName(supervisorName));
+            stores = stores.stream().filter(s -> ids.contains(s.getId())).collect(Collectors.toList());
+        }
+        return R.ok(stores);
     }
 
     @OpLog(module = "门店", operation = "查询详情")

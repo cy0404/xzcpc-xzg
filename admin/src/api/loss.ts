@@ -15,7 +15,8 @@ export function addContainer(data: any) { return api.post('/admin/loss-report/co
 export function updateContainer(id: number, data: any) { return api.put(`/admin/loss-report/containers/${id}`, data) }
 
 export function exportLossReport(params: Record<string, any>) {
-  return api.get('/admin/loss-report/export', { params, responseType: 'blob' })
+  // 导出数据量大，放宽超时（实例默认 30s）
+  return api.get('/admin/loss-report/export', { params, responseType: 'blob', timeout: 120000 })
 }
 
 export function getLossReportDetail(id: number) { return api.get(`/admin/loss-report/${id}`) }
