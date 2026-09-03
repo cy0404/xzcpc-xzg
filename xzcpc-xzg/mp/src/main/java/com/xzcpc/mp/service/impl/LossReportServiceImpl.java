@@ -503,6 +503,7 @@ public class LossReportServiceImpl implements LossReportService {
         resolveFruitVeg(page.getRecords());
         enrichMultiItemReports(page.getRecords());
         fillLatestLog(page.getRecords());
+        fillRecheckState(page.getRecords());
         return page;
     }
 
@@ -514,6 +515,7 @@ public class LossReportServiceImpl implements LossReportService {
         }
         resolveFruitVeg(List.of(r));
         enrichMultiItemReports(List.of(r));
+        fillRecheckState(List.of(r));
         return r;
     }
 
@@ -557,6 +559,7 @@ public class LossReportServiceImpl implements LossReportService {
             }
             enrichMultiItemReports(records);
             fillLatestLog(records);
+            fillRecheckState(records);
         }
         return result;
     }
@@ -807,9 +810,41 @@ public class LossReportServiceImpl implements LossReportService {
                         label = Boolean.TRUE.equals(r.getIsFruitVeg()) ? "厂家确认发券" : "厂家确认发货";
                     }
                     r.setLatestLogAction(label);
-                    r.setLatestLogRemark((String) l.getOrDefault("remark", ""));
+                    // 蓝蛙复核类日志备注不向门店透出「二次审核」字样：
+                    // pass 行备注无门店意义置空；reject 行备注改用拒绝原因（复核不通过时单上仍保留）
+                    String remark = (String) l.getOrDefault("remark", "");
+                    if ("recheck_pass".equals(action)) remark = "";
+                    else if ("recheck_reject".equals(action)) remark = r.getRejectReason() != null ? r.getRejectReason() : "";
+                    r.setLatestLogRemark(remark);
                 }
             }
+        }
+    }
+
+    /** 填充蓝蛙厂家复核状态（非DB派生）：remark 以「厂家：蓝蛙」开头的单，按日志聚合出 pending/pass/reject */
+    private void fillRecheckState(List<LossReport> records) {
+        if (records.isEmpty()) return;
+        List<LossReport> lanwa = records.stream()
+                .filter(r -> r.getRemark() != null && r.getRemark().startsWith("厂家：蓝蛙"))
+                .toList();
+        if (lanwa.isEmpty()) return;
+        List<Long> ids = lanwa.stream().map(LossReport::getId).toList();
+        String placeholders = ids.stream().map(id -> "?").collect(Collectors.joining(","));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT report_id, action FROM loss_report_log " +
+                "WHERE report_id IN (" + placeholders + ") AND action IN ('reject','recheck_pass','recheck_reject')",
+                ids.toArray());
+        Map<Long, String> stateMap = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            long rid = ((Number) row.get("report_id")).longValue();
+            String action = (String) row.get("action");
+            // pass/reject 强覆盖（单只能有其一，幂等）；reject 兜底为 pending 且不覆盖已定的结论
+            if ("recheck_pass".equals(action)) stateMap.put(rid, "pass");
+            else if ("recheck_reject".equals(action)) stateMap.put(rid, "reject");
+            else stateMap.putIfAbsent(rid, "pending");
+        }
+        for (LossReport r : lanwa) {
+            r.setRecheckState(stateMap.get(r.getId()));
         }
     }
 
@@ -824,6 +859,9 @@ public class LossReportServiceImpl implements LossReportService {
             case "issue_voucher" -> "厂家确认发券";
             case "receive" -> "已收货";
             case "not_receive" -> "未收到货";
+            case "auto_receive" -> "系统收货";
+            case "recheck_pass" -> "确认登记";
+            case "recheck_reject" -> "拒绝";
             default -> a;
         };
     }

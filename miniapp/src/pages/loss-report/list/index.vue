@@ -376,6 +376,8 @@ const tabs = [
 ]
 const tabRecords = computed(() => {
   if (activeTab.value === 'all') return records.value
+  // 蓝蛙待复核单（recheckState=pending）不落入「已拒绝」tab——门店视角它在正常确认流程中，只在「全部」可见
+  if (activeTab.value === 'rejected') return records.value.filter(r => r.status === 'rejected' && r.recheckState !== 'pending')
   return records.value.filter(r => r.status === activeTab.value)
 })
 const actionLoadingId = ref(0)
@@ -469,11 +471,14 @@ async function doNotReceive(r: any) {
 }
 
 function statusLabel(s: string, r?: any) {
+  // 蓝蛙待复核单：与普通待确认一致（recheckState='pending' 时状态为 rejected）
+  if (r?.recheckState === 'pending') return '待确认'
   if (s === 'confirmed_resend' && r?.isFruitVeg) return '已发券'
   const m: Record<string, string> = { pending_approval: '待审批', pending: '待确认', registered: '已登记', confirmed_resend: '已确认补发', rejected: '已拒绝', completed: '已录入', closed: '已关闭', received: '已收货', not_received: '未收到货' }
   return m[s] || s
 }
-function statusClass(s: string) {
+function statusClass(s: string, r?: any) {
+  if (r?.recheckState === 'pending') return 's-warn'
   if (s === 'registered') return 's-blue'; if (s === 'confirmed_resend' || s === 'completed' || s === 'closed' || s === 'received') return 's-ok'; if (s === 'rejected') return 's-red'; if (s === 'not_received') return 's-gray'; if (s === 'pending_approval') return 's-warn'; return 's-warn'
 }
 </script>
@@ -528,7 +533,7 @@ function statusClass(s: string) {
           <view class="rc-main">
           <view class="rc-top">
             <text class="rc-type" :class="r.lossType === 'arrival' ? 'orange' : ''">{{ r.lossType === 'arrival' ? '到货验收' : '日常报损' }}</text>
-            <text class="rc-status" :class="statusClass(r.status)">{{ statusLabel(r.status, r) }}</text>
+            <text class="rc-status" :class="statusClass(r.status, r)">{{ statusLabel(r.status, r) }}</text>
           </view>
           <text class="rc-name">{{ r.itemNames || r.materialName }}</text>
           <text class="rc-meta">
@@ -538,8 +543,8 @@ function statusClass(s: string) {
             · {{ r.handlerName || '' }}
             <text v-if="r.createdAt"> · {{ r.createdAt?.substring(0,16) }}</text>
           </text>
-          <text v-if="r.rejectReason && !r.latestLogAction" class="rc-reject">拒绝原因：{{ r.rejectReason }}</text>
-          <text v-if="r.lossType === 'arrival' && r.latestLogAction && r.latestLogAction !== '提交报损'" :class="r.latestLogAction.includes('拒绝') ? 'rc-reject' : 'rc-progress'">{{ r.latestLogAction }}<text v-if="r.latestLogRemark">：{{ r.latestLogRemark }}</text></text>
+          <text v-if="r.rejectReason && !r.latestLogAction && r.recheckState !== 'pending'" class="rc-reject">拒绝原因：{{ r.rejectReason }}</text>
+          <text v-if="r.lossType === 'arrival' && r.latestLogAction && r.latestLogAction !== '提交报损' && r.recheckState !== 'pending'" :class="r.latestLogAction.includes('拒绝') ? 'rc-reject' : 'rc-progress'">{{ r.latestLogAction }}<text v-if="r.latestLogRemark">：{{ r.latestLogRemark }}</text></text>
           <!-- 待审批：仅店长/老板可见 -->
           <view v-if="r.status === 'pending_approval' && canManage && !batchMode" class="rc-actions">
             <view class="rca-btn rca-no" @click.stop="doReject(r)">拒绝</view>
@@ -550,8 +555,8 @@ function statusClass(s: string) {
             <view class="rca-btn rca-no" @click.stop="doNotReceive(r)">{{ r.isFruitVeg ? '未收到' : '未收到货' }}</view>
             <view class="rca-btn rca-ok" @click.stop="doReceive(r)">{{ r.isFruitVeg ? '已收到' : '已收货' }}</view>
           </view>
-          <!-- 厂家拒绝：重新提交 + 关闭 -->
-          <view v-else-if="r.status === 'rejected' && r.lossType === 'arrival' && !batchMode" class="rc-actions">
+          <!-- 厂家拒绝：重新提交 + 关闭（蓝蛙待复核单除外，门店视角它在正常确认中） -->
+          <view v-else-if="r.status === 'rejected' && r.lossType === 'arrival' && r.recheckState !== 'pending' && !batchMode" class="rc-actions">
             <view class="rca-btn rca-no" @click.stop="doClose(r)">关闭</view>
             <view class="rca-btn rca-ok" @click.stop="resubmitArrival(r)">重新提交</view>
           </view>

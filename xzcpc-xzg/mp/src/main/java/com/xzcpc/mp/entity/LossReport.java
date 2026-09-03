@@ -82,6 +82,10 @@ public class LossReport {
     @TableField(exist = false)
     private String latestLogRemark;
 
+    /** 蓝蛙厂家复核状态（非DB字段）：空=非复核单；pending=厂家拒绝待总部复核；pass=复核通过；reject=复核不通过 */
+    @TableField(exist = false)
+    private String recheckState;
+
     @Version
     private Integer version;
 }

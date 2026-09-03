@@ -28,11 +28,28 @@ async function fetchLogs() {
 }
 
 function actionLabel(a: string) {
-  const m: Record<string, string> = { submit: '提交报损', approve: '审批通过', reject_approval: '审批拒绝', confirm: '厂家确认补发', reject: '厂家拒绝', register: '厂家确认登记', receive: '已收货', not_receive: '未收到货', update: '修改报损', delete: '删除报损' }
+  const m: Record<string, string> = { submit: '提交报损', approve: '审批通过', reject_approval: '审批拒绝', confirm: '厂家确认补发', reject: '厂家拒绝', register: '厂家确认登记', receive: '已收货', not_receive: '未收到货', update: '修改报损', delete: '删除报损', auto_receive: '系统收货', register_hq: '确认登记', reject_hq: '拒绝' }
   // 发券仅水果蔬菜类，其他类（牛油果泥/其他）为发货
   if (a === 'issue_voucher') return report.value?.isFruitVeg ? '厂家确认发券' : '厂家确认发货'
   return m[a] || a
 }
+
+/** 蓝蛙复核单时间线改写：厂家拒绝节点不展示，复核结果合并为单一结果节点（确认登记/拒绝），操作人统一「总部」 */
+const displayLogs = computed(() => {
+  const st = report.value?.recheckState
+  if (!st) return logs.value
+  // 过滤厂家拒绝行（pending 期门店看不到被拒；pass/reject 期该行同样不单独出现）
+  const filtered = logs.value.filter(l => l.action !== 'reject')
+  if (st === 'pass' || st === 'reject') {
+    return filtered.map(l => {
+      // 复核结果行改写：remark 重写顺带消除「二次审核…」字样与 openid operator
+      if (l.action === 'recheck_pass') return { ...l, action: 'register_hq', operator: '总部', remark: '' }
+      if (l.action === 'recheck_reject') return { ...l, action: 'reject_hq', operator: '总部', remark: report.value?.rejectReason || '' }
+      return l
+    })
+  }
+  return filtered
+})
 
 function startEdit() {
   uni.navigateTo({ url: `/pages/loss-report/form-daily/index?editId=${id.value}` })
@@ -54,6 +71,8 @@ async function doDelete() {
 const nextStep = computed(() => {
   const s = report.value?.status
   const isArrival = report.value?.lossType === 'arrival'
+  // 蓝蛙复核期（rejected 但总部未复核完）：与普通待确认一致，不显示拒绝信息
+  if (report.value?.recheckState === 'pending') return '等待厂家确认'
   if (s === 'pending_approval') return '等待店长审批'
   if (s === 'pending') return '等待厂家确认'
   if (s === 'registered') return report.value?.isFruitVeg ? '已登记，等待厂家发券' : '已登记，等待厂家发货'
@@ -75,7 +94,7 @@ const statusCfg = computed(() => {
   if (s === 'pending_approval') return { label: '待店长审批', cls: 's-orange', color: '#E58A2D' }
   if (s === 'registered') return { label: '已登记', cls: 's-green', color: '#1A73E8' }
   if (s === 'confirmed_resend') return { label: report.value?.isFruitVeg ? '已发券' : '已确认补发', cls: 's-green', color: '#2F8F57' }
-  if (s === 'rejected') return { label: report.value?.lossType === 'arrival' ? '厂家拒绝' : '已拒绝', cls: 's-red', color: '#E05A47' }
+  if (s === 'rejected' && report.value?.recheckState !== 'pending') return { label: report.value?.lossType === 'arrival' ? '厂家拒绝' : '已拒绝', cls: 's-red', color: '#E05A47' }
   if (s === 'completed') return { label: '已录入', cls: 's-green', color: '#2F8F57' }
   if (s === 'received') return { label: '已收货', cls: 's-green', color: '#2F8F57' }
   if (s === 'not_received') return { label: '未收到货', cls: 's-red', color: '#E05A47' }
@@ -178,14 +197,14 @@ function playAttMedia(url: string) {
       </view>
 
       <!-- 处理流程 -->
-      <view class="card" v-if="logs.length">
+      <view class="card" v-if="displayLogs.length">
         <text class="card-title">处理流程</text>
         <view class="timeline">
-          <view v-for="(l, idx) in logs" :key="idx" class="tl-item">
-            <view class="tl-dot" :class="{ 'tl-dot-end': idx === logs.length-1, 'tl-dot-reject': l.action === 'reject' }"></view>
+          <view v-for="(l, idx) in displayLogs" :key="idx" class="tl-item">
+            <view class="tl-dot" :class="{ 'tl-dot-end': idx === displayLogs.length-1, 'tl-dot-reject': l.action === 'reject' || l.action === 'reject_hq' }"></view>
             <view class="tl-body">
               <view class="tl-head"><text class="tl-operator">{{ l.operator || '--' }}</text><text class="tl-time">{{ l.createdAt }}</text></view>
-              <text class="tl-action" :class="{ 'tl-action-reject': l.action === 'reject' }">{{ actionLabel(l.action) }}</text>
+              <text class="tl-action" :class="{ 'tl-action-reject': l.action === 'reject' || l.action === 'reject_hq' }">{{ actionLabel(l.action) }}</text>
               <text class="tl-remark" v-if="l.remark">{{ l.remark }}</text>
               <view class="tl-attachments" v-if="l.attachmentUrl">
                 <view v-for="(u, ai) in l.attachmentUrl.split(',').filter(Boolean)" :key="ai" class="tl-att-item" @click="playAttMedia(u)">
@@ -205,7 +224,7 @@ function playAttMedia(url: string) {
       <view class="card" v-if="mediaList.length || report.remark || report.rejectReason">
         <text class="card-title">凭证与备注</text>
         <text class="rm-text" v-if="report.remark">{{ report.remark }}</text>
-        <view v-if="report.rejectReason" class="reject-block">
+        <view v-if="report.rejectReason && report.recheckState !== 'pending'" class="reject-block">
           <text class="reject-label">拒绝原因</text><text class="reject-text">{{ report.rejectReason }}</text>
           <text class="reject-att" v-if="rejectAttCount > 0">附件：{{ rejectAttCount }} 个（图片/视频）</text>
         </view>
@@ -243,7 +262,7 @@ function playAttMedia(url: string) {
           <view class="ab-cancel" @click="receiving = false; receiveRemark = ''">取消</view>
         </template>
       </view>
-      <view v-if="report.status === 'rejected' && report.lossType === 'arrival'" class="approval-bar">
+      <view v-if="report.status === 'rejected' && report.lossType === 'arrival' && report.recheckState !== 'pending'" class="approval-bar">
         <view class="ab-reject" @click="doCloseLoss">关闭</view>
         <view class="ab-approve" @click="doResubmit">重新提交</view>
       </view>
