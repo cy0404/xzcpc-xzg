@@ -6,6 +6,7 @@ import { useUserStore } from '@/store/user'
 import { fetchMyStores, switchStore } from '@/api/auth'
 import { formatDateTime } from '@/utils/formatter'
 import EmptyState from '@/components/EmptyState.vue'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 import Skeleton from '@/components/Skeleton.vue'
 import IssueRejectSheet from '@/components/IssueRejectSheet.vue'
 
@@ -176,6 +177,7 @@ function openAccept(item: Issue) {
 
 async function confirmAccept() {
   if (acting.value || !acceptTarget.value) return
+  topUpSubscribeOnce() // 问题验收（tap 内）→ 订阅授权充值
   acting.value = true
   try {
     await acceptIssue(acceptTarget.value.id, acceptRemark.value)
@@ -188,6 +190,7 @@ async function confirmAccept() {
 
 async function handleStoreConfirm(item: Issue, action: 'accept' | 'reject') {
   if (acting.value) return
+  topUpSubscribeOnce() // 问题确认已解决/未解决（tap 内）→ 订阅授权充值
   if (action === 'reject') {
     rejectIssueId.value = item.id
     showRejectSheet.value = true

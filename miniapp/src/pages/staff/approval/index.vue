@@ -4,7 +4,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { approveStaffApplication, fetchStaffApplications, fetchStaffApplicationDetail } from '@/api/staff'
 import { useUserStore } from '@/store/user'
 import EmptyState from '@/components/EmptyState.vue'
-import { ensureBackHome } from '@/utils/subscribe'
+import { ensureBackHome, topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const tab = ref('pending')
@@ -51,6 +51,7 @@ function backToList() { detail.value = null }
 
 async function approve() {
   if (saving.value) return
+  topUpSubscribeOnce() // 员工审批通过（tap 内）→ 订阅授权充值
   saving.value = true
   try {
     await approveStaffApplication(detail.value.applicationId, { action: 'approve', role: roleVal.value, employmentType: empTypeVal.value })
@@ -61,6 +62,7 @@ async function approve() {
 
 async function reject() {
   if (saving.value) return
+  topUpSubscribeOnce() // 员工审批驳回（tap 内）→ 订阅授权充值
   if (!rejectReason.value.trim()) { uni.showToast({ title: '请填写原因', icon: 'none' }); return }
   saving.value = true
   try {
