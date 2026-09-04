@@ -83,6 +83,7 @@ onLoad(async (query: any) => {
 
 async function submit() {
   if (saving.value) return
+  topUpSubscribeOnce() // 员工登记提交（tap 内）→ 订阅授权充值（店长将收到审批提醒）
   if (!form.value.name || !form.value.mobile) { uni.showToast({ title: '请填写姓名和手机号', icon: 'none' }); return }
   if (!/^1[3-9]\d{9}$/.test(form.value.mobile)) { uni.showToast({ title: '手机号格式不正确', icon: 'none' }); return }
   saving.value = true
@@ -91,7 +92,6 @@ async function submit() {
     const body: any = { ...form.value, storeId: storeId.value, wxCode: loginRes.code }
     if (reapplyId.value) body.applicationId = reapplyId.value
     const res: any = await submitStaffRegistration(body)
-    topUpSubscribeOnce() // 员工登记提交成功 → 补订阅授权（店长将收到审批提醒）
     uni.redirectTo({ url: `/pages/staff/register-success/index?applicationId=${res?.applicationId || ''}&name=${encodeURIComponent(form.value.name)}&storeName=${encodeURIComponent(storeName.value)}` })
   } finally { saving.value = false }
 }

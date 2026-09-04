@@ -79,7 +79,6 @@ onShow(async () => {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
-  topUpSubscribeOnce() // 订阅授权充值（静默；accept → 额度 +1，发送时 -1）
   await userStore.fetchMe()
   const prevScope = scope.value
   // 单门店默认选该门店；多门店恢复上次选中的门店，否则全部门店
@@ -387,6 +386,7 @@ watch(scope, async (newVal) => {
 })
 
 async function go(url: string) {
+  topUpSubscribeOnce() // 订阅授权充值：点任意工具/导航即补一次（requestSubscribeMessage 需在 tap 手势内调用）
   uni.navigateTo({ url })
 }
 
@@ -400,6 +400,7 @@ function goComplaint() {
 
 // 客诉卡片入口（单店视图）：确保 token 切到当前门店再进客诉处理页
 async function goComplaintEntry() {
+  topUpSubscribeOnce() // H5 内无法调订阅授权，进 H5 前（tap 内）补一次
   if (scope.value !== userStore.storeId) {
     try {
       const data: any = await switchStore(scope.value as string)
@@ -417,6 +418,7 @@ async function goComplaintEntry() {
 
 // 客诉卡片入口（全部门店视图）：按门店卡片直接切到该店并进客诉处理页
 async function goComplaintForStore(store: any) {
+  topUpSubscribeOnce() // H5 内无法调订阅授权，进 H5 前（tap 内）补一次
   try {
     const data: any = await switchStore(store.storeId)
     if (data?.token) {
@@ -440,6 +442,7 @@ function goExpense() {
 
 // 支出卡片入口（单店视图）：确保 token 切到当前门店再进支出页
 async function goExpenseEntry() {
+  topUpSubscribeOnce() // H5 内无法调订阅授权，进 H5 前（tap 内）补一次
   if (scope.value !== userStore.storeId) {
     try {
       const data: any = await switchStore(scope.value as string)
@@ -464,6 +467,7 @@ function buildSmartOrderUrl(): string {
 }
 
 async function goPendingItem(item: PendingItem) {
+  topUpSubscribeOnce() // 订阅授权充值：点待办卡即补一次（tap 手势内调用才弹得出）
   // 全部门店视图：先切到该门店再跳转
   if (item.storeId) {
     try {

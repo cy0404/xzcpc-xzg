@@ -14,7 +14,7 @@ let hasLoggedOut = false
 
 function showLoading() {
   if (requestCount === 0) {
-    uni.showLoading({ title: '加载中...', mask: true })
+    uni.showLoading({ title: '加载中...', mask: true, fail: () => {} })
   }
   requestCount++
 }
@@ -23,7 +23,8 @@ function hideLoading() {
   requestCount--
   if (requestCount <= 0) {
     requestCount = 0
-    uni.hideLoading()
+    // 页面切换/并发场景下 toast 可能已被消费，hideLoading fail 属正常竞态，消音避免控制台报错
+    uni.hideLoading({ fail: () => {} })
   }
 }
 

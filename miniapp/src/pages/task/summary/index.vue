@@ -49,11 +49,11 @@ const unenteredMaterials = computed(() => {
 
 async function handleSubmit() {
   if (submitting.value) return
+  topUpSubscribeOnce() // 盘点提交（tap 内）→ 订阅授权充值（订货单生成等后续通知）
   confirmVisible.value = false
   submitting.value = true
   try {
     await submitTask(taskId.value)
-    topUpSubscribeOnce() // 盘点提交成功 → 补订阅授权（订货单生成/盘点类后续通知）
     uni.redirectTo({ url: `/pages/task/result/index?taskId=${taskId.value}&justSubmitted=1` })
   } catch {
     submitting.value = false

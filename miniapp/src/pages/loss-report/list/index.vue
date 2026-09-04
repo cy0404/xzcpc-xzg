@@ -300,6 +300,7 @@ function closePreviewMedia() { previewMediaUrl.value = '' }
 // 提交
 async function submitLoss() {
   if (submitting.value) return
+  topUpSubscribeOnce() // 报损提交（tap 内）→ 订阅授权充值（店长将收到待审批提醒）
   if (!selectedMaterial.value) { uni.showToast({ title: '请选择物料', icon: 'none' }); return }
   if (lossObject.value === 'semi_finished') {
     if (!grossWeight.value || parseFloat(grossWeight.value) <= 0) { uni.showToast({ title: '请填写含容器重量', icon: 'none' }); return }
@@ -341,7 +342,6 @@ async function submitLoss() {
       urgent: lossType.value === 'arrival' && isUrgent.value ? 1 : 0,
     })
     const reportId = result?.id || result?.data?.id
-    topUpSubscribeOnce() // 报损提交成功 → 补订阅授权（店长将收到待审批提醒）
     uni.showToast({ title: '提交成功', icon: 'success' })
     showSheet.value = false; fetchList()
 
@@ -423,6 +423,7 @@ function toggleSelectAll() {
 }
 function doBatch(action: 'approve' | 'reject') {
   if (batchSubmitting.value || selectedIds.value.size === 0) return
+  topUpSubscribeOnce() // 批量审批（tap 内）→ 订阅授权充值
   const ids = [...selectedIds.value]
   const label = action === 'approve' ? '通过' : '拒绝'
   uni.showModal({
@@ -437,7 +438,6 @@ function doBatch(action: 'approve' | 'reject') {
         // success 字段缺失时按 0 计（不猜测全成功），跳过数缺失按 0
         const ok = r?.success ?? 0
         const skip = r?.skipped ?? 0
-        topUpSubscribeOnce() // 批量审批完成 → 补订阅授权
         uni.showToast({ title: `已${label} ${ok} 条${skip ? `，跳过 ${skip} 条` : ''}`, icon: 'none', duration: 2500 })
         // 乐观更新：本地立即将选中记录置为终态，操作按钮马上消失（fetchList 结果回来再校准）
         const idSet = new Set(ids)
@@ -454,15 +454,17 @@ function doBatch(action: 'approve' | 'reject') {
 
 async function doApprove(r: any) {
   if (actionLoadingId.value) return
+  topUpSubscribeOnce() // 报损审批通过（tap 内）→ 订阅授权充值
   actionLoadingId.value = r.id
-  try { await approveLoss(r.id); topUpSubscribeOnce(); uni.showToast({ title: '已通过', icon: 'success' }); r.status = r.lossType === 'arrival' ? 'pending' : 'completed'; fetchList() }
+  try { await approveLoss(r.id); uni.showToast({ title: '已通过', icon: 'success' }); r.status = r.lossType === 'arrival' ? 'pending' : 'completed'; fetchList() }
   catch { fetchList() }  // 并发冲突时静默刷新
   finally { actionLoadingId.value = 0 }
 }
 async function doReject(r: any) {
   if (actionLoadingId.value) return
+  topUpSubscribeOnce() // 报损审批拒绝（tap 内）→ 订阅授权充值
   actionLoadingId.value = r.id
-  try { await rejectApproval(r.id); topUpSubscribeOnce(); uni.showToast({ title: '已拒绝', icon: 'success' }); r.status = 'rejected'; fetchList() }
+  try { await rejectApproval(r.id); uni.showToast({ title: '已拒绝', icon: 'success' }); r.status = 'rejected'; fetchList() }
   catch { fetchList() }
   finally { actionLoadingId.value = 0 }
 }

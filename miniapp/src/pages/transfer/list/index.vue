@@ -202,10 +202,10 @@ async function handleReject(item: TransferOrder) {
 
 async function handleConfirm(item: TransferOrder) {
   if (acting.value) return
+  topUpSubscribeOnce() // 调货确认（tap 内）→ 订阅授权充值（调入方将收到待收货提醒）
   acting.value = true
   try {
     await confirmTransfer(item.id)
-    topUpSubscribeOnce() // 确认发货 → 补订阅授权（调入方将收到待收货提醒）
     uni.showToast({ title: '已确认', icon: 'success' })
     await loadAll()
   } catch { /* handled */ }
@@ -214,10 +214,10 @@ async function handleConfirm(item: TransferOrder) {
 
 async function handleReceive(item: TransferOrder) {
   if (acting.value) return
+  topUpSubscribeOnce() // 调货收货（tap 内）→ 订阅授权充值
   acting.value = true
   try {
     await receiveTransfer(item.id)
-    topUpSubscribeOnce() // 确认收货 → 补订阅授权（后续调货流转通知）
     uni.showToast({ title: '已收货', icon: 'success' })
     await loadAll()
   } catch { /* handled */ }

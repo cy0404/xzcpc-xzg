@@ -96,6 +96,7 @@ function itemAmount(materialId: string): string {
 
 async function submit() {
   if (saving.value || !canSubmit.value) return
+  topUpSubscribeOnce() // 调货发起（tap 内）→ 订阅授权充值（对端店长将收到待确认提醒）
   // 校验：调出地或调入地必须有一个是当前门店
   if (fromStoreId.value !== userStore.storeId && toStoreId.value !== userStore.storeId) {
     uni.showToast({ title: '调出地或调入地必须有一个是当前门店', icon: 'none' })
@@ -112,7 +113,6 @@ async function submit() {
       items: transferStore.getFormItems(),
     })
     transferStore.clearItems()
-    topUpSubscribeOnce() // 调货发起成功 → 补订阅授权（对端店长将收到待确认提醒）
     uni.showToast({ title: '调货申请已提交', icon: 'success' })
     setTimeout(() => uni.navigateBack(), 800)
   } catch { /* handled */ }

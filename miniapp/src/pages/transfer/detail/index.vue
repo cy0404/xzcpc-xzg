@@ -197,10 +197,10 @@ async function handleReject() {
 
 async function doAction(fn: () => Promise<any>, msg: string) {
   if (acting.value) return
+  topUpSubscribeOnce() // 调货动作（确认/发货/收货/取消/拒绝，tap 内）→ 订阅授权充值
   acting.value = true
   try {
     await fn()
-    topUpSubscribeOnce() // 调货动作成功（确认/发货/收货/取消/拒绝）→ 补订阅授权
     uni.showToast({ title: msg, icon: 'success' })
     await loadDetail()
   } catch { /* handled */ }

@@ -216,6 +216,7 @@ function previewImage(url: string) { uni.previewImage({ urls: [url], current: ur
 // ---- Submit ----
 async function submitLoss() {
   if (submitting.value) return
+  topUpSubscribeOnce() // 日常报损提交（tap 内）→ 订阅授权充值（店长将收到待审批提醒）
   if (items.value.length === 0) { uni.showToast({ title: '请添加报损物料', icon: 'none' }); return }
   if (!reason.value) { uni.showToast({ title: '请选择报损原因', icon: 'none' }); return }
   if (mediaList.value.length === 0) { uni.showToast({ title: '请上传现场凭证', icon: 'none' }); return }
@@ -228,7 +229,6 @@ async function submitLoss() {
     }
     if (isEdit.value) { await updateDailyLoss(editId.value, payload) }
     else { await createDailyLoss(payload) }
-    topUpSubscribeOnce() // 报损提交成功 → 补订阅授权（店长将收到待审批提醒）
     uni.showToast({ title: isEdit.value ? '修改成功' : '提交成功', icon: 'success' }); setTimeout(() => uni.navigateBack(), 800)
   } catch { uni.showToast({ title: '提交失败', icon: 'none' }) }
   finally { submitting.value = false }
