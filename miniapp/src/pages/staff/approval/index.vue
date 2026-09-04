@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { approveStaffApplication, fetchStaffApplications, fetchStaffApplicationDetail } from '@/api/staff'
 import { useUserStore } from '@/store/user'
 import EmptyState from '@/components/EmptyState.vue'
+import { ensureBackHome } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const tab = ref('pending')
+// 订阅消息落地页：冷启动直达时垫首页，让"返回"回首页而不是退出小程序
+onLoad(() => { ensureBackHome() })
 const list = ref<any[]>([])
 const loading = ref(true)
 const detail = ref<any>(null)

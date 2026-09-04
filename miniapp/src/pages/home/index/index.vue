@@ -67,11 +67,18 @@ const scopeLabel = computed(() => {
   return s?.storeName || userStore.storeName || '当前门店'
 })
 
-onLoad(async () => {
+onLoad(async (q: any) => {
   try {
     const data = await fetchMyStores()
     myStores.value = (data || []).map((s: any) => ({ storeId: s.storeId || s.id, storeName: s.storeName || s.mendianmingcheng }))
   } catch { /* use empty */ }
+  // 订阅消息/分享冷启动直达：ensureBackHome 垫了本页为返回层，此处转发到真实目标页（延迟等首页就绪）
+  const redirect = q?.notifyRedirect
+  if (redirect) {
+    setTimeout(() => {
+      uni.navigateTo({ url: decodeURIComponent(redirect) })
+    }, 400)
+  }
 })
 
 onShow(async () => {

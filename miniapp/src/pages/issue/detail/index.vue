@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { ensureBackHome } from '@/utils/subscribe'
 import { fetchIssueDetail, fetchIssueRecords, replyIssue, acceptIssue, storeConfirm, uploadIssueMedia, type Issue } from '@/api/issue'
 import { useUserStore } from '@/store/user'
 import { formatDateTime } from '@/utils/formatter'
@@ -47,6 +48,7 @@ const showImgPreview = ref(false)
 let issueId = 0
 
 onLoad((q: any) => {
+  ensureBackHome() // 订阅消息冷启动直达：垫首页让返回可回首页
   issueId = Number(q?.id || 0)
   load()
 })

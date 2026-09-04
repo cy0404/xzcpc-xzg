@@ -6,7 +6,7 @@ import { useUserStore } from '@/store/user'
 import { fetchMyStores, switchStore } from '@/api/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
-import { topUpSubscribeOnce } from '@/utils/subscribe'
+import { topUpSubscribeOnce, ensureBackHome } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const allMode = ref(false)
@@ -21,6 +21,7 @@ const showStoreSheet = ref(false)
 const storeList = ref<any[]>([])
 
 onLoad((q: any) => {
+  ensureBackHome() // 订阅消息冷启动直达：垫首页让返回可回首页
   allMode.value = q?.all === 'true'
   init()
 })

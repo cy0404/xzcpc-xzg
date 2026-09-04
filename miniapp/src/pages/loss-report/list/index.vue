@@ -4,7 +4,7 @@ import { onShow, onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { getLossList, createLoss, getContainers, searchMaterials, uploadLossVideo, uploadLossImage, appendLossVoucher, closeLoss, approveLoss, rejectApproval, receiveLoss, notReceiveLoss, batchApproveLoss } from '@/api/loss-report'
 import { BASE_URL, H5_BASE } from '@/utils/constants'
-import { topUpSubscribeOnce } from '@/utils/subscribe'
+import { topUpSubscribeOnce, ensureBackHome } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -386,6 +386,7 @@ const actionLoadingId = ref(0)
 
 // 订阅消息跳转支持：?tab=pending_approval 直达"待审核"（场景1 报损待审批提醒）
 onLoad((q: any) => {
+  ensureBackHome() // 订阅消息冷启动直达：垫首页让返回可回首页
   const tab = q?.tab
   if (tab && tabs.some(t => t.key === tab)) {
     activeTab.value = tab

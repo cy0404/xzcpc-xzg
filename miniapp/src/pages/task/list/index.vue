@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { useTaskStore } from '@/store/task'
 import { request } from '@/utils/request'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
-import { topUpSubscribeOnce } from '@/utils/subscribe'
+import { topUpSubscribeOnce, ensureBackHome } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
@@ -26,6 +26,9 @@ const totalMaterials = computed(() => taskStore.currentTasks.reduce((s: number, 
 const totalEntered = computed(() => taskStore.currentTasks.reduce((s: number, t: any) => s + (t.enteredMaterials || 0), 0))
 const totalRemaining = computed(() => Math.max(totalMaterials.value - totalEntered.value, 0))
 const totalProgress = computed(() => totalMaterials.value ? Math.round(totalEntered.value / totalMaterials.value * 100) : 0)
+
+// 订阅消息落地页：冷启动直达时垫首页，让"返回"回首页而不是退出小程序
+onLoad(() => { ensureBackHome() })
 
 onShow(async () => {
   if (!userStore.token || !userStore.bound) return

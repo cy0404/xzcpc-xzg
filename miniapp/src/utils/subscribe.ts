@@ -43,3 +43,27 @@ export async function topUpSubscribeOnce(): Promise<void> {
     /* 用户取消 / 非点击时机调用被拒 / 网络异常：静默，不锁节流 */
   }
 }
+
+// 订阅消息冷启动直达处理（落地页 onLoad 调用）：
+// 点服务通知卡片进入小程序时页面栈只有落地页一页，微信返回键无页可退会直接退出小程序。
+// 检测到栈深=1（非首页）→ 重定向到首页并携带原目标路径，由首页 onLoad 转发回目标页，
+// 页面栈变为 [首页, 目标页]，用户点"返回"回到首页（首页待办卡正好承接后续操作）。
+// 对分享卡片/扫码等其他冷启动直达场景同样生效，行为更一致。
+export function ensureBackHome(): void {
+  try {
+    const pages = getCurrentPages()
+    if (pages.length !== 1) return
+    const cur = pages[0] as any
+    const route: string = cur?.route || ''
+    if (!route || route === 'pages/home/index/index') return
+    const qs: Record<string, any> = cur?.options || {}
+    const query = Object.keys(qs)
+      .filter(k => qs[k] !== undefined && qs[k] !== '')
+      .map(k => `${k}=${encodeURIComponent(qs[k])}`)
+      .join('&')
+    const target = '/' + route + (query ? '?' + query : '')
+    uni.redirectTo({ url: `/pages/home/index/index?notifyRedirect=${encodeURIComponent(target)}` })
+  } catch {
+    /* 解析失败则维持原状（返回退出），不影响目标页展示 */
+  }
+}
