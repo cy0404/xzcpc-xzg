@@ -99,14 +99,18 @@ public class LossReportH5Controller {
             // E2 审核人入口：只展示蓝蛙拒绝待复核 + 二次审核已通过单。
             // 只显示二次复核启用（2026-09-01）后新拒绝进入复核队列的单——历史一审拒绝单（8/17 批、8/29 店长拒）不再展示；
             // 已确认不通过（recheck_reject）的单不展示（门店重新提交，无复核意义）
+            // 复核人自己一审拒的单不展示（与 E2 Job 选单同口径）：uid 支持多复核人逗号分隔，逐个匹配 IN
+            String selfRejectIds = java.util.Arrays.stream(uid.split(","))
+                    .map(String::trim).filter(s -> !s.isEmpty())
+                    .map(s -> "'" + s.replace("'", "''") + "'")
+                    .collect(java.util.stream.Collectors.joining(","));
             statusFilter = "AND ("
                     + "  (r.status = 'rejected' AND EXISTS (SELECT 1 FROM loss_report_log l2 WHERE l2.report_id = r.id"
                     + "     AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00'))"
                     + "  OR EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id = r.id AND l.action = 'recheck_pass')"
                     + ") AND r.remark LIKE '厂家：蓝蛙%'"
-                    // 复核人自己一审拒的单不展示（与 E2 Job 选单同口径）：历史补录 operator 的单即刻从页面消失，无需重发卡片
                     + " AND NOT EXISTS (SELECT 1 FROM loss_report_log l3 WHERE l3.report_id = r.id"
-                    + "     AND l3.action IN ('reject','audit_reject') AND l3.operator = '" + uid.replace("'", "''") + "')";
+                    + "     AND l3.action IN ('reject','audit_reject') AND l3.operator IN (" + selfRejectIds + "))";
         } else if (isRecheckAudit) {
             // 蓝蛙群知会入口：只展示二次审核已通过（recheck_pass）的单——待复核队列与已确认不通过均不展示，
             // 蓝蛙被拒的单门店直接重新提交，知会页仅作结果查阅

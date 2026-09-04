@@ -338,6 +338,16 @@ public class LossReportDailySummaryJob {
         String uid = fms.getCardUserId("其他类", "avocado_audit");
         if (uid.isEmpty()) { log.info("卡片E2 未配置 avocado_audit 审核人，跳过"); return; }
         // 只显示二次复核启用（2026-09-01）后新拒绝的单——历史一审拒绝单（8/17 批等）不进复核队列
+        // 复核人自己在群里一审拒的单，不再推给自己二核（一审日志 operator=免登采集的 open_id）。
+        // 配置支持多复核人（uid 逗号分隔），按每人逐个匹配，避免整串 uid 比单 operator 永远不等
+        String selfRejectIds = java.util.Arrays.stream(uid.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty())
+                .map(s -> "'" + s.replace("'", "''") + "'")
+                .collect(java.util.stream.Collectors.joining(","));
+        String selfRejectClause = selfRejectIds.isEmpty()
+                ? " AND 1=1 "
+                : " AND NOT EXISTS (SELECT 1 FROM loss_report_log l3 WHERE l3.report_id=r.id "
+                    + "  AND l3.action IN ('reject','audit_reject') AND l3.operator IN (" + selfRejectIds + "))";
         List<Map<String, Object>> list = jdbcTemplate.queryForList(
                 "SELECT r.id, r.store_name FROM loss_report r " +
                 "WHERE r.loss_type='arrival' AND r.material_id=? AND r.status='rejected' " +
@@ -346,9 +356,7 @@ public class LossReportDailySummaryJob {
                 "  AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00') " +
                 "AND NOT EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id=r.id " +
                 "  AND l.action IN ('recheck_pass','recheck_reject')) " +
-                // 复核人自己在群里一审拒的单，不再推给自己二核（一审日志 operator=免登采集的 open_id，与收件人 uid 比对）
-                "AND NOT EXISTS (SELECT 1 FROM loss_report_log l3 WHERE l3.report_id=r.id " +
-                "  AND l3.action IN ('reject','audit_reject') AND l3.operator = ?)", avocadoId, uid);
+                selfRejectClause, avocadoId);
         if (list.isEmpty()) { log.info("卡片E2 无蓝蛙拒绝待复核数据，跳过"); return; }
         int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
         Map<String, Object> card = new LinkedHashMap<>();
