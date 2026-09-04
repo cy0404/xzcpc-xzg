@@ -317,7 +317,11 @@ public class LossReportDailySummaryJob {
         try {
             String name = java.net.URLEncoder.encode("其他类", "UTF-8");
             // region 参数标注厂家入口（lanwa=蓝蛙群 / hass=个人），页面过滤不依赖 uid（飞书打开可能丢 uid）
-            els.add(fms.mdEl("[查看审核详情](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=audit&materialId=" + avocadoId + "&uid=" + uid + "&region=" + (lanwa ? "lanwa" : "hass")) + ")"));
+            // 蓝蛙=外部公司（租户外无自建应用访问权），web_app applink 会报「应用页面已失效」→ 直链裸 http 打开；
+            // hass 个人卡收件人是本租户内部，仍走 applink
+            String path = "/loss-daily-confirm.html?date=" + today + "&category=" + name
+                    + "&tab=audit&materialId=" + avocadoId + "&uid=" + uid + "&region=" + (lanwa ? "lanwa" : "hass");
+            els.add(fms.mdEl("[查看审核详情](" + (lanwa ? fms.buildWebUrl(path) : fms.buildApplink(path)) + ")"));
         } catch (Exception ignored) {}
         card.put("elements", els);
         fms.sendToCardTargets(token, uid, card);
@@ -341,7 +345,10 @@ public class LossReportDailySummaryJob {
                 "AND EXISTS (SELECT 1 FROM loss_report_log l2 WHERE l2.report_id=r.id " +
                 "  AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00') " +
                 "AND NOT EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id=r.id " +
-                "  AND l.action IN ('recheck_pass','recheck_reject'))", avocadoId);
+                "  AND l.action IN ('recheck_pass','recheck_reject')) " +
+                // 复核人自己在群里一审拒的单，不再推给自己二核（一审日志 operator=免登采集的 open_id，与收件人 uid 比对）
+                "AND NOT EXISTS (SELECT 1 FROM loss_report_log l3 WHERE l3.report_id=r.id " +
+                "  AND l3.action IN ('reject','audit_reject') AND l3.operator = ?)", avocadoId, uid);
         if (list.isEmpty()) { log.info("卡片E2 无蓝蛙拒绝待复核数据，跳过"); return; }
         int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
         Map<String, Object> card = new LinkedHashMap<>();

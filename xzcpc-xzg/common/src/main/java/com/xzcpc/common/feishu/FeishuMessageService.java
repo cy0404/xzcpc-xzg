@@ -71,6 +71,50 @@ public class FeishuMessageService {
         return null;
     }
 
+    // ==================== H5 免登（操作人身份采集） ====================
+
+    /**
+     * 飞书 H5 免登 code 换 open_id（审核页采集"谁点的拒绝"，识别操作人）：
+     * app_access_token(internal) → authen/v1/access_token 换 user_access_token → user_info 取 open_id。
+     * 外部联系人（无本租户账号）/飞书外浏览器/任一环节失败 → 返回 null，调用方回落默认身份（"厂家"）。
+     */
+    @SuppressWarnings("rawtypes")
+    public String exchangeCodeOpenId(String code) {
+        if (appId == null || appId.isBlank() || code == null || code.isBlank()) return null;
+        try {
+            Map<String, String> appReq = Map.of("app_id", appId, "app_secret", appSecret);
+            ResponseEntity<Map> appResp = restTemplate.postForEntity(
+                    "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal", appReq, Map.class);
+            Map<?, ?> appBody = appResp.getBody();
+            if (appBody == null || !"ok".equals(String.valueOf(appBody.get("msg")))) return null;
+            String appToken = (String) appBody.get("app_access_token");
+            if (appToken == null || appToken.isEmpty()) return null;
+
+            HttpHeaders authHeaders = new HttpHeaders();
+            authHeaders.setBearerAuth(appToken);
+            HttpEntity<Map<String, String>> authEntity = new HttpEntity<>(
+                    Map.of("grant_type", "authorization_code", "code", code), authHeaders);
+            ResponseEntity<Map> authResp = restTemplate.postForEntity(
+                    "https://open.feishu.cn/open-apis/authen/v1/access_token", authEntity, Map.class);
+            Map<?, ?> authData = authResp.getBody() == null ? null : (Map<?, ?>) authResp.getBody().get("data");
+            String userToken = authData == null ? null : (String) authData.get("access_token");
+            if (userToken == null || userToken.isEmpty()) return null;
+
+            HttpHeaders userHeaders = new HttpHeaders();
+            userHeaders.setBearerAuth(userToken);
+            HttpEntity<Void> userEntity = new HttpEntity<>(userHeaders);
+            ResponseEntity<Map> userResp = restTemplate.exchange(
+                    "https://open.feishu.cn/open-apis/authen/v1/user_info", HttpMethod.GET, userEntity, Map.class);
+            Map<?, ?> userData = userResp.getBody() == null ? null : (Map<?, ?>) userResp.getBody().get("data");
+            String openId = userData == null ? null : (String) userData.get("open_id");
+            if (openId == null || openId.isBlank()) return null;
+            return openId;
+        } catch (Exception e) {
+            log.warn("H5 免登换 open_id 失败（回落默认身份）", e);
+            return null;
+        }
+    }
+
     // ==================== 发送 ====================
 
     /** 发送交互卡片给个人（open_id），支持逗号分隔多人；返回最后一条成功消息的 message_id */
@@ -400,6 +444,15 @@ public class FeishuMessageService {
         String rawUrl = serverUrl + path;
         return "https://applink.feishu.cn/client/web_app/open?appId=" + appId
                 + "&lk_target_url=" + urlEncode(rawUrl);
+    }
+
+    /**
+     * 卡片 markdown 直链（供外部联系人场景）：
+     * web_app 型 applink 需要收件人有本租户自建应用访问权，外部人员/游客点击会报「应用页面已失效」；
+     * 直接返回 serverUrl+path 裸 http(s) 链接，飞书内置浏览器直接打开，不依赖应用容器。
+     */
+    public String buildWebUrl(String path) {
+        return serverUrl + path;
     }
 
     /** 拼接 @ 提及到 markdown 文本末尾 */

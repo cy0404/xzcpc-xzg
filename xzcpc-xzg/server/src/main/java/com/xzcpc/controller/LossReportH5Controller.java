@@ -426,10 +426,23 @@ public class LossReportH5Controller {
             addLog(id, "confirm", "厂家", null, attachmentUrl);
         } else {
             String reason = body.get("reason");
+            // 一审拒绝操作人：页面免登采集到 open_id 则按人记录（识别"谁拒的"供 E2 排除自己拒的单）；
+            // 外部联系人/非飞书环境拿不到身份 → 回落"厂家"（保持原语义）
+            String operator = body.getOrDefault("operator", "");
             jdbcTemplate.update("UPDATE loss_report SET status='rejected', reject_reason=? WHERE id=?", reason != null ? reason : "", id);
-            addLog(id, "reject", "厂家", reason != null ? reason : "", attachmentUrl);
+            addLog(id, "reject", operator.isEmpty() ? "厂家" : operator, reason != null ? reason : "", attachmentUrl);
         }
         return Map.of("code", 200, "msg", "ok");
+    }
+
+    /**
+     * H5 免登 code 换 open_id（审核页采集一审操作人身份）。
+     * 外部联系人/飞书外浏览器无 code → 返回 code=500，页面回落不带 operator。
+     */
+    @PostMapping("/api/public/loss-report/operator-open-id")
+    public Map<String, Object> operatorOpenId(@RequestBody Map<String, String> body) {
+        String openId = fms.exchangeCodeOpenId(body.getOrDefault("code", ""));
+        return Map.of("code", openId == null ? 500 : 0, "openId", openId == null ? "" : openId);
     }
 
     /** 蓝蛙拒绝二次审核：直接通过（rejected→registered，进入补发流程） */

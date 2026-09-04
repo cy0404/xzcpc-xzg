@@ -253,6 +253,53 @@ var urgentId = p.get('urgentId') || '';
 var urgentOnly = p.get('urgent') || '';
 var uid = p.get('uid') || '';
 var region = p.get('region') || ''; // 牛油果泥厂家入口：lanwa=蓝蛙群 / hass=个人（卡片链接携带；飞书打开可能丢 uid，过滤不依赖 uid）
+
+// ===== 一审操作人采集：飞书客户端内免登取 open_id（E2 排除"自己一审拒的单"）=====
+// 只在点「拒绝」时异步尝试；外部联系人/飞书外浏览器拿不到身份 → 不带 operator，后端回落"厂家"（不回归原流程）
+// appId 需与后端 feishu.app-id 一致；不一致时免登失败自动降级，不影响审核主流程
+var operatorOpenId = '';
+var FEISHU_APP_ID = 'cli_aa90f3d66d7adbb7';
+function loadFeishuSdk() {
+  return new Promise(function (resolve) {
+    if (typeof window.tt !== 'undefined') { resolve(); return; }
+    var s = document.createElement('script');
+    s.src = 'https://lf1-cdn-tos.bytegoofy.com/goofy/lark/op/h5-js-sdk-1.5.26.js';
+    s.onload = function () { resolve(); };
+    s.onerror = function () { resolve(); };
+    document.head.appendChild(s);
+  });
+}
+function getFeishuCode() {
+  return new Promise(function (resolve) {
+    if (!window.tt) { resolve(null); return; }
+    var got = function (res) { resolve(res && res.code ? res.code : null); };
+    var fallback = function () {
+      if (window.tt.requestAuthCode) {
+        window.tt.requestAuthCode({ appId: FEISHU_APP_ID, success: got, fail: function () { resolve(null); } });
+      } else resolve(null);
+    };
+    if (window.tt.requestAccess) {
+      window.tt.requestAccess({ appID: FEISHU_APP_ID, scopeList: [], success: got, fail: function () { fallback(); } });
+    } else fallback();
+  });
+}
+async function ensureOperator() {
+  if (operatorOpenId) return operatorOpenId;
+  if (!/lark|feishu/i.test(navigator.userAgent || '')) return '';
+  try {
+    await loadFeishuSdk();
+    var code = await getFeishuCode();
+    if (!code) return '';
+    var r = await fetch('/api/public/loss-report/operator-open-id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code })
+    });
+    var j = await r.json();
+    if (j.code === 0 && j.openId) operatorOpenId = j.openId;
+  } catch (e) {}
+  return operatorOpenId;
+}
 var recheck = p.get('recheck') === '1'; // 蓝蛙拒绝二次审核入口（审核人卡片）
 var reports = [];
 var modalCb = null;
@@ -1492,6 +1539,10 @@ async function doShip(id) {
 async function doMark(id, result, rejectReason, note, confirmQty) {
   try {
     var body = {id: String(id), action: result};
+    if (result === '拒绝') {
+      var operatorId = await ensureOperator(); // 一审拒绝记操作人：自己拒的单不再推给自己二核
+      if (operatorId) body.operator = operatorId;
+    }
     if (rejectReason) body.reason = rejectReason;
     if (note) body.remark = note;
     if (confirmQty != null) body.confirmQty = String(confirmQty);
