@@ -337,41 +337,43 @@ public class LossReportDailySummaryJob {
         if (avocadoId.isEmpty()) { log.info("卡片E2 未配置 avocado_material_id，跳过"); return; }
         String uid = fms.getCardUserId("其他类", "avocado_audit");
         if (uid.isEmpty()) { log.info("卡片E2 未配置 avocado_audit 审核人，跳过"); return; }
+
+        // 复核队列按复核人分别生成：自己一审拒的单不进自己的卡（operator=免登采集的 open_id，与单收件人比对）。
+        // 若做成共享队列（uid 全列表比对），A 拒的单会从所有人视野消失——必须一人一张、各排各的。
         // 只显示二次复核启用（2026-09-01）后新拒绝的单——历史一审拒绝单（8/17 批等）不进复核队列
-        // 复核人自己在群里一审拒的单，不再推给自己二核（一审日志 operator=免登采集的 open_id）。
-        // 配置支持多复核人（uid 逗号分隔），按每人逐个匹配，避免整串 uid 比单 operator 永远不等
-        String selfRejectIds = java.util.Arrays.stream(uid.split(","))
-                .map(String::trim).filter(s -> !s.isEmpty())
-                .map(s -> "'" + s.replace("'", "''") + "'")
-                .collect(java.util.stream.Collectors.joining(","));
-        String selfRejectClause = selfRejectIds.isEmpty()
-                ? " AND 1=1 "
-                : " AND NOT EXISTS (SELECT 1 FROM loss_report_log l3 WHERE l3.report_id=r.id "
-                    + "  AND l3.action IN ('reject','audit_reject') AND l3.operator IN (" + selfRejectIds + "))";
-        List<Map<String, Object>> list = jdbcTemplate.queryForList(
-                "SELECT r.id, r.store_name FROM loss_report r " +
-                "WHERE r.loss_type='arrival' AND r.material_id=? AND r.status='rejected' " +
-                "AND r.remark LIKE '厂家：蓝蛙%' AND r.del_flag=0 " +
-                "AND EXISTS (SELECT 1 FROM loss_report_log l2 WHERE l2.report_id=r.id " +
-                "  AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00') " +
-                "AND NOT EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id=r.id " +
-                "  AND l.action IN ('recheck_pass','recheck_reject')) " +
-                selfRejectClause, avocadoId);
-        if (list.isEmpty()) { log.info("卡片E2 无蓝蛙拒绝待复核数据，跳过"); return; }
-        int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
-        Map<String, Object> card = new LinkedHashMap<>();
-        card.put("header", fms.cardHeader("red", "到货验收报损 · 牛油果泥（蓝蛙）拒绝待复核"));
-        List<Map<String, Object>> els = new ArrayList<>();
-        String info = "**蓝蛙拒绝待复核**\n待复核 **" + list.size() + "** 条 · 涉及 **" + stores + "** 个门店\n\n不同意 = 报损成立，进入补发；同意 = 报损维持拒绝";
-        els.add(fms.mdEl(info));
-        els.add(fms.tagEl("hr"));
-        try {
-            String name = java.net.URLEncoder.encode("其他类", "UTF-8");
-            els.add(fms.mdEl("[查看并复核](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=audit&materialId=" + avocadoId + "&recheck=1&uid=" + uid) + ")"));
-        } catch (Exception ignored) {}
-        card.put("elements", els);
-        fms.sendToCardTargets(token, uid, card);
-        log.info("卡片E2 蓝蛙拒绝待复核 n={} stores={} → {}", list.size(), stores, uid);
+        boolean anySent = false;
+        for (String auditor : uid.split(",")) {
+            String au = auditor.trim();
+            if (au.isEmpty()) continue;
+            String selfRejectClause = " AND NOT EXISTS (SELECT 1 FROM loss_report_log l3 WHERE l3.report_id=r.id "
+                    + "  AND l3.action IN ('reject','audit_reject') AND l3.operator = '" + au.replace("'", "''") + "')";
+            List<Map<String, Object>> list = jdbcTemplate.queryForList(
+                    "SELECT r.id, r.store_name FROM loss_report r " +
+                    "WHERE r.loss_type='arrival' AND r.material_id=? AND r.status='rejected' " +
+                    "AND r.remark LIKE '厂家：蓝蛙%' AND r.del_flag=0 " +
+                    "AND EXISTS (SELECT 1 FROM loss_report_log l2 WHERE l2.report_id=r.id " +
+                    "  AND l2.action IN ('reject','audit_reject') AND l2.created_at >= '2026-09-01 00:00:00') " +
+                    "AND NOT EXISTS (SELECT 1 FROM loss_report_log l WHERE l.report_id=r.id " +
+                    "  AND l.action IN ('recheck_pass','recheck_reject')) " +
+                    selfRejectClause, avocadoId);
+            if (list.isEmpty()) { log.info("卡片E2-{} 无待复核数据，跳过", au); continue; }
+            int stores = (int) list.stream().map(r -> r.get("store_name")).distinct().count();
+            Map<String, Object> card = new LinkedHashMap<>();
+            card.put("header", fms.cardHeader("red", "到货验收报损 · 牛油果泥（蓝蛙）拒绝待复核"));
+            List<Map<String, Object>> els = new ArrayList<>();
+            String info = "**蓝蛙拒绝待复核**\n待复核 **" + list.size() + "** 条 · 涉及 **" + stores + "** 个门店\n\n不同意 = 报损成立，进入补发；同意 = 报损维持拒绝";
+            els.add(fms.mdEl(info));
+            els.add(fms.tagEl("hr"));
+            try {
+                String name = java.net.URLEncoder.encode("其他类", "UTF-8");
+                els.add(fms.mdEl("[查看并复核](" + fms.buildApplink("/loss-daily-confirm.html?date=" + today + "&category=" + name + "&tab=audit&materialId=" + avocadoId + "&recheck=1&uid=" + au) + ")"));
+            } catch (Exception ignored) {}
+            card.put("elements", els);
+            fms.sendToCardTargets(token, au, card);
+            log.info("卡片E2-{} 蓝蛙拒绝待复核 n={} stores={}", au, list.size(), stores);
+            anySent = true;
+        }
+        if (!anySent) log.info("卡片E2 无蓝蛙拒绝待复核数据，跳过");
     }
 
     // ==================== 卡片 G：牛油果泥补发 ====================
