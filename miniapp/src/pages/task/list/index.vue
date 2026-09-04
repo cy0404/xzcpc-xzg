@@ -6,11 +6,19 @@ import { useTaskStore } from '@/store/task'
 import { request } from '@/utils/request'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
 const loading = ref(true)
 const entering = ref(false)
+// 页面任意点击（首次）→ 订阅授权充值：任务列表是高频页面，正常查看即攒额度
+const pageTopUpDone = ref(false)
+function onPageTap() {
+  if (pageTopUpDone.value) return
+  pageTopUpDone.value = true
+  topUpSubscribeOnce()
+}
 
 const currentTasks = computed(() => taskStore.currentTasks || [])
 const taskCount = computed(() => taskStore.currentTasks?.length || 0)
@@ -59,7 +67,7 @@ function taskPeriod(t: any) {
 </script>
 
 <template>
-  <view class="page">
+  <view class="page" @click="onPageTap">
     <Skeleton v-if="loading" :rows="5" />
     <template v-else>
       <view class="overview-card">

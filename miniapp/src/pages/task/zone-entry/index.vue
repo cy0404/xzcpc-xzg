@@ -11,10 +11,18 @@ import { materialDisplayName } from '@/utils/formatter'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
 import DrawerNumericKeyboard from '@/components/DrawerNumericKeyboard.vue'
+import { topUpSubscribeOnce } from '@/utils/subscribe'
 
 const taskId = ref(0)
 const zoneId = ref(0)
 const zoneName = ref('')
+// 页面任意点击（首次）→ 订阅授权充值：盘点录入是店长最高频页面，正常操作即攒额度
+const pageTopUpDone = ref(false)
+function onPageTap() {
+  if (pageTopUpDone.value) return
+  pageTopUpDone.value = true
+  topUpSubscribeOnce()
+}
 const storeName = ref('')
 const taskName = ref('')
 const loading = ref(true)
@@ -1034,7 +1042,7 @@ async function confirmExtDrawer() {
 </script>
 
 <template>
-  <view class="page">
+  <view class="page" @click="onPageTap">
     <Skeleton v-if="loading" :rows="5" />
     <template v-else>
       <!-- 搜索栏 -->

@@ -364,6 +364,7 @@ const storePendingItems = computed<PendingItem[]>(() => {
 const storePendingCount = computed(() => storePendingItems.value.length)
 
 function setScope(val: 'all' | string) {
+  topUpSubscribeOnce() // 切换门店（tap 内）→ 订阅授权充值（多门店店长高频操作）
   scope.value = val
   userStore.selectedScope = val
 }
