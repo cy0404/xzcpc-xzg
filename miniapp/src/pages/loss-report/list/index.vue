@@ -83,11 +83,13 @@ async function fetchList(showSkeleton = true) {
 }
 
 function openArrival() {
+  topUpSubscribeOnce() // 到货报损入口（tap 内）→ 订阅授权充值（H5 内提交无法调授权，入口处补）
   const h5url = H5_BASE + '/upload/h5/loss-arrival.html?v=3&token=' + encodeURIComponent(uni.getStorageSync('token') || '') + '&storeName=' + encodeURIComponent(userStore.storeName || '')
   uni.navigateTo({ url: '/pages/loss-report/camera-h5/index?url=' + encodeURIComponent(h5url) })
 }
 
 function resubmitArrival(r: any) {
+  topUpSubscribeOnce() // 到货重提入口（tap 内）→ 订阅授权充值
   const h5url = H5_BASE + '/upload/h5/loss-arrival.html?v=3&token=' + encodeURIComponent(uni.getStorageSync('token') || '') + '&storeName=' + encodeURIComponent(userStore.storeName || '') + '&resubmit=' + r.id
   uni.navigateTo({ url: '/pages/loss-report/camera-h5/index?url=' + encodeURIComponent(h5url) })
 }
@@ -101,6 +103,7 @@ async function doClose(r: any) {
 }
 
 function openSheet(type: 'daily' | 'arrival') {
+  topUpSubscribeOnce() // 新增报损入口（tap 内）→ 订阅授权充值
   lossType.value = type; lossObject.value = type === 'arrival' ? 'finished' : 'semi_finished'
   selectedMaterial.value = null; materialSearchKey.value = ''; materialResults.value = []
   lossQty.value = ''; unitPrice.value = ''; grossWeight.value = type === 'daily' ? '0' : ''; inputUnit.value = ''; qimaiOrderNo.value = ''; containerId.value = null
@@ -361,7 +364,10 @@ async function submitLoss() {
 }
 
 function goDetail(r: any) { uni.navigateTo({ url: `/pages/loss-report/detail/index?id=${r.id}` }) }
-function goDailyLoss() { uni.navigateTo({ url: '/pages/loss-report/form-daily/index' }) }
+function goDailyLoss() {
+  topUpSubscribeOnce() // 日常多物料报损入口（tap 内）→ 订阅授权充值
+  uni.navigateTo({ url: '/pages/loss-report/form-daily/index' })
+}
 defineExpose({ onCameraRecorded })
 
 function goStandard(materialId: string) { uni.navigateTo({ url: `/pages/loss-report/standard/index?materialId=${materialId}` }) }
