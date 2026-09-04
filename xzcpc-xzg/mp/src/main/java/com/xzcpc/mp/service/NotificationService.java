@@ -159,11 +159,16 @@ public class NotificationService {
 
     private boolean addQuota(String openid, int delta) {
         try {
-            return quotaMapper.update(null, new LambdaUpdateWrapper<NotificationQuota>()
+            LambdaUpdateWrapper<NotificationQuota> uw = new LambdaUpdateWrapper<NotificationQuota>()
                     .eq(NotificationQuota::getOpenid, openid)
-                    .gt(NotificationQuota::getQuota, 0 - delta)
                     .setSql("quota = quota + " + delta)
-                    .set(NotificationQuota::getUpdatedAt, LocalDateTime.now())) > 0;
+                    .set(NotificationQuota::getUpdatedAt, LocalDateTime.now());
+            // 扣减（delta<0）：仅当余额 > 0 才允许扣（扣后最低到 0，不穿负，并发下防超扣）；
+            // 累加（delta>0）：无条件（余额非负由扣侧保证）
+            if (delta < 0) {
+                uw.gt(NotificationQuota::getQuota, 0);
+            }
+            return quotaMapper.update(null, uw) > 0;
         } catch (Exception e) {
             log.error("额度更新失败 openid={} delta={}", openid, delta, e);
             return false;
