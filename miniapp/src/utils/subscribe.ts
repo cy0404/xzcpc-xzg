@@ -61,7 +61,6 @@ export function forwardPendingRedirect(): void {
     const pending = uni.getStorageSync(PENDING_REDIRECT_KEY) as string
     if (!pending) return
     uni.removeStorageSync(PENDING_REDIRECT_KEY)
-    console.log('[notify-entry] 首页转发到目标页:', pending)
     setTimeout(() => {
       uni.navigateTo({ url: pending })
     }, 400)
@@ -79,7 +78,9 @@ export async function applyStoreFromQuery(q: any): Promise<boolean> {
     const sid = q?.storeId
     if (!sid) return false
     const userStore = useUserStore()
-    if (userStore.storeId === sid) return false
+    if (userStore.storeId === sid) {
+      return false
+    }
     const data: any = await switchStore(sid)
     if (data?.token) {
       uni.setStorageSync('token', data.token)
@@ -89,7 +90,7 @@ export async function applyStoreFromQuery(q: any): Promise<boolean> {
     userStore.storeName = data?.storeName || ''
     userStore.chatId = data?.chatId || ''
     return true
-  } catch {
+  } catch (e: any) {
     return false
   }
 }
@@ -97,11 +98,9 @@ export async function applyStoreFromQuery(q: any): Promise<boolean> {
 export function ensureBackHome(): void {
   try {
     const pages = getCurrentPages()
-    console.log('[notify-entry] ensureBackHome 页面栈深度=', pages.length)
     if (pages.length !== 1) return
     const cur = pages[0] as any
     const route: string = cur?.route || ''
-    console.log('[notify-entry] 当前页 route=', route)
     if (!route || route === 'pages/home/index/index') return
     const qs: Record<string, any> = cur?.options || {}
     const query = Object.keys(qs)
@@ -109,16 +108,13 @@ export function ensureBackHome(): void {
       .map(k => `${k}=${encodeURIComponent(qs[k])}`)
       .join('&')
     const target = '/' + route + (query ? '?' + query : '')
-    console.log('[notify-entry] switchTab 回首页，暂存目标:', target)
     uni.setStorageSync(PENDING_REDIRECT_KEY, target)
     uni.switchTab({
       url: '/pages/home/index/index',
       fail: (err) => {
         uni.removeStorageSync(PENDING_REDIRECT_KEY)
-        console.log('[notify-entry] switchTab 失败:', JSON.stringify(err))
       },
     })
   } catch (e) {
-    console.log('[notify-entry] ensureBackHome 异常:', e)
   }
 }
