@@ -15,7 +15,7 @@ import { fetchTaskDetail } from '@/api/task'
 import { fetchHomeOverview } from '@/api/business'
 import { fetchFeedbackOverview, fetchFeedbackOverviewStores } from '@/api/feedback'
 import { H5_BASE } from '@/utils/constants'
-import { topUpSubscribeOnce } from '@/utils/subscribe'
+import { topUpSubscribeOnce, forwardPendingRedirect } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
@@ -67,18 +67,11 @@ const scopeLabel = computed(() => {
   return s?.storeName || userStore.storeName || '当前门店'
 })
 
-onLoad(async (q: any) => {
+onLoad(async () => {
   try {
     const data = await fetchMyStores()
     myStores.value = (data || []).map((s: any) => ({ storeId: s.storeId || s.id, storeName: s.storeName || s.mendianmingcheng }))
   } catch { /* use empty */ }
-  // 订阅消息/分享冷启动直达：ensureBackHome 垫了本页为返回层，此处转发到真实目标页（延迟等首页就绪）
-  const redirect = q?.notifyRedirect
-  if (redirect) {
-    setTimeout(() => {
-      uni.navigateTo({ url: decodeURIComponent(redirect) })
-    }, 400)
-  }
 })
 
 onShow(async () => {
@@ -86,6 +79,7 @@ onShow(async () => {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
+  forwardPendingRedirect() // 订阅消息冷启动直达垫层：切回本页后转发到目标页（返回键可回首页）
   await userStore.fetchMe()
   const prevScope = scope.value
   // 单门店默认选该门店；多门店恢复上次选中的门店，否则全部门店

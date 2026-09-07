@@ -46,15 +46,34 @@ export async function topUpSubscribeOnce(): Promise<void> {
 
 // 订阅消息冷启动直达处理（落地页 onLoad 调用）：
 // 点服务通知卡片进入小程序时页面栈只有落地页一页，微信返回键无页可退会直接退出小程序。
-// 检测到栈深=1（非首页）→ 重定向到首页并携带原目标路径，由首页 onLoad 转发回目标页，
-// 页面栈变为 [首页, 目标页]，用户点"返回"回到首页（首页待办卡正好承接后续操作）。
+// 检测到栈深=1（非首页）→ 目标路径暂存本地（switchTab 不支持 URL 参数），
+// switchTab 切回首页 tab（首页是 tabBar 页，redirectTo/reLaunch 均不适用/过重），
+// 首页 onShow 读到暂存路径后 navigateTo 转发回目标页 → 页面栈变 [首页, 目标页]，
+// 用户点"返回"回到首页（首页待办卡正好承接后续操作）。
 // 对分享卡片/扫码等其他冷启动直达场景同样生效，行为更一致。
+const PENDING_REDIRECT_KEY = 'notifyPendingRedirect'
+
+/** 首页 onShow 调用：如有垫层待转发路径则跳转（调用后自动清除，避免重复） */
+export function forwardPendingRedirect(): void {
+  try {
+    const pending = uni.getStorageSync(PENDING_REDIRECT_KEY) as string
+    if (!pending) return
+    uni.removeStorageSync(PENDING_REDIRECT_KEY)
+    console.log('[notify-entry] 首页转发到目标页:', pending)
+    setTimeout(() => {
+      uni.navigateTo({ url: pending })
+    }, 400)
+  } catch { /* 静默 */ }
+}
+
 export function ensureBackHome(): void {
   try {
     const pages = getCurrentPages()
+    console.log('[notify-entry] ensureBackHome 页面栈深度=', pages.length)
     if (pages.length !== 1) return
     const cur = pages[0] as any
     const route: string = cur?.route || ''
+    console.log('[notify-entry] 当前页 route=', route)
     if (!route || route === 'pages/home/index/index') return
     const qs: Record<string, any> = cur?.options || {}
     const query = Object.keys(qs)
@@ -62,8 +81,16 @@ export function ensureBackHome(): void {
       .map(k => `${k}=${encodeURIComponent(qs[k])}`)
       .join('&')
     const target = '/' + route + (query ? '?' + query : '')
-    uni.redirectTo({ url: `/pages/home/index/index?notifyRedirect=${encodeURIComponent(target)}` })
-  } catch {
-    /* 解析失败则维持原状（返回退出），不影响目标页展示 */
+    console.log('[notify-entry] switchTab 回首页，暂存目标:', target)
+    uni.setStorageSync(PENDING_REDIRECT_KEY, target)
+    uni.switchTab({
+      url: '/pages/home/index/index',
+      fail: (err) => {
+        uni.removeStorageSync(PENDING_REDIRECT_KEY)
+        console.log('[notify-entry] switchTab 失败:', JSON.stringify(err))
+      },
+    })
+  } catch (e) {
+    console.log('[notify-entry] ensureBackHome 异常:', e)
   }
 }
