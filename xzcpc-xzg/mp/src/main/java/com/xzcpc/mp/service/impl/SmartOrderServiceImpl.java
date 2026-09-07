@@ -539,24 +539,49 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             // 失真期：PG 销量系统性低估 30~40%（2026-09 全量验证），预测只用库存差/订货节奏；
             // 企迈修复验收达标后置 1：恢复 PG 参与互证（仍以库存差为准，不一致信盘点倒推而非 PG）。
             boolean usePg = "1".equals(getConfig(CFG_USE_PG, "0"));
+            BigDecimal devThirty = BigDecimal.valueOf(0.3);
 
-            if ("weekly".equals(current.getTaskType()) && inventoryDaily != null) {
-                // 周盘：库存差（上周真实消耗=盘点+到货倒推）为主。
-                // PG 日均仅在校验一致（≤30%）时取均值互证；不一致时信库存差——
-                // 盘点误差风险 < PG 噪声（PG 失真期低估 30~40%，倒推消耗才是真实消耗）
-                if (usePg && pgDaily != null && pgDaily.compareTo(BigDecimal.ZERO) > 0) {
-                    BigDecimal maxDaily = inventoryDaily.max(pgDaily);
-                    BigDecimal dev = inventoryDaily.subtract(pgDaily).abs().divide(maxDaily, 4, RoundingMode.HALF_UP);
-                    if (dev.compareTo(BigDecimal.valueOf(0.3)) <= 0) {
-                        dailyUse = inventoryDaily.add(pgDaily).divide(BigDecimal.valueOf(2), 6, RoundingMode.HALF_UP);
-                        useMode = "blend";
+            // ===== 预测主链（2026-09 三源融合版：订货节奏 + 库存差 + PG 一起算）=====
+            // 三个日均口径：
+            //   ① inventoryDaily 库存差（上次盘点+期间企迈入库−本次盘点）÷天数 = 客观事实（含损耗/调货/自购）
+            //   ② rhythmDaily  店长订货节奏（近90天已送达订货÷有货周数÷7）= 店长实际需求（贴合真实消耗，验证中位 12.9%）
+            //   ③ pgDaily      PG 近4周日均（÷有数据天数）                    = 校验源（失真期 use_pg=0 不参与数值）
+            // 融合规则：① 为主源 → 与②偏差 ≤30% 取均值（两个独立信源互证降噪，mode=inventoryRhythm）；
+            //   不一致信 ①（店长感觉多订 ~13%、盘点倒推才是真实消耗）；
+            //   ③ 仅在 use_pg=1（企迈修复验收后）且与当前日均偏差 ≤30% 时再取均值（三源一致才收窄）；
+            //   不一致时 PG 不参与（低估方向不可信）
+            BigDecimal rhythmDaily = orderRhythmDaily != null ? orderRhythmDaily.get(mid) : null;
+
+            if (inventoryDaily != null) {
+                // ① 主源 = 库存差；与 ② 店长订货节奏互证
+                boolean rhythmAgree = rhythmDaily != null && rhythmDaily.compareTo(BigDecimal.ZERO) > 0;
+                BigDecimal baseDaily = inventoryDaily;
+                if (rhythmAgree) {
+                    BigDecimal maxDaily = inventoryDaily.max(rhythmDaily);
+                    BigDecimal dev = inventoryDaily.subtract(rhythmDaily).abs().divide(maxDaily, 4, RoundingMode.HALF_UP);
+                    if (dev.compareTo(devThirty) <= 0) {
+                        baseDaily = inventoryDaily.add(rhythmDaily).divide(BigDecimal.valueOf(2), 6, RoundingMode.HALF_UP);
+                        useMode = "inventoryRhythm"; // 库存差与订货节奏互证一致 → 取均值
                     } else {
-                        dailyUse = inventoryDaily;
+                        rhythmAgree = false;
+                        baseDaily = inventoryDaily; // 不一致信库存差（店长感觉偏差大，needs_review 会提示）
                         useMode = "inventory";
                     }
                 } else {
-                    dailyUse = inventoryDaily;
                     useMode = "inventory";
+                }
+                // ③ PG 三源互证（仅修复期 use_pg=1）：与当前日均一致 → 取均值收窄；不一致维持客观侧
+                if (usePg && pgDaily != null && pgDaily.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal maxDaily = baseDaily.max(pgDaily);
+                    BigDecimal dev = baseDaily.subtract(pgDaily).abs().divide(maxDaily, 4, RoundingMode.HALF_UP);
+                    if (dev.compareTo(devThirty) <= 0) {
+                        dailyUse = baseDaily.add(pgDaily).divide(BigDecimal.valueOf(2), 6, RoundingMode.HALF_UP);
+                        useMode = "blend"; // 与 PG 一致：取均值（含 PG 信息，三源或两源+PG）
+                    } else {
+                        dailyUse = baseDaily; // PG 与客观口径偏差大 → 不参与数值
+                    }
+                } else {
+                    dailyUse = baseDaily;
                 }
             } else if (usePg && lastYearQty.compareTo(BigDecimal.ZERO) > 0) {
                 useMode = "lastYear";
@@ -576,45 +601,47 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             } else if (usePg && recent4wQty.compareTo(BigDecimal.ZERO) > 0) {
                 useMode = "recent4w";
                 dailyUse = pgDaily;
-            } else if (inventoryDaily != null) {
-                useMode = "inventory";
-                dailyUse = inventoryDaily;
-            } else if (orderRhythmDaily != null && orderRhythmDaily.containsKey(mid)) {
-                useMode = "orderRhythm"; // 耗材类（无销售记录）：订货节奏=消耗节奏
-                dailyUse = orderRhythmDaily.get(mid);
+            } else if (rhythmDaily != null && rhythmDaily.compareTo(BigDecimal.ZERO) > 0) {
+                useMode = "orderRhythm"; // 无库存差（新店/无盘点历史）：店长订货节奏=需求代理
+                dailyUse = rhythmDaily;
             } else {
                 useMode = "default";
                 dailyUse = defaultDailyUse;
             }
 
             // 修正因子（基础单位）—— 按预测源口径拆分叠加比例，避免重复或漏算：
-            //   inventory（库存差日均 = 真实消耗）          → 报损/调货/还货/自购全含在日均中，修正=0
-            //   blend（库存差与 PG 销量的均值）             → 库存差那半含、PG 那半不含 → 修正×0.5 补齐另一半
+            //   inventory（纯库存差日均 = 真实消耗）          → 报损/调货/还货/自购全含在日均中，修正=0
+            //   inventoryRhythm（库存差+订货节奏均值）        → 报损两源都吸收（店长补货含损耗）修正=0；
+            //                                                  调货/还货/自购 库存差那半含、订货那半不含 → ×0.5
+            //   blend（与 PG 一致取均值）                    → PG 那半不含 → 修正×0.5 补齐
             //   orderRhythm（订货节奏 = 已送达订货量）       → 报损被店长补货自然吸收（≈含），但调货/自购/还货
             //                                                 不走订货通道、节奏中不含 → 仅补这三项（×1）
             //   recent4w/lastYear/default（纯销量/拍脑袋）  → 全不含 → 修正×1
             // 所有叠加项 × (C+H)/7 周期放大：修正数据按周均口径（7 天），与 demand 的 (cycleDays+safetyDays)
             // 天周期对齐（此前只加了 1 周量，少算 ~30%）
             boolean pureConsumption = "inventory".equals(useMode);                     // 修正=0
+            boolean rhythmHalfConsumption = "inventoryRhythm".equals(useMode);         // 损耗=0，调货/还货/自购×0.5
             boolean halfConsumption = "blend".equals(useMode);                         // 修正×0.5
             boolean rhythmConsumption = "orderRhythm".equals(useMode);                 // 仅补非报损项
             BigDecimal periodScale = BigDecimal.valueOf(cycleDays + safetyDays)
                     .divide(BigDecimal.valueOf(7), 4, RoundingMode.HALF_UP);
             BigDecimal halfScale = periodScale.multiply(BigDecimal.valueOf(0.5));
             String mk = mid + "|" + store.getId();
-            BigDecimal lossQty = pureConsumption ? BigDecimal.ZERO
+            boolean lossAbsorbed = pureConsumption || rhythmHalfConsumption || rhythmConsumption; // 报损已被吸收
+            BigDecimal lossQty = lossAbsorbed ? BigDecimal.ZERO
                     : lossMap.getOrDefault(mk, BigDecimal.ZERO)
-                            .multiply(rhythmConsumption ? BigDecimal.ZERO : (halfConsumption ? halfScale : periodScale)); // 周期内损耗(+)
+                            .multiply(halfConsumption ? halfScale : periodScale);       // 周期内损耗(+)
+            boolean halfTransfers = rhythmHalfConsumption || halfConsumption;          // 调货/还货/自购 ×0.5
             BigDecimal transferQty = pureConsumption ? BigDecimal.ZERO
                     : transferMap.getOrDefault(mk, BigDecimal.ZERO)
-                            .multiply(halfConsumption ? halfScale : periodScale);        // 周期内净调出(±)
+                            .multiply(halfTransfers ? halfScale : periodScale);         // 周期内净调出(±)
             BigDecimal returnQty = pureConsumption ? BigDecimal.ZERO
                     : returnMap.getOrDefault(mk, BigDecimal.ZERO)
-                            .multiply(halfConsumption ? halfScale : periodScale);        // 周期内净还出(±, 仅 goods, 还钱不计)
-            BigDecimal inTransitQty = inTransitMap.getOrDefault(mid, BigDecimal.ZERO);   // 在途(−，存量不乘)
+                            .multiply(halfTransfers ? halfScale : periodScale);         // 周期内净还出(±, 仅 goods, 还钱不计)
+            BigDecimal inTransitQty = inTransitMap.getOrDefault(mid, BigDecimal.ZERO);  // 在途(−，存量不乘)
             BigDecimal selfPurchaseQty = pureConsumption ? BigDecimal.ZERO
                     : selfPurchaseMap.getOrDefault(mk, BigDecimal.ZERO)
-                            .multiply(halfConsumption ? halfScale : periodScale);        // 周期内自购(−)
+                            .multiply(halfTransfers ? halfScale : periodScale);         // 周期内自购(−)
 
             // ① 预计消耗（含安全库存）② 修正 ③ 基础建议量：max(0, 预测 + 损耗 ± 调货 ± 还货 − 库存 − 在途 − 自购)
             BigDecimal demand = dailyUse.multiply(BigDecimal.valueOf(cycleDays + safetyDays));
@@ -660,8 +687,12 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 reason.append("近4周日均消耗估算");
             } else if ("inventory".equals(useMode)) {
                 reason.append("库存差法估算日均消耗");
+            } else if ("inventoryRhythm".equals(useMode)) {
+                reason.append("库存差与您近期订货节奏互证（取均值）");
             } else if ("blend".equals(useMode)) {
-                reason.append("上周消耗与PG销量互证（取均值）");
+                reason.append("库存差与PG销量互证（取均值）");
+            } else if ("orderRhythm".equals(useMode)) {
+                reason.append("按您近期订货节奏估算日均消耗");
             } else {
                 reason.append("暂无历史数据，按默认日均消耗估算");
             }
