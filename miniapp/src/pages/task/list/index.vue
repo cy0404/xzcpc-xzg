@@ -6,7 +6,7 @@ import { useTaskStore } from '@/store/task'
 import { request } from '@/utils/request'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
-import { topUpSubscribeOnce, ensureBackHome } from '@/utils/subscribe'
+import { topUpSubscribeOnce, ensureBackHome, applyStoreFromQuery } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const taskStore = useTaskStore()
@@ -27,11 +27,26 @@ const totalEntered = computed(() => taskStore.currentTasks.reduce((s: number, t:
 const totalRemaining = computed(() => Math.max(totalMaterials.value - totalEntered.value, 0))
 const totalProgress = computed(() => totalMaterials.value ? Math.round(totalEntered.value / totalMaterials.value * 100) : 0)
 
-// 订阅消息落地页：冷启动直达时垫首页，让"返回"回首页而不是退出小程序
-onLoad(() => { ensureBackHome() })
+// 订阅消息落地页：冷启动直达时垫首页，让"返回"回首页而不是退出小程序；
+// URL 带业务门店（storeId）且与当前登录店不同 → 先切店再加载（多门店店长）
+const storeSwitching = ref(false)
+onLoad(async (q: any) => {
+  ensureBackHome()
+  if (q?.storeId && q.storeId !== userStore.storeId) {
+    storeSwitching.value = true
+    await applyStoreFromQuery(q)
+    storeSwitching.value = false
+    if (userStore.token && userStore.bound) {
+      loading.value = true
+      try { await taskStore.fetchTaskList() }
+      finally { loading.value = false }
+    }
+  }
+})
 
 onShow(async () => {
   if (!userStore.token || !userStore.bound) return
+  if (storeSwitching.value) return // 切店中：onLoad 切完会统一加载
   loading.value = true
   try { await taskStore.fetchTaskList() }
   finally { loading.value = false }

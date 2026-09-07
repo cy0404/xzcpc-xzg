@@ -4,12 +4,21 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { approveStaffApplication, fetchStaffApplications, fetchStaffApplicationDetail } from '@/api/staff'
 import { useUserStore } from '@/store/user'
 import EmptyState from '@/components/EmptyState.vue'
-import { ensureBackHome, topUpSubscribeOnce } from '@/utils/subscribe'
+import { ensureBackHome, topUpSubscribeOnce, applyStoreFromQuery } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const tab = ref('pending')
-// 订阅消息落地页：冷启动直达时垫首页，让"返回"回首页而不是退出小程序
-onLoad(() => { ensureBackHome() })
+// 订阅消息落地页：冷启动直达垫首页；URL 带业务门店（storeId）且与当前店不同 → 先切店再加载
+const storeSwitching = ref(false)
+onLoad(async (q: any) => {
+  ensureBackHome()
+  if (q?.storeId && q.storeId !== userStore.storeId) {
+    storeSwitching.value = true
+    await applyStoreFromQuery(q)
+    storeSwitching.value = false
+    loadList() // 切店完成：按新门店拉取（onShow 已因切店被跳过）
+  }
+})
 const list = ref<any[]>([])
 const loading = ref(true)
 const detail = ref<any>(null)
@@ -29,6 +38,7 @@ onShow(() => {
     uni.navigateBack()
     return
   }
+  if (storeSwitching.value) return // 切店中：由 onLoad 切店完成后触发加载
   loadList()
 })
 

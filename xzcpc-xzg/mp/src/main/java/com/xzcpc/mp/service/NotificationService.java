@@ -65,10 +65,18 @@ public class NotificationService {
         n.setTargetOpenid(openid);
         n.setTitle(truncate(title, 150));
         n.setContent(truncate(content, 800));
-        n.setPagePath(pagePath);
+        // 跳转 URL 自动带上业务门店：多门店店长点消息卡片先进对应门店，落地页按 storeId 切店
+        n.setPagePath(withStoreParam(pagePath, storeId));
         n.setSourceId(sourceId);
         n.setStatus(0);
         notificationLogMapper.insert(n);
+    }
+
+    /** 跳转路径拼接业务门店参数（pagePath 为空 / storeId 为空 / 已带 storeId 时不处理） */
+    private String withStoreParam(String pagePath, String storeId) {
+        if (!StringUtils.hasText(pagePath) || !StringUtils.hasText(storeId)) return pagePath;
+        if (pagePath.contains("storeId=")) return pagePath;
+        return pagePath + (pagePath.contains("?") ? "&" : "?") + "storeId=" + storeId;
     }
 
     /** 该门店在职工长/经理/老板 openid（老板绑定自动写入 employee.role=老板，故一张表全覆盖） */

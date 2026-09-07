@@ -6,7 +6,7 @@ import { useUserStore } from '@/store/user'
 import { fetchMyStores, switchStore } from '@/api/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import Skeleton from '@/components/Skeleton.vue'
-import { topUpSubscribeOnce, ensureBackHome } from '@/utils/subscribe'
+import { topUpSubscribeOnce, ensureBackHome, applyStoreFromQuery } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const allMode = ref(false)
@@ -20,12 +20,19 @@ const acting = ref(false)
 const showStoreSheet = ref(false)
 const storeList = ref<any[]>([])
 
-onLoad((q: any) => {
+// 订阅消息落地页：冷启动直达垫首页；URL 带业务门店（storeId）且与当前店不同 → 先切店再加载
+const storeSwitching = ref(false)
+onLoad(async (q: any) => {
   ensureBackHome() // 订阅消息冷启动直达：垫首页让返回可回首页
   allMode.value = q?.all === 'true'
+  if (q?.storeId && q.storeId !== userStore.storeId) {
+    storeSwitching.value = true
+    await applyStoreFromQuery(q)
+    storeSwitching.value = false
+  }
   init()
 })
-onShow(() => { if (!loading.value) { loadAll() } })
+onShow(() => { if (!storeSwitching.value && !loading.value) { loadAll() } })
 onPullDownRefresh(async () => { await loadAll(); uni.stopPullDownRefresh() })
 
 async function init() {

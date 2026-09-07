@@ -11,6 +11,8 @@
 
 import { request } from './request'
 import { SUBSCRIBE_TEMPLATE_ID } from './constants'
+import { useUserStore } from '@/store/user'
+import { switchStore } from '@/api/auth'
 
 // 节流：仅 accept 成功后 5 秒内不重复调（防同一手势重复触发；"总是保持"后不弹窗、无频率问题，
 // 放开节流让每次点击都充值）；fail（非点击时机等）不锁定时长——否则一次失败会吞掉后续合法点击
@@ -64,6 +66,32 @@ export function forwardPendingRedirect(): void {
       uni.navigateTo({ url: pending })
     }, 400)
   } catch { /* 静默 */ }
+}
+
+/**
+ * 落地页门店适配（onLoad 调用，需在数据加载前 await）：
+ * 订阅消息跳转 URL 带业务门店 storeId（后端入队时自动拼接），多门店店长点消息卡片时
+ * 先把登录态切到对应门店再加载数据，避免看到的是当前默认店（空列表）。
+ * 返回是否实际切换了门店（切换后建议重新触发一次数据加载）。
+ */
+export async function applyStoreFromQuery(q: any): Promise<boolean> {
+  try {
+    const sid = q?.storeId
+    if (!sid) return false
+    const userStore = useUserStore()
+    if (userStore.storeId === sid) return false
+    const data: any = await switchStore(sid)
+    if (data?.token) {
+      uni.setStorageSync('token', data.token)
+      userStore.token = data.token
+    }
+    userStore.storeId = data?.storeId || sid
+    userStore.storeName = data?.storeName || ''
+    userStore.chatId = data?.chatId || ''
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function ensureBackHome(): void {

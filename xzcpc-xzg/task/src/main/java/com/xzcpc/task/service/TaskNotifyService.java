@@ -30,7 +30,7 @@ public class TaskNotifyService {
                     "TASK_CREATED", storeId,
                     "【盘点任务】" + truncate(taskName, 40) + " 已下发",
                     "截止时间 " + (deadlineText == null ? "" : deadlineText),
-                    "/pages/task/list/index", storeId);
+                    "/pages/task/list/index?storeId=" + storeId, storeId);
         } catch (Exception e) {
             log.warn("TASK_NOTIFY 任务下发通知入队失败 storeId={}", storeId, e);
         }

@@ -4,7 +4,7 @@ import { onShow, onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 import { getLossList, createLoss, getContainers, searchMaterials, uploadLossVideo, uploadLossImage, appendLossVoucher, closeLoss, approveLoss, rejectApproval, receiveLoss, notReceiveLoss, batchApproveLoss } from '@/api/loss-report'
 import { BASE_URL, H5_BASE } from '@/utils/constants'
-import { topUpSubscribeOnce, ensureBackHome } from '@/utils/subscribe'
+import { topUpSubscribeOnce, ensureBackHome, applyStoreFromQuery } from '@/utils/subscribe'
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -69,7 +69,7 @@ const todayCount = computed(() => records.value.filter(r => r.createdAt && r.cre
 const pendingCount = computed(() => records.value.filter(r => r.status === 'pending').length)
 const resolvedCount = computed(() => records.value.filter(r => r.status === 'confirmed_resend').length)
 
-onShow(() => { if (userStore.token && userStore.bound) fetchList() })
+onShow(() => { if (!storeSwitching.value && userStore.token && userStore.bound) fetchList() })
 
 onPullDownRefresh(async () => {
   await fetchList(false)  // 下拉刷新：保留列表显示，不切骨架
@@ -390,12 +390,20 @@ const tabRecords = computed(() => {
 })
 const actionLoadingId = ref(0)
 
-// 订阅消息跳转支持：?tab=pending_approval 直达"待审核"（场景1 报损待审批提醒）
-onLoad((q: any) => {
+// 订阅消息跳转支持：?tab=pending_approval 直达"待审核"（场景1 报损待审批提醒）；
+// URL 带业务门店（storeId）且与当前登录店不同 → 先切店再加载（多门店店长）
+const storeSwitching = ref(false)
+onLoad(async (q: any) => {
   ensureBackHome() // 订阅消息冷启动直达：垫首页让返回可回首页
   const tab = q?.tab
   if (tab && tabs.some(t => t.key === tab)) {
     activeTab.value = tab
+  }
+  if (q?.storeId && q.storeId !== userStore.storeId) {
+    storeSwitching.value = true
+    await applyStoreFromQuery(q)
+    storeSwitching.value = false
+    fetchList() // 切店完成：按新门店拉取
   }
 })
 
