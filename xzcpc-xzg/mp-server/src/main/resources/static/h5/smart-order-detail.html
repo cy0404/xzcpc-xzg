@@ -47,6 +47,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;
 .r-spec{display:block;font-size:12px;color:#98A19C;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .r-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .r-chip{font-size:11px;color:#66706A;background:#FAFBF9;border:1px solid #E8ECE9;border-radius:6px;padding:2px 8px}
+.r-chip.review{color:#B54708;background:#FFF7E6;border-color:#FFD591}
 /* 总仓库存标注：超量时红色（数量≤库存才能下单） */
 .r-stock{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#66706A;background:#FAFBF9;border:1px solid #E8ECE9;border-radius:6px;padding:2px 8px;margin-top:4px}
 .r-stock.over{color:#E05A47;background:#FDEEEC;border-color:#F2C7BE;font-weight:600}
@@ -606,6 +607,8 @@ function rowHtml(it){
   var chips=''
   if(it.supportDays!=null)chips+='<span class="r-chip">可支撑 '+fmtNum(it.supportDays)+' 天</span>'
   if(it.unitPrice!=null)chips+='<span class="r-chip">单价 '+fmtMoney(it.unitPrice)+(it.stockUnit?'/'+esc(it.stockUnit):'')+'</span>'
+  // 店长意图对照（2026-09）：系统建议与店长近期订货偏差>30% → 高亮提示
+  if(it.needsReview===1)chips+='<span class="r-chip review">⚠ 与您近期订货差异较大</span>'
   if(chips)info+='<span class="r-chips">'+chips+'</span>'
   // 总仓实时库存标注（qmStock 为 null 不显示）；超量红色，行高亮
   if(it.qmStock!=null)info+='<span class="r-stock'+(overStock(it)?' over':'')+'" id="stock-'+it.id+'">'+stockText(it)+'</span>'
@@ -859,7 +862,7 @@ function stockIssues(){
   items.forEach(function(it){
     if(deletedSet[it.id]||it.qmStock==null||isNoStockCheck(it))return
     var q=Number(qtyMap[it.id])||0
-    if(q>0&&q>Number(it.qmStock))list.push({name:it.materialName||'',stock:it.qmStock,unit:it.stockUnit||''})
+    if(q>0&&q>Number(it.qmStock))list.push({name:it.materialName||'',stock:it.qmStock,unit:it.qmStockUnit||it.stockUnit||''})
   })
   return list
 }

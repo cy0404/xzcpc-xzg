@@ -96,6 +96,12 @@ public class SmartOrderItem {
     /** 建议依据 */
     private String reason;
 
+    /** 店长近期单次订货参考量（订货单位，近90天订货节奏日均×订货周期折算）——"您近期每次约订 X" */
+    private BigDecimal orderRefQty;
+
+    /** 系统建议与店长近期订货偏差>30% 标记（1=需店长确认；店长确认时以店长修改为准，未改则以系统建议为准） */
+    private Integer needsReview;
+
     /** 排序号 */
     private Integer sortNo;
 

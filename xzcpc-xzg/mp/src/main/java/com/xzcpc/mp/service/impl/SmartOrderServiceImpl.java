@@ -59,11 +59,19 @@ import java.util.stream.Collectors;
 /**
  * P1 + P2B: 智能订货
  *
- * 生成算法（P2B 升级后）：
- * ① 需求预测：dailyUse × (cycleDays + safetyDays)；日均来源（周盘优先）：
- *    [周盘] 库存差(上周真实消耗) 与 PG 近4周日均 互证：偏差 ≤30% 取均值，偏差 >30% 信 PG（盘点误差风险 > PG 噪声）
- *    [周盘无库存差] → [月盘] 去年同周 × 趋势系数 → 近4周日均（÷有数据天数，避免数据不足期摊薄）→ 库存差法 → sys_config 默认日均
- *    趋势系数 = 近4周日均 ÷ 去年同4周日均（按有数据天数），clamp [0.5, 2.0]
+ * 生成算法（2026-09 PG 失真期改造后）：
+ * ① 需求预测：dailyUse × (cycleDays + safetyDays)；日均来源（库存差/客观口径优先）：
+ *    库存差日均(盘点+到货倒推) → 订货节奏日均(店长按需订货≈真实消耗) → sys_config 默认日均
+ *    PG 近4周日均仅在 smart_order_use_pg=1（企迈修复验收后）时参与互证：
+ *    周盘与库存差偏差 ≤30% 取均值 blend，偏差 >30% 信库存差（PG 失真期低估 30~40%，倒推才是真实消耗）
+ *    去年同周×趋势系数分支同样受 use_pg 开关控制（数据源：plan/2026-09-smart-order-source-plan.md）
+ * ② 损耗修正：+ 近4周报损周均（loss_report，按物料×门店）
+ * ③ 调货修正：± 近4周调货周均（transfer_order 净调出−调入，净调出 → 多订）
+ * ④ 在途减项：− PG 未终态订单订货量（当前 PG 仅终态行 → 恒 0，配送 2 天可忽略）
+ * ⑤ 建议 = max(0, 预测 + 损耗 ± 调货 − 当前库存 − 在途)，其中预测已含安全库存（沿用 P1 语义）
+ * ⑥ 单位修正 suggest 从 base_unit 折算为 stock_unit，统一向上取整为整数（仓库按整件发货）
+ * ⑦ 店长意图对照：建议量与店长近期单次订货量偏差 >30% → needs_review 提示确认
+ * ⑧ 只入 suggest > 0 且企迈有编码、非半成品/淘汰类的物料
  * ② 损耗修正：+ 近4周报损周均（loss_report，按物料×门店）
  * ③ 调货修正：± 近4周调货周均（transfer_order 净调出−调入，净调出 → 多订）
  * ④ 在途减项：− Σ累计订货 + Σ累计到货（差值法，PG 全历史，不依赖 order_status）
@@ -113,6 +121,9 @@ public class SmartOrderServiceImpl implements SmartOrderService {
     private static final String CFG_DEADLINE_TIME = "smart_order_deadline_time";
     /** 企迈总仓仓库编码（9.2.13 实时库存查询用，逗号分隔最多 5 个，空=不查库存） */
     private static final String CFG_CENTRAL_WAREHOUSE_NO = "smart_order_central_warehouse_no";
+    /** PG 销量预测源开关：企迈 PG 销量失真期（2026-09 验证系统性低估 30~40%）默认 0=关闭（只用库存差/订货节奏）；
+     *  企迈侧数据修复且按 plan/2026-09-smart-order-source-plan.md 验收达标后置 1 切回 PG 互证。 */
+    private static final String CFG_USE_PG = "smart_order_use_pg";
 
     // ==================== 生成 ====================
 
@@ -192,7 +203,9 @@ public class SmartOrderServiceImpl implements SmartOrderService {
     /**
      * P2B 回测：以历史周为基准"模拟当时生成"（不落库），与窗口内实际消耗对比评估预测准确性。
      * weekStart 即模拟生成日（通常为某周一）；actual 窗口 = [weekStart, weekStart + cycleDays+safetyDays)，
-     * actual = PG销量 + 报损 + 调出−调入 + 还出−收回 − 自购（窗口内合计，不 ÷4）。
+     * actual = 已送达订货量 + 报损 + 调出−调入 + 还出−收回 − 自购（窗口内合计，不 ÷4）。
+     * 2026-09 PG 失真期起：actual 以"窗口内已送达订货"为主口径（店长按需订货、配送 2 天，
+     * 订货≈真实消耗，验证贴合度中位 12.9%），PG 销量仅作无订货记录时的兜底。
      * 输出全量物料对比（含未入单物料 → 暴露漏订），及偏差率统计（|suggest−actual| / actual）。
      */
     @Override
@@ -250,10 +263,11 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             BigDecimal transfer = transferMap.getOrDefault(mid + "|" + store.getId(), BigDecimal.ZERO);
             BigDecimal ret = returnMap.getOrDefault(mid + "|" + store.getId(), BigDecimal.ZERO);
             BigDecimal sp = selfPurchaseMap.getOrDefault(mid + "|" + store.getId(), BigDecimal.ZERO);
-            // 有销量 → 销量为需求；耗材类（窗口无销量）→ 已送达订货量为需求（门店进货节奏=消耗，消费不体现在 POS 销售）
-            BigDecimal actual = pg.compareTo(BigDecimal.ZERO) > 0
-                    ? pg.add(loss).add(transfer).add(ret).subtract(sp)
-                    : orderActual.add(loss).add(transfer).add(ret).subtract(sp);
+            // PG 失真期口径：actual 以窗口内已送达订货量为主（店长按需订货≈真实消耗，验证中位贴合 12.9%）；
+            // 窗口内无订货（低频长周期物料恰未到货）才回退 PG 销量兜底
+            BigDecimal actual = orderActual.compareTo(BigDecimal.ZERO) > 0
+                    ? orderActual.add(loss).add(transfer).add(ret).subtract(sp)
+                    : pg.add(loss).add(transfer).add(ret).subtract(sp);
             SmartOrderItem item = itemByMid.get(material.getId());
             BigDecimal suggest = item != null ? item.getSuggestQty() : BigDecimal.ZERO;
             Map<String, Object> trace = predictOut.get(mid);
@@ -466,9 +480,12 @@ public class SmartOrderServiceImpl implements SmartOrderService {
 
             // 疑似停售：历史有销量但近7天无销售记录（已下架/门店停售该品），不订货；库存为 0 不算（卖完需补货）。
             // 历史从无销量记录的耗材类（打包袋/清洁/周边等，消耗不体现在 POS 销售）不拦截 → 走订货节奏预测
+            // 护栏（2026-09）：近90天该店仍有已送达订货的物料不判停售——PG 销量失真期会漏记，
+            // 店长仍在补货说明未停售；只有既不卖也没人补货才判定停售
             String qm = material.getQmCode();
             if (StringUtils.hasText(qm) && currentQty.compareTo(BigDecimal.ZERO) > 0
-                    && historicalSold.contains(qm) && !recentSold.contains(qm)) {
+                    && historicalSold.contains(qm) && !recentSold.contains(qm)
+                    && !orderRhythmDaily.containsKey(mid)) {
                 if (predictOut != null) {
                     Map<String, Object> trace = new HashMap<>();
                     trace.put("dailyUse", null);
@@ -518,23 +535,30 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             BigDecimal pgDaily = r4Sale.days() > 0
                     ? recent4wQty.divide(BigDecimal.valueOf(r4Sale.days()), 6, RoundingMode.HALF_UP) : null;
 
+            // PG 销量预测源开关（sys_config smart_order_use_pg，默认 0=失真期关闭）。
+            // 失真期：PG 销量系统性低估 30~40%（2026-09 全量验证），预测只用库存差/订货节奏；
+            // 企迈修复验收达标后置 1：恢复 PG 参与互证（仍以库存差为准，不一致信盘点倒推而非 PG）。
+            boolean usePg = "1".equals(getConfig(CFG_USE_PG, "0"));
+
             if ("weekly".equals(current.getTaskType()) && inventoryDaily != null) {
-                // 周盘：库存差（上周真实消耗）为主，PG 日均校验——一致取均值互证，不一致信 PG（盘点误差风险 > PG 噪声）
-                if (pgDaily != null && pgDaily.compareTo(BigDecimal.ZERO) > 0) {
+                // 周盘：库存差（上周真实消耗=盘点+到货倒推）为主。
+                // PG 日均仅在校验一致（≤30%）时取均值互证；不一致时信库存差——
+                // 盘点误差风险 < PG 噪声（PG 失真期低估 30~40%，倒推消耗才是真实消耗）
+                if (usePg && pgDaily != null && pgDaily.compareTo(BigDecimal.ZERO) > 0) {
                     BigDecimal maxDaily = inventoryDaily.max(pgDaily);
                     BigDecimal dev = inventoryDaily.subtract(pgDaily).abs().divide(maxDaily, 4, RoundingMode.HALF_UP);
                     if (dev.compareTo(BigDecimal.valueOf(0.3)) <= 0) {
                         dailyUse = inventoryDaily.add(pgDaily).divide(BigDecimal.valueOf(2), 6, RoundingMode.HALF_UP);
                         useMode = "blend";
                     } else {
-                        dailyUse = pgDaily;
-                        useMode = "recent4w";
+                        dailyUse = inventoryDaily;
+                        useMode = "inventory";
                     }
                 } else {
                     dailyUse = inventoryDaily;
                     useMode = "inventory";
                 }
-            } else if (lastYearQty.compareTo(BigDecimal.ZERO) > 0) {
+            } else if (usePg && lastYearQty.compareTo(BigDecimal.ZERO) > 0) {
                 useMode = "lastYear";
                 BigDecimal lyDailyBase = lastYearQty.divide(BigDecimal.valueOf(Math.max(lySale.days(), 1)), 6, RoundingMode.HALF_UP);
                 if (ly4wQty.compareTo(BigDecimal.ZERO) > 0) {
@@ -549,7 +573,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 } else {
                     dailyUse = lyDailyBase; // 无去年4周对比，趋势=1
                 }
-            } else if (recent4wQty.compareTo(BigDecimal.ZERO) > 0) {
+            } else if (usePg && recent4wQty.compareTo(BigDecimal.ZERO) > 0) {
                 useMode = "recent4w";
                 dailyUse = pgDaily;
             } else if (inventoryDaily != null) {
@@ -648,6 +672,29 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             if (selfPurchaseQty.compareTo(BigDecimal.ZERO) != 0) reason.append("，自购 −").append(trimNum(selfPurchaseQty));
             if (unitConverted) reason.append(" · 按订货单位换算并向上取整");
 
+            // 店长意图对照（2026-09）：近90天订货节奏折算"单次订货量"（订货单位），与系统建议对比。
+            // 偏差 >30% → needs_review=1：前端提示"系统建议 X，您近期每次约订 Y（差异较大请确认）"。
+            // 交互原则：店长确认时以店长修改为准（感觉纠正系统）；未修改则按系统建议下单（系统兜住感觉）
+            BigDecimal orderRefQty = null;
+            int needsReview = 0;
+            BigDecimal rhythmDaily = orderRhythmDaily != null ? orderRhythmDaily.get(mid) : null;
+            if (rhythmDaily != null && rhythmDaily.compareTo(BigDecimal.ZERO) > 0
+                    && factor != null && factor.compareTo(BigDecimal.ZERO) > 0) {
+                // 订货节奏日均 × 订货周期 = 单次订货量（基础单位）→ ÷factor 转订货单位
+                orderRefQty = rhythmDaily.multiply(BigDecimal.valueOf(cycleDays))
+                        .divide(factor, 2, RoundingMode.HALF_UP);
+                if (orderRefQty.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal dev = suggest.subtract(orderRefQty).abs()
+                            .divide(orderRefQty, 4, RoundingMode.HALF_UP);
+                    if (dev.compareTo(BigDecimal.valueOf(0.3)) > 0) needsReview = 1;
+                }
+            }
+            if (orderRefQty != null && orderRefQty.compareTo(BigDecimal.ZERO) > 0) {
+                reason.append(needsReview == 1
+                        ? "；您近期每次约订 " + trimNum(orderRefQty) + " 件（差异较大，请核对确认）"
+                        : "；您近期每次约订 " + trimNum(orderRefQty) + " 件");
+            }
+
             SmartOrderItem item = new SmartOrderItem();
             item.setMaterialId(material.getId());
             item.setMaterialName(sum.getMaterialName());
@@ -672,6 +719,8 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             item.setSafetyDays(safetyDays);
             item.setSuggestQty(suggest);
             item.setSupportDays(supportDays);
+            item.setOrderRefQty(orderRefQty);
+            item.setNeedsReview(needsReview);
             item.setReason(reason.toString());
             item.setSortNo(++sortNo);
             items.add(item);
@@ -794,18 +843,44 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         if (!StringUtils.hasText(store.getCangkuid()) || qmToMid.isEmpty()) return map;
         try {
             String inItems = qmToMid.keySet().stream().map(c -> "'" + c + "'").collect(Collectors.joining(","));
-            String sql = "SELECT item_code, COALESCE(SUM(sales_quantity - COALESCE(return_quantity,0)),0) AS total_qty, " +
-                    "COUNT(DISTINCT stat_date) AS days, " +
-                    "COALESCE(unit, MAX(unit) OVER (PARTITION BY item_code)) AS unit " +
+            // 明细级按天取数：识别并剔除"月汇总行"——企迈数据形态为整月汇总写在月初单日
+            // （2026-06-01 行 = 6 月整月、2026-07-01 行 = 7/1~7/23），若被当单日，日均会虚高 20~30 倍
+            String sql = "SELECT item_code, stat_date, unit, " +
+                    "COALESCE(SUM(sales_quantity - COALESCE(return_quantity,0)),0) AS day_qty " +
                     "FROM dwd.store_item_sales WHERE warehouse_code = ? " +
                     "AND stat_date >= ?::date AND stat_date < ?::date AND item_code IN (" + inItems + ") " +
-                    "GROUP BY item_code, unit";
+                    "GROUP BY item_code, stat_date, unit";
             List<Map<String, Object>> rows = pgJdbc.queryForList(sql, store.getCangkuid(), start.toString(), end.toString());
+            // 按 (item_code, unit) 收集逐日值，识别汇总行后聚合
+            Map<String, List<BigDecimal>> dayQtyByKey = new LinkedHashMap<>();
             for (Map<String, Object> row : rows) {
-                String mid = qmToMid.get((String) row.get("item_code"));
+                String key = row.get("item_code") + "|" + row.get("unit");
+                dayQtyByKey.computeIfAbsent(key, k -> new ArrayList<>()).add(toBigDecimal(row.get("day_qty")));
+            }
+            for (Map.Entry<String, List<BigDecimal>> e : dayQtyByKey.entrySet()) {
+                String[] parts = e.getKey().split("\\|", -1);
+                String itemCode = parts[0];
+                String unit = parts.length > 1 ? parts[1] : null;
+                List<BigDecimal> dayQtys = e.getValue();
+                int days = dayQtys.size();
+                BigDecimal total = dayQtys.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                // 汇总行判定：窗口内有 ≥4 个有数据日、单日 ≥ 其余日均×20（正常日销波动远达不到 20 倍）
+                if (days >= 4) {
+                    BigDecimal maxDay = dayQtys.stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+                    BigDecimal restAvg = total.subtract(maxDay)
+                            .divide(BigDecimal.valueOf(days - 1), 4, RoundingMode.HALF_UP);
+                    if (maxDay.compareTo(restAvg.multiply(BigDecimal.valueOf(20))) > 0) {
+                        total = total.subtract(maxDay);
+                        days = days - 1;
+                        log.warn("SMART_ORDER_GEN PG 汇总行剔除 item_code={} window=[{},{}): 单日 {} = 其余日均×{} 以上",
+                                itemCode, start, end, maxDay,
+                                restAvg.compareTo(BigDecimal.ZERO) == 0 ? "∞" : maxDay.divide(restAvg, 1, RoundingMode.HALF_UP));
+                    }
+                }
+                String mid = qmToMid.get(itemCode);
                 if (mid == null) continue;
-                BigDecimal qty = convertToBase(mid, (String) row.get("unit"), toBigDecimal(row.get("total_qty")), ruleMap, convMap);
-                int days = row.get("days") != null ? ((Number) row.get("days")).intValue() : 0;
+                if (days <= 0) continue;
+                BigDecimal qty = convertToBase(mid, unit, total, ruleMap, convMap);
                 PgSales cur = map.get(mid);
                 if (cur == null) map.put(mid, new PgSales(qty, days));
                 else map.put(mid, new PgSales(cur.qty().add(qty), cur.days() + days));
