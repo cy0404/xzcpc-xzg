@@ -1,5 +1,5 @@
-// 切换环境：true=生产 false=本地 'test'=测试域名
-const ENV: 'prod' | 'local' | 'test' = 'test'
+// 切换环境：'prod'=生产 'test'=测试域名 'local'=本地（发版前必须 prod）
+const ENV: 'prod' | 'local' | 'test' = 'prod'
 const LOCAL_URL = 'http://192.168.0.4:30261/storeInventory/api/mp'
 const TEST_URL = 'https://www.xzcpc-9pd.top/test/storeInventory/api/mp'
 const PROD_URL = 'https://www.xzcpc-9pd.top/storeInventory/api/mp'
