@@ -108,10 +108,13 @@ public class GlobalExceptionHandler {
     // 处理未预期的 Exception，返回通用系统错误提示，并异步推送飞书告警
     @ExceptionHandler(Exception.class)
     public R<Void> handleException(Exception e, HttpServletRequest request) {
-        // 客户端断开连接（视频流中断等），降级为 WARN，不推送飞书
+        // 客户端断开连接（视频流中断等），降级为 WARN，不推送飞书。
+        // 此时响应可能已部分提交（如视频流 Content-Type=video/quicktime），再写 JSON body 会触发
+        // HttpMessageNotWritableException（No converter for R with preset Content-Type）二次异常 →
+        // 返回 null 不再写 body，直接结束响应。
         if (isClientDisconnect(e)) {
             log.warn("客户端断开连接 - {} {}", request.getMethod(), request.getRequestURI());
-            return R.fail("系统错误，请稍后重试");
+            return null;
         }
 
         log.error("系统异常 - {} {} → {}: {}",
