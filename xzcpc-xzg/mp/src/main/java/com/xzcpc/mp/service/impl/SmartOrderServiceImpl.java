@@ -1744,7 +1744,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         if (!StringUtils.hasText(declareNo)) return related;
         // 报货单已取消(5)/已驳回(6)：拆单关联与收货入口无意义 → 返回空（顶部状态卡已说明原因）。
         // 2026-09-09 修复：此前取消单下方仍会因物料重叠误挂历史批次采购单的"去收货"（见下方 CG 匹配）
-        if (qmDetail != null && qmDetail.getOrderStatus() != null && qmDetail.getOrderStatus() >= 5) {
+        if (qmDetail != null && qmDetail.getOrderStatus() >= 5) {
             return related;
         }
 
@@ -2396,22 +2396,6 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         return stockMap;
     }
 
-    /** 批量查询总仓成本单价（9.2.13 costPrice，元；与报货单 price 口径实测一致，取首次出现值） */
-    private Map<String, Double> fetchCentralCostPriceMap(List<String> codes) {
-        if (codes == null || codes.isEmpty()) return Map.of();
-        List<String> warehouseNos = parseWarehouseNos(getConfig(CFG_CENTRAL_WAREHOUSE_NO, ""));
-        if (warehouseNos.isEmpty()) return Map.of();
-        Map<String, Double> priceMap = new HashMap<>();
-        for (List<String> batch : partition(warehouseNos, 5)) {
-            for (QmaiClient.WarehouseProductStock s : qmaiClient.getWarehouseProductStock(batch, codes)) {
-                if (StringUtils.hasText(s.getProductCode()) && !priceMap.containsKey(s.getProductCode())) {
-                    priceMap.put(s.getProductCode(), s.getCostPrice());
-                }
-            }
-        }
-        return priceMap;
-    }
-
     /** 下单单位：优先订货单位（order_unit=xinfo usageUnit），其次库存单位（stock_unit），兜底基础单位 */
     private String orderUnitOf(MaterialInventoryRule rule, String baseUnit) {
         if (rule != null && StringUtils.hasText(rule.getOrderUnit())) return rule.getOrderUnit();
@@ -2595,8 +2579,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         boolean success = false;
         String declareNo = null;
         String errorMsg = null;
-        BigDecimal realAmount = null;        // 企迈实时价口径订单金额（下单成功后备写）
-        Map<Long, BigDecimal> realUnitPrice = Map.of(); // 明细单价（企迈实时价口径）
+        BigDecimal realAmount = null; // 订单金额（本地订货价口径，下单成功后备写 suggest_amount）
         List<SmartOrderItem> ordered = items.stream()
                 .filter(it -> qtyMap.getOrDefault(it.getId(), BigDecimal.ZERO).compareTo(BigDecimal.ZERO) > 0)
                 .toList();
@@ -2604,39 +2587,23 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             if (ordered.isEmpty()) {
                 success = true; // 全部数量为 0：本次不订货，直接完成
             } else {
-                // 实时取企迈成本单价（costPrice，与报货单 price 口径一致），以企迈价为准下单；
-                // 查询失败降级本地快照价（不阻塞下单）
-                List<String> codes = ordered.stream().map(SmartOrderItem::getQmCode)
-                        .filter(StringUtils::hasText).distinct().toList();
-                Map<String, Double> fetched = Map.of();
-                if (!codes.isEmpty()) {
-                    try {
-                        fetched = fetchCentralCostPriceMap(codes);
-                    } catch (Exception e) {
-                        log.warn("SMART_ORDER 实时价格查询失败，降级本地快照价 orderId={}: {}", id, e.getMessage());
-                    }
-                }
-                final Map<String, Double> priceMap = fetched;
+                // 单价 = 明细快照价（本地订货价：material_inventory_rule.unit_price × 换算系数，生成时已折算到订货单位）。
+                // 2026-09-09 修订：此前用企迈总仓 costPrice（成本价）覆盖，实测企迈成本价与订货价不符
+                // （如 PP700细吸管 本地 0.05/根 = 10/包，企迈成本 2.6435/包）→ 订单金额按成本价严重偏差；
+                // 订货按本地订货价下单，明细单价即下单单价。
                 String warehouseNo = resolveWarehouseNo(order.getStoreId());
                 List<QmaiClient.DeclareCreateProduct> products = ordered.stream().map(it -> {
                     QmaiClient.DeclareCreateProduct p = new QmaiClient.DeclareCreateProduct();
                     p.setProductCode(it.getQmCode());
                     p.setProductNum(qtyMap.get(it.getId()).doubleValue());
-                    Double realPrice = priceMap.get(it.getQmCode());
-                    p.setPrice(realPrice != null ? BigDecimal.valueOf(realPrice) : it.getUnitPrice());
+                    p.setPrice(it.getUnitPrice());
                     return p;
                 }).toList();
-                // 企迈实时价口径：订单金额与明细单价（下单成功后备写本地，保证两边一致）
+                // 订单金额 = Σ 订货价×数量（本地口径，下单成功后备写 suggest_amount 保持一致）
                 realAmount = products.stream()
                         .map(p -> p.getPrice() != null
                                 ? p.getPrice().multiply(BigDecimal.valueOf(p.getProductNum())) : BigDecimal.ZERO)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
-                Map<Long, BigDecimal> urp = new HashMap<>();
-                for (SmartOrderItem it : ordered) {
-                    Double rp = priceMap.get(it.getQmCode());
-                    urp.put(it.getId(), rp != null ? BigDecimal.valueOf(rp) : it.getUnitPrice());
-                }
-                realUnitPrice = urp;
                 // 企迈创建报货单：onlinePay=1（线上支付）；orderAttribute=1
                 // （实测 orderAttribute=0 会报 160098「单据属性值错误」，=1 成功——该商户单据属性枚举无 0）
                 QmaiClient.DeclareCreateResult result = qmaiClient.createDeclareOrder(
@@ -2658,7 +2625,6 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         final String syncDeclareNo = declareNo;
         final String syncError = errorMsg;
         final BigDecimal syncRealAmount = realAmount;
-        final Map<Long, BigDecimal> syncRealUnitPrice = realUnitPrice;
         transactionTemplate.executeWithoutResult(ts -> {
             SmartOrder update = new SmartOrder();
             update.setId(id);
@@ -2666,20 +2632,13 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 update.setStatus("success");
                 update.setQmaiDeclareNo(syncDeclareNo);
                 update.setSubmitError(null);
-                // 金额/单价同步为企迈实时价口径：订单金额与报货单一致，明细行金额可对上
+                // 金额按本地订货价口径回写（与报货单一致）；明细单价即快照价，无需改动
                 if (syncRealAmount != null) update.setSuggestAmount(syncRealAmount);
             } else {
                 update.setStatus("submit_failed");
                 update.setSubmitError(truncate(syncError, 1000));
             }
             orderMapper.updateById(update);
-            if (syncSuccess) {
-                for (Map.Entry<Long, BigDecimal> e : syncRealUnitPrice.entrySet()) {
-                    itemMapper.update(null, new LambdaUpdateWrapper<SmartOrderItem>()
-                            .eq(SmartOrderItem::getId, e.getKey())
-                            .set(SmartOrderItem::getUnitPrice, e.getValue()));
-                }
-            }
         });
 
         SmartOrder fresh = orderMapper.selectById(id);
