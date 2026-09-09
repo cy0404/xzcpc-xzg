@@ -126,6 +126,8 @@ public class SmartOrderServiceImpl implements SmartOrderService {
     /** PG 销量预测源开关：企迈 PG 销量失真期（2026-09 验证系统性低估 30~40%）默认 0=关闭（只用库存差/订货节奏）；
      *  企迈侧数据修复且按 plan/2026-09-smart-order-source-plan.md 验收达标后置 1 切回 PG 互证。 */
     private static final String CFG_USE_PG = "smart_order_use_pg";
+    /** 理论消耗日均候选源（costcard 域 store_material_consume_daily，销售×成本卡算得） */
+    private static final String CFG_USE_CONSUME = "smart_order_use_consume";
 
     /** 拆单批次：1=首批（周盘提交即触发，库存=实盘）；2=次批（第二订货日自动生成，库存=估算值） */
     private static final int BATCH_1 = 1;
@@ -678,6 +680,29 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             BigDecimal pgDaily = r4Sale.days() > 0
                     ? recent4wQty.divide(BigDecimal.valueOf(r4Sale.days()), 6, RoundingMode.HALF_UP) : null;
 
+            // 理论消耗日均（costcard 域：销售×成本卡展开到 base_qty；开关 smart_order_use_consume）
+            // 近 7 天该店物料 base_qty 有数据日均；数据日 <3 视为缺源（新店/卡未覆盖），null 不参与
+            BigDecimal consumeDaily = null;
+            if ("1".equals(getConfig(CFG_USE_CONSUME, "0")) && StringUtils.hasText(mid)) {
+                try {
+                    List<Map<String, Object>> cr = jdbcTemplate.queryForList(
+                            "SELECT COALESCE(SUM(base_qty),0) AS q, COUNT(DISTINCT stat_date) AS d"
+                                    + " FROM store_material_consume_daily"
+                                    + " WHERE store_id = ? AND material_id = ? AND base_qty IS NOT NULL"
+                                    + " AND stat_date >= (CURDATE() - INTERVAL 7 DAY) AND stat_date < CURDATE()",
+                            store.getId(), mid);
+                    if (!cr.isEmpty()) {
+                        long days = ((Number) cr.get(0).get("d")).longValue();
+                        if (days >= 3) {
+                            BigDecimal q = new BigDecimal(String.valueOf(cr.get(0).get("q")));
+                            consumeDaily = q.divide(BigDecimal.valueOf(days), 6, RoundingMode.HALF_UP);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("SMART_ORDER 理论消耗读取失败 mid={}: {}", mid, e.getMessage());
+                }
+            }
+
             // PG 销量预测源开关（sys_config smart_order_use_pg，默认 0=失真期关闭）。
             // 失真期：PG 销量系统性低估 30~40%（2026-09 全量验证），预测只用库存差/订货节奏；
             // 企迈修复验收达标后置 1：恢复 PG 参与互证（仍以库存差为准，不一致信盘点倒推而非 PG）。
@@ -726,6 +751,16 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 } else {
                     dailyUse = baseDaily;
                 }
+                // 理论消耗互证（smart_order_use_consume=1）：与当前日均偏差 ≤30% 取均值（口径独立收窄）
+                if (consumeDaily != null && consumeDaily.compareTo(BigDecimal.ZERO) > 0 && dailyUse != null) {
+                    BigDecimal maxDaily = dailyUse.max(consumeDaily);
+                    BigDecimal dev = dailyUse.subtract(consumeDaily).abs()
+                            .divide(maxDaily, 4, RoundingMode.HALF_UP);
+                    if (dev.compareTo(BigDecimal.valueOf(0.3)) <= 0) {
+                        dailyUse = dailyUse.add(consumeDaily).divide(BigDecimal.valueOf(2), 6, RoundingMode.HALF_UP);
+                        useMode = "consumeBlend";
+                    }
+                }
             } else if (usePg && lastYearQty.compareTo(BigDecimal.ZERO) > 0) {
                 useMode = "lastYear";
                 BigDecimal lyDailyBase = lastYearQty.divide(BigDecimal.valueOf(Math.max(lySale.days(), 1)), 6, RoundingMode.HALF_UP);
@@ -744,6 +779,10 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             } else if (usePg && recent4wQty.compareTo(BigDecimal.ZERO) > 0) {
                 useMode = "recent4w";
                 dailyUse = pgDaily;
+            } else if ("1".equals(getConfig(CFG_USE_CONSUME, "0")) && consumeDaily != null
+                    && consumeDaily.compareTo(BigDecimal.ZERO) > 0) {
+                useMode = "consumeDaily"; // 无库存差：理论消耗（销售×成本卡）= 真实出货代理
+                dailyUse = consumeDaily;
             } else if (rhythmDaily != null && rhythmDaily.compareTo(BigDecimal.ZERO) > 0) {
                 useMode = "orderRhythm"; // 无库存差（新店/无盘点历史）：店长订货节奏=需求代理
                 dailyUse = rhythmDaily;
@@ -1544,6 +1583,27 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 .max(BigDecimal.valueOf(0.5)).min(BigDecimal.valueOf(7));
     }
 
+    /** "2026-09-09 13:28:13" 或 "2026-09-09T…" → 取前 10 位解析日期；解析失败返回 null */
+    private static LocalDate safeParseDate(String s) {
+        if (s == null || s.length() < 10) return null;
+        try {
+            return LocalDate.parse(s.substring(0, 10));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** CG 采购单号日期（CG+yyyyMMdd+序号）须在报货单日 ±1 天内才算同期采购；不可解析返回 false（不参与匹配） */
+    private static boolean inCgWindow(String bizNo, LocalDate declareDate) {
+        if (!StringUtils.hasText(bizNo) || !bizNo.startsWith("CG") || bizNo.length() < 10) return false;
+        try {
+            LocalDate d = LocalDate.parse(bizNo.substring(2, 10), DateTimeFormatter.ofPattern("yyyyMMdd"));
+            return !d.isBefore(declareDate.minusDays(1)) && !d.isAfter(declareDate.plusDays(1));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** 截止时间：订货日当天 sys_config 配置时刻（仅展示不强制）。
      * 批1 day = 周盘 deadline 日期（= 首个订货日）；批2 day = 第二订货日（生成当天） */
     private LocalDateTime orderDeadline(LocalDate day) {
@@ -1682,6 +1742,11 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         related.put("requireOrders", requireOrders);
         related.put("purchases", purchases);
         if (!StringUtils.hasText(declareNo)) return related;
+        // 报货单已取消(5)/已驳回(6)：拆单关联与收货入口无意义 → 返回空（顶部状态卡已说明原因）。
+        // 2026-09-09 修复：此前取消单下方仍会因物料重叠误挂历史批次采购单的"去收货"（见下方 CG 匹配）
+        if (qmDetail != null && qmDetail.getOrderStatus() != null && qmDetail.getOrderStatus() >= 5) {
+            return related;
+        }
 
         // 报货单明细（物料名/数量/单位/单价/业绩归属 performanceCode=配送中心或供应商）
         List<Map<String, Object>> declareItems = new ArrayList<>();
@@ -1771,7 +1836,13 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 // 明细合并展示，未收货的入库单优先作为收货入口
                 Map<String, List<InboundOrder>> byBizNo = new LinkedHashMap<>();
                 List<InboundOrder> noBiz = new ArrayList<>();
+                // 2026-09-09 修复：CG 采购单仅按 productCode 重叠匹配会误关联历史批次——
+                // 例：9/7 采购单(柠檬/芒果)与 9/9 报货单物料重叠 → 9/9 取消单下方挂出 9/7 的"去收货"。
+                // 采购单生成日 ≈ 报货单日（±1 天），按 CG 单号日期收紧；日期不可解析的行不参与匹配（宁缺勿错）
+                LocalDate declareDate = qmDetail != null && StringUtils.hasText(qmDetail.getCreatedAt())
+                        ? safeParseDate(qmDetail.getCreatedAt()) : null;
                 for (InboundOrder cg : localPurchaseOrders) {
+                    if (declareDate != null && !inCgWindow(cg.getBizNo(), declareDate)) continue;
                     List<InboundOrderItem> cgItems = inboundOrderItemMapper.selectList(
                             new LambdaQueryWrapper<InboundOrderItem>()
                                     .eq(InboundOrderItem::getInboundOrderId, cg.getId()));
