@@ -614,11 +614,10 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             // 下单单位：优先订货单位（order_unit=usageUnit），其次库存单位，兜底基础单位
             String orderUnit = orderUnitOf(rule, baseUnit);
             BigDecimal factor = ConversionFactorUtil.computeConversionFactor(orderUnit, baseUnit, convs);
-            // 单价：rule.unit_price 是基础单位单价；订货按订货单位下单 → 换算为每订货单位单价
-            BigDecimal unitPrice = rule != null ? rule.getUnitPrice() : null;
-            if (unitPrice != null && factor != null) {
-                unitPrice = unitPrice.multiply(factor).setScale(2, RoundingMode.HALF_UP);
-            }
+            // 单价（2026-09-09 业务确认）：按本地「订货单价」下单——优先 rule.order_price
+            //（xinfo standardCostPrice 同步，按订货单位整件口径，如 PP700细吸管 10 元/包）；
+            // order_price 缺失（62/491 物料）时回退 unit_price(基础单位)×换算系数
+            BigDecimal unitPrice = orderUnitPrice(rule, factor);
 
             BigDecimal currentQty = sum.getTotalQty() != null ? sum.getTotalQty() : BigDecimal.ZERO;
             String mid = sum.getMaterialId();
@@ -2155,11 +2154,9 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             String orderUnit = orderUnitOf(rule, baseUnit);
             // 企迈库存单位（qmStock 数值配套）：保持规则表库存单位口径，不随下单单位切换
             String qmUnit = rule != null && StringUtils.hasText(rule.getStockUnit()) ? rule.getStockUnit() : baseUnit;
-            BigDecimal unitPrice = rule != null ? rule.getUnitPrice() : null;
-            if (unitPrice != null) {
-                BigDecimal factor = ConversionFactorUtil.computeConversionFactor(orderUnit, baseUnit, convs);
-                if (factor != null) unitPrice = unitPrice.multiply(factor).setScale(2, RoundingMode.HALF_UP);
-            }
+            BigDecimal factor = ConversionFactorUtil.computeConversionFactor(orderUnit, baseUnit, convs);
+            // 展示/下单单价 = 订货单价优先（order_price），缺失回退 unit_price×换算系数
+            BigDecimal unitPrice = orderUnitPrice(rule, factor);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", m.getId());
             item.put("materialName", m.getMaterialName());
@@ -2245,11 +2242,9 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         String baseUnit = rule != null && StringUtils.hasText(rule.getBaseUnit()) ? rule.getBaseUnit() : "";
         String orderUnit = orderUnitOf(rule, baseUnit);
         String qmUnit = rule != null && StringUtils.hasText(rule.getStockUnit()) ? rule.getStockUnit() : baseUnit;
-        BigDecimal unitPrice = rule != null ? rule.getUnitPrice() : null;
-        if (unitPrice != null) {
-            BigDecimal factor = ConversionFactorUtil.computeConversionFactor(orderUnit, baseUnit, convs);
-            if (factor != null) unitPrice = unitPrice.multiply(factor).setScale(2, RoundingMode.HALF_UP);
-        }
+        BigDecimal factor = ConversionFactorUtil.computeConversionFactor(orderUnit, baseUnit, convs);
+        // 单价 = 订货单价优先（order_price），缺失回退 unit_price×换算系数
+        BigDecimal unitPrice = orderUnitPrice(rule, factor);
 
         SmartOrderItem last = itemMapper.selectOne(new LambdaQueryWrapper<SmartOrderItem>()
                 .eq(SmartOrderItem::getOrderId, id)
@@ -2401,6 +2396,23 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         if (rule != null && StringUtils.hasText(rule.getOrderUnit())) return rule.getOrderUnit();
         if (rule != null && StringUtils.hasText(rule.getStockUnit())) return rule.getStockUnit();
         return baseUnit;
+    }
+
+    /**
+     * 下单单价（订货单位口径）：
+     * ① 优先 rule.order_price —— 订货单价（xinfo standardCostPrice 同步，按订货单位整件口径，
+     *    业务确认以此价下单，2026-09-09；如 PP700细吸管 = 10 元/包）；
+     * ② order_price 缺失（约 62/491 物料）→ 回退 unit_price（基础单位单价）× 换算系数折算到订货单位。
+     */
+    private static BigDecimal orderUnitPrice(MaterialInventoryRule rule, BigDecimal factor) {
+        if (rule != null && rule.getOrderPrice() != null
+                && rule.getOrderPrice().compareTo(BigDecimal.ZERO) > 0) {
+            return rule.getOrderPrice().setScale(2, RoundingMode.HALF_UP);
+        }
+        if (rule == null || rule.getUnitPrice() == null) return null;
+        BigDecimal p = rule.getUnitPrice();
+        if (factor != null) p = p.multiply(factor).setScale(2, RoundingMode.HALF_UP);
+        return p;
     }
 
     /**
