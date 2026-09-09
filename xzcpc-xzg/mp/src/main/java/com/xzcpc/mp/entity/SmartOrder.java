@@ -36,7 +36,13 @@ public class SmartOrder {
     /** 周标签，如 2026-W34 */
     private String weekLabel;
 
-    /** 来源周盘任务ID（每周多个订货日各生成一张建议单，幂等键 uk_store_task） */
+    /** 订货日（1-7，1=周一）：批1=门店第一个订货日（周盘提交日），批2=推导的第二订货日(原订货日+4) */
+    private Integer orderDay;
+
+    /** 批次：1=首批（周盘提交即触发，库存=实盘）；2=次批（第二订货日 9:00 自动生成，库存=估算值） */
+    private Integer batchNo;
+
+    /** 来源周盘任务ID（同周两批共用一个周盘任务；幂等键 uk_store_week_batch = store+week+order_day） */
     private Long taskId;
 
     /** 状态：pending|syncing|success|submit_failed */

@@ -329,7 +329,10 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         int generated = 0, skipped = 0;
         List<String> failed = new ArrayList<>();
         Map<String, StoreInfo> storeMap = storeService.getStoreMap();
-        // 按门店订货周期表：每个订货日 → 盘点日=订货日-1，盘点日在今天则生成（即订货日前一天9点生成任务）
+        // 按门店订货周期表（拆单版 2026-09）：一周一盘 → 只为「首个订货日」生成盘点任务——
+        // order_days 多值（如试点店 '3,7' = 企迈每周两个订货日）时，次批订货日由智能订货按 +4 推导、
+        // 库存走估算，不再二次盘点（plan/2026-09-smart-order-split-plan.md 决策#1/#3）
+        // 盘点日 = 订货日-1，盘点日在今天则生成（即订货日前一天9点生成任务）
         List<StoreOrderCycle> cycles = storeOrderCycleMapper.selectList(
                 new LambdaQueryWrapper<StoreOrderCycle>().orderByAsc(StoreOrderCycle::getId));
         for (StoreOrderCycle cycle : cycles) {
@@ -339,35 +342,34 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
             if (orderDays.isEmpty()) { skipped++; continue; }
             StoreInfo store = storeMap.get(cycle.getStoreId());
             if (store == null) { skipped++; continue; }
-            for (int orderDay : orderDays) {
-                // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；窗口：仅今天（订货日前一天9点生成）
-                LocalDate inventoryDate = weekStart.plusDays(inventoryDayOfOrderDay(orderDay) - 1L);
-                if (!inventoryDate.equals(today)) { skipped++; continue; }
-                // 幂等：同店同周同截止时间（同周多次周盘按 deadline 区分）
-                // 截止 = 订货日当天 05:00（盘点窗口：订货日前一天 9 点生成 ~ 订货日 5 点截止）
-                LocalDateTime deadline = weekStart.plusDays(orderDay - 1L).atTime(5, 0, 0);
-                Long dup = taskMapper.selectCount(new LambdaQueryWrapper<Task>()
-                        .eq(Task::getStoreId, store.getId())
-                        .eq(Task::getTaskType, "weekly")
-                        .eq(Task::getTaskWeek, taskWeek)
-                        .eq(Task::getDeadline, deadline)
-                        .in(Task::getStatus, "not_started", "in_progress", "overdue"));
-                if (dup != null && dup > 0) { skipped++; continue; }
-                try {
-                    TaskCreateRequest req = new TaskCreateRequest();
-                    // 任务名带盘点日，同周多次可辨认
-                    req.setTaskName(taskName + "·" + WEEK_DAY_NAMES[inventoryDayOfOrderDay(orderDay)]);
-                    req.setTaskType("weekly");
-                    req.setTaskWeek(taskWeek);
-                    req.setOrderDay(orderDay);
-                    req.setStoreIds(List.of(store.getId()));
-                    req.setTemplateId(template.getId());
-                    batchCreate(req);
-                    generated++;
-                } catch (Exception e) {
-                    log.warn("WEEKLY_GEN 门店生成失败 storeId={} orderDay={}: {}", store.getId(), orderDay, e.getMessage());
-                    failed.add(store.getId());
-                }
+            int orderDay = orderDays.get(0); // 拆单后仅首个订货日需盘点
+            // 盘点日 = 订货日前一天（周一订货 → 上周日盘点）；窗口：仅今天（订货日前一天9点生成）
+            LocalDate inventoryDate = weekStart.plusDays(inventoryDayOfOrderDay(orderDay) - 1L);
+            if (!inventoryDate.equals(today)) { skipped++; continue; }
+            // 幂等：同店同周同截止时间（同周多次周盘按 deadline 区分）
+            // 截止 = 订货日当天 05:00（盘点窗口：订货日前一天 9 点生成 ~ 订货日 5 点截止）
+            LocalDateTime deadline = weekStart.plusDays(orderDay - 1L).atTime(5, 0, 0);
+            Long dup = taskMapper.selectCount(new LambdaQueryWrapper<Task>()
+                    .eq(Task::getStoreId, store.getId())
+                    .eq(Task::getTaskType, "weekly")
+                    .eq(Task::getTaskWeek, taskWeek)
+                    .eq(Task::getDeadline, deadline)
+                    .in(Task::getStatus, "not_started", "in_progress", "overdue"));
+            if (dup != null && dup > 0) { skipped++; continue; }
+            try {
+                TaskCreateRequest req = new TaskCreateRequest();
+                // 任务名带盘点日
+                req.setTaskName(taskName + "·" + WEEK_DAY_NAMES[inventoryDayOfOrderDay(orderDay)]);
+                req.setTaskType("weekly");
+                req.setTaskWeek(taskWeek);
+                req.setOrderDay(orderDay);
+                req.setStoreIds(List.of(store.getId()));
+                req.setTemplateId(template.getId());
+                batchCreate(req);
+                generated++;
+            } catch (Exception e) {
+                log.warn("WEEKLY_GEN 门店生成失败 storeId={} orderDay={}: {}", store.getId(), orderDay, e.getMessage());
+                failed.add(store.getId());
             }
         }
         log.info("WEEKLY_GEN done: taskWeek={} generated={} skipped={} failed={}", taskWeek, generated, skipped, failed);

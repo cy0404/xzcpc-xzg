@@ -13,8 +13,11 @@ import java.util.Map;
 /** P1+P2B: 智能订货服务 */
 public interface SmartOrderService {
 
-    /** 为全部门店生成本周建议订货单（每日定时扫描：仅本周周盘已提交的门店生成），返回 {generated, skipped, failedStores} */
+    /** 为全部门店生成本周第 1 批建议订货单（每日 3:00 定时扫描：仅本周周盘已提交的门店生成），返回 {generated, skipped, failedStores} */
     Map<String, Object> generateAll();
+
+    /** 为全部门店生成第 2 批建议订货单（拆单：第二订货日 9:00 job 调用，仅当今天是本店第二订货日时生成），返回 {generated, skipped, failedStores} */
+    Map<String, Object> generateSecondBatchAll();
 
     /** 周盘任务提交后补触发：以该已提交任务为物料池生成建议单（幂等），返回是否新建 */
     boolean generateByWeeklyTask(Integer taskId);

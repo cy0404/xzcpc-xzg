@@ -125,6 +125,13 @@ public class SmartOrderServiceImpl implements SmartOrderService {
      *  企迈侧数据修复且按 plan/2026-09-smart-order-source-plan.md 验收达标后置 1 切回 PG 互证。 */
     private static final String CFG_USE_PG = "smart_order_use_pg";
 
+    /** 拆单批次：1=首批（周盘提交即触发，库存=实盘）；2=次批（第二订货日 9:00 自动生成，库存=估算值） */
+    private static final int BATCH_1 = 1;
+    private static final int BATCH_2 = 2;
+    /** 首批/次批覆盖销售天数（7 天周期拆 4+3，orderDay2 = orderDay1 + 4；plan v0.2 决策#3） */
+    private static final int BATCH_1_CYCLE_DAYS = 4;
+    private static final int BATCH_2_CYCLE_DAYS = 3;
+
     // ==================== 生成 ====================
 
     @Override
@@ -137,7 +144,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             if (!StringUtils.hasText(s.getOrderDays())) { skipped++; continue; }
             if (s.getWeeklyPaused() != null && s.getWeeklyPaused() == 1) { skipped++; continue; }
             try {
-                if (generateForStore(s)) generated++;
+                if (generateForStore(s, BATCH_1)) generated++;
                 else skipped++;
             } catch (Exception e) {
                 log.error("SMART_ORDER_GEN 门店生成失败 storeId={}: {}", s.getId(), e.getMessage(), e);
@@ -152,10 +159,14 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         return result;
     }
 
-    /** 为单门店生成建议单（每日扫描用）：本周周盘任务已提交才生成（先盘后订，决策#8），返回是否新建。 */
-    private boolean generateForStore(StoreInfo store) {
+    /**
+     * 为单门店生成某批建议单（每日扫描用）：本周周盘任务已提交才生成（先盘后订，决策#8），返回是否新建。
+     * 批1=周盘提交后的首个订货日（现有 3:00 job / 提交补触发）；批2=第二订货日 9:00 job（generateSecondBatchAll）触发。
+     */
+    private boolean generateForStore(StoreInfo store, int batchNo) {
         LocalDate today = LocalDate.now();
-        // 本周周盘任务（与 TaskServiceImpl.autoGenerateWeekly 同口径 ISO_WEEK_FMT）
+        // 本周周盘任务（与 TaskServiceImpl.autoGenerateWeekly 同口径 ISO_WEEK_FMT；
+        // 拆单后一周一盘 → 全周唯一提交过的周盘任务即本周盘点）
         String taskWeek = ISO_WEEK_FMT.format(today);
         Task weekly = taskMapper.selectOne(new LambdaQueryWrapper<Task>()
                 .eq(Task::getStoreId, store.getId())
@@ -165,19 +176,50 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 .orderByDesc(Task::getSubmittedAt)
                 .last("LIMIT 1"));
         if (weekly == null) {
-            log.info("SMART_ORDER_GEN storeId={} 本周周盘未提交，跳过生成", store.getId());
+            log.info("SMART_ORDER_GEN storeId={} batch={} 本周周盘未提交，跳过生成", store.getId(), batchNo);
             return false;
         }
         List<TaskMaterialSummary> summaries = summaryMapper.selectList(
                 new LambdaQueryWrapper<TaskMaterialSummary>().eq(TaskMaterialSummary::getTaskId, weekly.getId()));
         if (summaries.isEmpty()) {
-            log.info("SMART_ORDER_GEN storeId={} 本周周盘无盘点物料，跳过生成", store.getId());
+            log.info("SMART_ORDER_GEN storeId={} batch={} 本周周盘无盘点物料，跳过生成", store.getId(), batchNo);
             return false;
         }
-        return buildOrder(store, weekly, summaries);
+        return buildOrder(store, weekly, summaries, batchNo);
     }
 
-    /** 周盘任务提交后补触发（afterCommit 调用）：直接以已提交任务为物料池生成，返回是否新建。 */
+    /**
+     * 批2 全店扫描（第二订货日 9:00 job 调用）：仅在「今天是本店推导的第二订货日」时生成。
+     * 第二订货日 = (首个订货日 + 3) % 7 + 1（7 天周期拆 4+3；试点店 order_days='3,7' → 周三订 → 周日订）。
+     */
+    @Override
+    public Map<String, Object> generateSecondBatchAll() {
+        List<StoreInfo> stores = storeService.getAllStores();
+        int generated = 0, skipped = 0;
+        List<String> failedStores = new ArrayList<>();
+        int today = LocalDate.now().getDayOfWeek().getValue(); // 1=周一 … 7=周日（与 order_days 同制）
+        for (StoreInfo s : stores) {
+            // 未配置订货周期（store_order_cycle 无记录）或暂停周盘的门店不参与
+            if (!StringUtils.hasText(s.getOrderDays())) { skipped++; continue; }
+            if (s.getWeeklyPaused() != null && s.getWeeklyPaused() == 1) { skipped++; continue; }
+            if (secondOrderDayOf(s) != today) { skipped++; continue; }
+            try {
+                if (generateForStore(s, BATCH_2)) generated++;
+                else skipped++;
+            } catch (Exception e) {
+                log.error("SMART_ORDER_GEN 批2门店生成失败 storeId={}: {}", s.getId(), e.getMessage(), e);
+                failedStores.add(s.getId());
+            }
+        }
+        log.info("SMART_ORDER_GEN 批2 done: generated={} skipped={} failed={}", generated, skipped, failedStores.size());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("generated", generated);
+        result.put("skipped", skipped);
+        result.put("failedStores", failedStores);
+        return result;
+    }
+
+    /** 周盘任务提交后补触发（afterCommit 调用）：直接以已提交任务为物料池生成批1，返回是否新建。 */
     @Override
     public boolean generateByWeeklyTask(Integer taskId) {
         Task task = taskMapper.selectById(taskId);
@@ -197,7 +239,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             log.info("SMART_ORDER_GEN taskId={} 周盘无盘点物料，跳过生成", taskId);
             return false;
         }
-        return buildOrder(store, task, summaries);
+        return buildOrder(store, task, summaries, BATCH_1);
     }
 
     /**
@@ -228,7 +270,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         // ① 模拟生成：与正式生成同款计算（computeItems 不落库），weekStart 作为生成基准日；
         //    predictOut 收集每个物料（含未入单）的预测上下文，用于日均预测 vs 日均实际对比
         Map<String, Map<String, Object>> predictOut = new HashMap<>();
-        List<SmartOrderItem> items = computeItems(store, task, summaries, weekStart, predictOut);
+        List<SmartOrderItem> items = computeItems(store, task, summaries, weekStart, 0, predictOut);
         Map<Long, SmartOrderItem> itemByMid = items.stream()
                 .collect(Collectors.toMap(SmartOrderItem::getMaterialId, i -> i, (a, b) -> a));
 
@@ -368,44 +410,78 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         return result;
     }
 
-    /** 核心生成引擎：以周盘任务快照为物料池 + 当前库存，按预测公式生成建议单，返回是否新建。 */
-    private boolean buildOrder(StoreInfo store, Task current, List<TaskMaterialSummary> curSummaries) {
+    /**
+     * 核心生成引擎：以周盘任务快照为物料池 + 当前库存，按预测公式生成某批建议单，返回是否新建。
+     * 批1=首个订货日（周盘 deadline 当天）；批2=第二订货日（orderDay2 = orderDay1 + 4，当周推导）。
+     */
+    private boolean buildOrder(StoreInfo store, Task current, List<TaskMaterialSummary> curSummaries, int batchNo) {
         LocalDate today = LocalDate.now();
         LocalDate weekStart = today.with(DayOfWeek.MONDAY);
+        int orderDay = batchNo == BATCH_2 ? secondOrderDayOf(store) : firstOrderDayOf(store);
 
-        // 幂等：该周盘任务已生成过建议单则跳过（UNIQUE KEY uk_store_task 兜底并发）；
-        // 每周多个订货日 → 每个周盘任务各生成一张，互不干扰
+        // 幂等：同店同周盘任务同订货日已生成过则跳过（UNIQUE KEY uk_store_week_batch 兜底并发）；
+        // 批1 与批2 orderDay 不同 → 同周可生成两张单
         Long existing = orderMapper.selectCount(new LambdaQueryWrapper<SmartOrder>()
                 .eq(SmartOrder::getStoreId, store.getId())
-                .eq(SmartOrder::getTaskId, current.getId()));
-        if (existing != null && existing > 0) return false;
-
-        List<SmartOrderItem> items = computeItems(store, current, curSummaries, weekStart, null);
-        if (items.isEmpty()) {
-            log.info("SMART_ORDER_GEN storeId={} 无需要补货的物料，跳过生成", store.getId());
+                .eq(SmartOrder::getTaskId, current.getId())
+                .eq(SmartOrder::getOrderDay, orderDay));
+        if (existing != null && existing > 0) {
+            log.info("SMART_ORDER_GEN storeId={} taskId={} batch={} 该订货日已生成过，跳过", store.getId(), current.getId(), batchNo);
             return false;
         }
-        return persistOrder(store, weekStart, items, current.getId().longValue(), current.getDeadline());
+
+        List<SmartOrderItem> items = computeItems(store, current, curSummaries, weekStart, batchNo, null);
+        if (items.isEmpty()) {
+            log.info("SMART_ORDER_GEN storeId={} batch={} 无需要补货的物料，跳过生成", store.getId(), batchNo);
+            return false;
+        }
+        // 截止日：批1 = 周盘 deadline 当天（订货日）；批2 = 生成当天（第二订货日）
+        LocalDate deadlineDate = batchNo == BATCH_2 ? today
+                : (current.getDeadline() != null ? current.getDeadline().toLocalDate() : weekStart);
+        LocalDate countDate = current.getSubmittedAt() != null ? current.getSubmittedAt().toLocalDate() : null;
+        return persistOrder(store, weekStart, items, current.getId().longValue(), deadlineDate,
+                batchNo, orderDay, countDate);
+    }
+
+    /** 首个订货日 = store_order_cycle.order_days 首值（1=周一…7=周日；拆单后仅首个订货日盘点/首批下单） */
+    private static int firstOrderDayOf(StoreInfo store) {
+        if (StringUtils.hasText(store.getOrderDays())) {
+            try {
+                int d = Integer.parseInt(store.getOrderDays().split(",")[0].trim());
+                if (d >= 1 && d <= 7) return d;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        throw new BusinessException("门店未配置订货周期（order_days），无法拆单");
+    }
+
+    /** 第二订货日 = 首个订货日 + 4 天（7 天周期拆 4+3，试点店 3 → 7 周日）；跨周回绕用 (d+3)%7+1 */
+    private static int secondOrderDayOf(StoreInfo store) {
+        return (firstOrderDayOf(store) + 3) % 7 + 1;
     }
 
     /**
      * 预测计算核心（不落库）：以任务快照为物料池 + 当前库存，按预测公式计算建议明细。
      * weekStart 决定全部预测窗口（损耗近4周 / PG 近4周·去年同周 / 在途），回测时传历史周模拟"当时生成"。
+     * batchNo：0=回测/整周口径（cycleDays 走 sys_config）；1=批1（4 天量）；2=批2（3 天量，库存基准=估算值）。
      * predictOut 非空时（回测），把每个物料的预测上下文（dailyUse/useMode/demand/base 等，含未入单物料）写入，
      * 供回测对比预测日均 vs 实际日均。
      */
     private List<SmartOrderItem> computeItems(StoreInfo store, Task current, List<TaskMaterialSummary> curSummaries,
-                                              LocalDate weekStart,
+                                              LocalDate weekStart, int batchNo,
                                               Map<String, Map<String, Object>> predictOut) {
         // 库存差法降级所需：上一次已提交盘点任务（周盘或月度均可）。
         // 按「生成基准时刻」过滤：正式生成 = 当前任务提交时刻；回测 = 模拟生成日 weekStart。
-        // 不加过滤时回测会被 weekStart 之后提交的任务污染（如 8/7 测试任务抢走 7/31 月盘的 prev 位）。
+        // 不加过滤时回测会被 weekStart 之后提交的任务污染（如 8/7 测试任务抢走 7/31 月盘的 prev 位）；
+        // 回测传"已提交任务"作物料池时（如 8/31 月盘模拟 9/7 生成），prev 不能选到 current 自己——
+        // 否则 daysBetween=0、库存差不可用，回测永远落 PG 链（2026-09 修复，验证三源融合的前提）
         LocalDateTime prevBefore = predictOut != null
                 ? weekStart.atStartOfDay()
                 : (current.getSubmittedAt() != null ? current.getSubmittedAt() : LocalDateTime.now());
         Task prev = taskMapper.selectOne(new LambdaQueryWrapper<Task>()
                 .eq(Task::getStoreId, store.getId())
                 .eq(Task::getStatus, "submitted")
+                .ne(current.getId() != null, Task::getId, current.getId())
                 .lt(Task::getSubmittedAt, prevBefore)
                 .orderByDesc(Task::getSubmittedAt)
                 .last("LIMIT 1"));
@@ -451,9 +527,19 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             if (days > 0) daysBetween = BigDecimal.valueOf(days);
         }
 
-        int cycleDays = parseInt(getConfig(CFG_CYCLE_DAYS, "7"), 7);
-        int safetyDays = parseInt(getConfig(CFG_SAFETY_DAYS, "3"), 3);
+        // 覆盖销售天数（拆单 v0.2）：批1=4 天（订货日→下一订货日-1），批2=3 天（第二订货日→下周盘点前）；
+        // 回测（batchNo=0）保持整周口径走 sys_config
+        int cycleDays;
+        if (batchNo == BATCH_1) cycleDays = BATCH_1_CYCLE_DAYS;
+        else if (batchNo == BATCH_2) cycleDays = BATCH_2_CYCLE_DAYS;
+        else cycleDays = parseInt(getConfig(CFG_CYCLE_DAYS, "7"), 7);
+        int safetyDays = parseInt(getConfig(CFG_SAFETY_DAYS, "1"), 1);
         BigDecimal defaultDailyUse = new BigDecimal(getConfig(CFG_DEFAULT_DAILY_USE, "0.5"));
+
+        // 拆单批2 估算库存（无实盘）懒加载：盘点提交后已送达订货量（PG），首次用到才拉取
+        Map<String, BigDecimal> deliveredAfterCountMap = null; // null = 尚未尝试
+        boolean deliveredFailed = false;
+        LocalDateTime nowTs = LocalDateTime.now();
 
         List<SmartOrderItem> items = new ArrayList<>();
         int sortNo = 0;
@@ -643,10 +729,31 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                     : selfPurchaseMap.getOrDefault(mk, BigDecimal.ZERO)
                             .multiply(halfTransfers ? halfScale : periodScale);         // 周期内自购(−)
 
-            // ① 预计消耗（含安全库存）② 修正 ③ 基础建议量：max(0, 预测 + 损耗 ± 调货 ± 还货 − 库存 − 在途 − 自购)
+            // 拆单批2（无实盘）：库存基准 = 估算值 = 盘点数 + 盘点后已送达订货(真实) − 日均×已过天数(预估)
+            // 误差方向自保护（plan v0.2 §3.4）：实际消耗快 → 估算偏低 → 订多 → 安全；慢 → 订少但架上货多，
+            // 下周二实盘拉回。批1/回测 = 实盘数原样
+            BigDecimal inventoryQty = currentQty;
+            if (batchNo == BATCH_2) {
+                if (deliveredAfterCountMap == null && !deliveredFailed) {
+                    try {
+                        deliveredAfterCountMap = deliveredAfterCount(store, current, nowTs, materialMap, ruleMap, convMap);
+                    } catch (Exception e) {
+                        log.warn("SMART_ORDER_GEN storeId={} 批2盘点后到货拉取失败，按无到货估算: {}", store.getId(), e.getMessage());
+                        deliveredFailed = true;
+                        deliveredAfterCountMap = Map.of();
+                    }
+                }
+                BigDecimal arrived = deliveredAfterCountMap.getOrDefault(mid, BigDecimal.ZERO);
+                BigDecimal elapsed = elapsedDaysOf(current.getSubmittedAt(), nowTs);
+                BigDecimal estimate = currentQty.add(arrived).subtract(dailyUse.multiply(elapsed));
+                if (estimate.compareTo(BigDecimal.ZERO) < 0) estimate = BigDecimal.ZERO; // 不因负估算把订单顶过整窗需求
+                inventoryQty = estimate;
+            }
+
+            // ① 预计消耗（含安全库存）② 修正 ③ 基础建议量：max(0, 预测 + 损耗 ± 调货 ± 还货 − 库存(批2=估算) − 在途 − 自购)
             BigDecimal demand = dailyUse.multiply(BigDecimal.valueOf(cycleDays + safetyDays));
             BigDecimal base = demand.add(lossQty).add(transferQty).add(returnQty)
-                    .subtract(currentQty).subtract(inTransitQty).subtract(selfPurchaseQty);
+                    .subtract(inventoryQty).subtract(inTransitQty).subtract(selfPurchaseQty);
             Map<String, Object> trace = null;
             if (predictOut != null) {
                 trace = new HashMap<>();
@@ -677,7 +784,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             }
 
             BigDecimal supportDays = dailyUse.compareTo(BigDecimal.ZERO) > 0
-                    ? currentQty.divide(dailyUse, 1, RoundingMode.HALF_UP) : null;
+                    ? inventoryQty.divide(dailyUse, 1, RoundingMode.HALF_UP) : null;
 
             StringBuilder reason = new StringBuilder();
             if ("lastYear".equals(useMode)) {
@@ -702,13 +809,19 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             if (inTransitQty.compareTo(BigDecimal.ZERO) != 0) reason.append("，在途 −").append(trimNum(inTransitQty.abs()));
             if (selfPurchaseQty.compareTo(BigDecimal.ZERO) != 0) reason.append("，自购 −").append(trimNum(selfPurchaseQty));
             if (unitConverted) reason.append(" · 按订货单位换算并向上取整");
+            // 批2 库存是估算值（非实盘），明细标注供店长知情（plan v0.2 决策#4/#F）
+            if (batchNo == BATCH_2 && current.getSubmittedAt() != null) {
+                LocalDate cd = current.getSubmittedAt().toLocalDate();
+                reason.append("；库存为估算值（基于 ").append(cd.getMonthValue()).append("月")
+                        .append(cd.getDayOfMonth()).append("日 盘点）");
+            }
 
             // 店长意图对照（2026-09）：近90天订货节奏折算"单次订货量"（订货单位），与系统建议对比。
             // 偏差 >30% → needs_review=1：前端提示"系统建议 X，您近期每次约订 Y（差异较大请确认）"。
             // 交互原则：店长确认时以店长修改为准（感觉纠正系统）；未修改则按系统建议下单（系统兜住感觉）
+            // （rhythmDaily 已在三源融合段声明，此处复用）
             BigDecimal orderRefQty = null;
             int needsReview = 0;
-            BigDecimal rhythmDaily = orderRhythmDaily != null ? orderRhythmDaily.get(mid) : null;
             if (rhythmDaily != null && rhythmDaily.compareTo(BigDecimal.ZERO) > 0
                     && factor != null && factor.compareTo(BigDecimal.ZERO) > 0) {
                 // 订货节奏日均 × 订货周期 = 单次订货量（基础单位）→ ÷factor 转订货单位
@@ -737,7 +850,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             item.setQmStockUnit(rule != null && StringUtils.hasText(rule.getStockUnit()) ? rule.getStockUnit() : baseUnit);
             item.setBaseUnit(baseUnit);
             item.setUnitPrice(unitPrice);
-            item.setCurrentInventory(currentQty);
+            item.setCurrentInventory(inventoryQty); // 批1=实盘数；批2=估算值（估算日期见 reason 标注）
             item.setDailyUse(dailyUse);
             item.setLastYearQty(lastYearQty.compareTo(BigDecimal.ZERO) > 0 ? lastYearQty : null);
             item.setTrendFactor(trendFactor);
@@ -764,9 +877,10 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         return items;
     }
 
-    /** 落库：插入建议单 + 明细（事务内），返回是否新建 */
+    /** 落库：插入建议单 + 明细（事务内），返回是否新建；拆单后标注批次与订货日 */
     private boolean persistOrder(StoreInfo store, LocalDate weekStart, List<SmartOrderItem> items,
-                                 Long taskId, LocalDateTime taskDeadline) {
+                                 Long taskId, LocalDate deadlineDate, int batchNo, int orderDay,
+                                 LocalDate countDate) {
         BigDecimal totalQty = items.stream().map(SmartOrderItem::getSuggestQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal amount = items.stream()
@@ -781,12 +895,14 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         order.setStoreName(store.getMendianmingcheng());
         order.setWeekStartDate(weekStart);
         order.setWeekLabel(weekStart.get(wf.weekBasedYear()) + "-W" + weekStart.get(wf.weekOfWeekBasedYear()));
+        order.setOrderDay(orderDay);
+        order.setBatchNo(batchNo);
         order.setTaskId(taskId);
         order.setStatus("pending");
         order.setItemCount(items.size());
         order.setTotalQty(totalQty);
         order.setSuggestAmount(amount);
-        order.setDeadline(orderDeadline(taskDeadline, weekStart));
+        order.setDeadline(orderDeadline(deadlineDate));
         order.setGeneratedAt(LocalDateTime.now());
         order.setSyncAttempts(0);
 
@@ -799,18 +915,24 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 }
             });
         } catch (DuplicateKeyException e) {
-            log.info("SMART_ORDER_GEN storeId={} taskId={} 建议单已存在（并发防重），跳过", store.getId(), taskId);
+            log.info("SMART_ORDER_GEN storeId={} taskId={} batch={} 建议单已存在（并发防重），跳过",
+                    store.getId(), taskId, batchNo);
             return false;
         }
-        log.info("SMART_ORDER_GEN storeId={} 生成建议单 {} 品项={} 数量={} 金额={}",
-                store.getId(), order.getBizCode(), items.size(), totalQty, amount);
+        log.info("SMART_ORDER_GEN storeId={} 生成建议单 第{}批 orderDay={} {} 品项={} 数量={} 金额={}",
+                store.getId(), batchNo, orderDay, order.getBizCode(), items.size(), totalQty, amount);
 
-        // 订阅消息：建议单生成（凌晨3点 job / 周盘提交补触发都走 persistOrder）→ 通知该店店长确认
+        // 订阅消息：建议单生成（批1=3:00 job/周盘提交补触发，批2=第二订货日9:00 job）→ 通知该店店长确认
+        String countLabel = countDate != null
+                ? countDate.getMonthValue() + "月" + countDate.getDayOfMonth() + "日" : "";
+        String title = batchNo == BATCH_2
+                ? "【订货】本周第 2 批订货单已生成（库存为估算值）"
+                : "【订货】本周第 1 批订货单已生成";
+        String content = batchNo == BATCH_2
+                ? "第 2 批库存按估算值计算（基于 " + countLabel + " 盘点），请核对后确认"
+                : "请查看本周第 1 批建议订货单并确认";
         notificationService.enqueueToStoreManagers(order.getStoreId(), "ORDER_CONFIRM",
-                "【订货】本周订货单已生成",
-                "请查看本周建议订货单并确认",
-                String.valueOf(order.getId()),
-                null);
+                title, content, String.valueOf(order.getId()), null);
         return true;
     }
 
@@ -1319,10 +1441,55 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         return total;
     }
 
-    /** 截止时间：订货日当天 sys_config 配置时刻（仅展示不强制）；任务无 deadline 时回退周初
-     * 周盘任务 deadline = 订货日当天 05:00，其日期即订货日 */
-    private LocalDateTime orderDeadline(LocalDateTime taskDeadline, LocalDate weekStart) {
-        LocalDate day = taskDeadline != null ? taskDeadline.toLocalDate() : weekStart;
+    /**
+     * 批2 估算库存用：盘点提交后已送达的订货量（PG dwd.purchase_order 已送达/已完成，
+     * order_time ∈ (盘点提交时刻, 现在]，key = mid → 基础单位）。
+     * 当前 PG 仅同步终态行 → 未送达订单不在结果中（=在途，由在途扣减处理）；
+     * 典型场景：批1 周三订货 → 周五送达 → 周日批2 估算「盘点数 + 期间到货 − 预估消耗」时把批1 加回。
+     */
+    private Map<String, BigDecimal> deliveredAfterCount(StoreInfo store, Task current, LocalDateTime endTs,
+                                                        Map<String, Material> materialMap,
+                                                        Map<String, MaterialInventoryRule> ruleMap,
+                                                        Map<String, List<MaterialConversionRule>> convMap) {
+        Map<String, BigDecimal> map = new HashMap<>();
+        LocalDateTime fromTs = current.getSubmittedAt();
+        Map<String, String> qmToMid = buildQmToMid(materialMap);
+        if (fromTs == null || !StringUtils.hasText(store.getCangkuid()) || qmToMid.isEmpty()) return map;
+        try {
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            String inItems = qmToMid.keySet().stream().map(c -> "'" + c + "'").collect(Collectors.joining(","));
+            String sql = "SELECT item_code, COALESCE(SUM(shipping_quantity),0) AS total_qty, " +
+                    "COALESCE(unit, MAX(unit) OVER (PARTITION BY item_code)) AS unit " +
+                    "FROM dwd.purchase_order WHERE warehouse_code = ? AND order_status IN ('已送达','已完成') " +
+                    "AND order_time > ?::timestamp AND order_time <= ?::timestamp AND item_code IN (" + inItems + ") " +
+                    "GROUP BY item_code, unit";
+            List<Map<String, Object>> rows = pgJdbc.queryForList(sql, store.getCangkuid(),
+                    fromTs.format(fmt), endTs.format(fmt));
+            for (Map<String, Object> row : rows) {
+                String mid = qmToMid.get((String) row.get("item_code"));
+                if (mid == null) continue;
+                BigDecimal qty = convertToBase(mid, (String) row.get("unit"),
+                        toBigDecimal(row.get("total_qty")), ruleMap, convMap);
+                if (qty.compareTo(BigDecimal.ZERO) > 0) map.merge(mid, qty, BigDecimal::add);
+            }
+        } catch (Exception e) {
+            log.warn("SMART_ORDER_GEN 批2盘点后到货查询失败 storeId={}: {}", store.getId(), e.getMessage());
+        }
+        return map;
+    }
+
+    /** 盘点提交到现在的天数（小数，批2 预估消耗 = 日均 × 已过天数）；提交时间缺失/异常按 1 天兜底 */
+    private static BigDecimal elapsedDaysOf(LocalDateTime from, LocalDateTime now) {
+        if (from == null) return BigDecimal.ONE;
+        long minutes = ChronoUnit.MINUTES.between(from, now);
+        if (minutes <= 0) return BigDecimal.ONE;
+        return BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(1440), 1, RoundingMode.HALF_UP)
+                .max(BigDecimal.valueOf(0.5)).min(BigDecimal.valueOf(7));
+    }
+
+    /** 截止时间：订货日当天 sys_config 配置时刻（仅展示不强制）。
+     * 批1 day = 周盘 deadline 日期（= 首个订货日）；批2 day = 第二订货日（生成当天） */
+    private LocalDateTime orderDeadline(LocalDate day) {
         String time = getConfig(CFG_DEADLINE_TIME, "18:00:00");
         try {
             return LocalDateTime.of(day, LocalTime.parse(time));

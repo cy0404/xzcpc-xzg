@@ -43,6 +43,14 @@ public class SmartOrderController {
         return R.ok(smartOrderService.generateAll());
     }
 
+    /** 手动触发批2（第二订货日 9:00 job 同款逻辑）：仅当今天是本店第二订货日时生成；联调/补生成用 */
+    @OpLog(module = "小程序-智能订货", operation = "手动生成第2批建议订货单")
+    @PostMapping("/generate-second")
+    public R<Map<String, Object>> generateSecond() {
+        assertNotStaff();
+        return R.ok(smartOrderService.generateSecondBatchAll());
+    }
+
     /** 按已提交周盘任务生成（周盘提交后补触发同款逻辑）：以任务的门店和物料池为准，不依赖登录用户绑定门店 */
     @OpLog(module = "小程序-智能订货", operation = "按任务生成建议订货单")
     @PostMapping("/generate-by-task/{taskId}")
