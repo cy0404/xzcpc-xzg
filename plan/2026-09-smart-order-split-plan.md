@@ -13,7 +13,7 @@
 |---|------|------|
 | 1 | 盘点频率 | **每周一次**：只数剩余数量（各店盘点日按现有订货周期，部分门店订货当天盘点——盘点任务保持现逻辑：订货日前一天 9:00 生成 ~ 订货日 5:00 截止，店在窗口内完成即可） |
 | 2 | 订货时机 | **当天盘点当天订**：第一单 = 周盘提交即触发（现有逻辑已支持，盘点日差异不影响） |
-| 3 | 订货拆分 | 每周 **2 批**：第二订货日 **按各店现有订货周期推导 = 原订货日 + 4 天**（7 天周期拆 4+3：首批覆盖 4 天、次批覆盖 3 天）；`order_days` 存储保持单值不改双（避免自动生成两次盘点任务） |
+| 3 | 订货拆分 | 每周 **2 批**：第二订货日 = `order_days` **第二值**（试点 '3,7' → 周日；**按各店实际订货周期拆**），单值店无第二值才推导 +4；覆盖天数按两订货日**实际间隔**切分（gap / 7−gap，不写死 4+3：'3,7' → 批1 4 天+批2 3 天；若某店 '1,4' → 批1 3 天+批2 4 天）；盘点任务只按首值生成一次（一周一盘） |
 | 4 | 第二单库存 | **无实盘**：用"上次盘点 + 期间已到货 − 预估消耗"估算，明细标注"库存为估算值（基于 X 月 X 日盘点）" |
 | 5 | 第二单生成 | **第二个订货日早上 9:00 自动生成**并推送店长确认（ORDER_CONFIRM 通知链路） |
 | 6 | 安全库存 | **safetyDays = 1**（sys_config 调整，配送快 + 补货间隔短） |
@@ -108,15 +108,16 @@
 |---|------|------|------|------|
 | A | `smart_order` 唯一约束 | 删 `uk_store_week`/`uk_store_task`，新增 `uk_store_week_batch (store_id, week_start_date, order_day)` + 加列 order_day/batch_no | 一周两张单的前提；migration 已出（`database/migration-smart-order-split.sql`，含 G） | ✅ 2026-09-09 |
 | B | `TaskServiceImpl.autoGenerateWeekly` | **仅首个订货日生成一次盘点任务**（一周一盘） | ⚠️ 方案原假设"order_days 单值、现状已满足"，**实测试点 4 店 order_days 已是 '3,7'**（企迈订货控制规则双订货日）→ 不改码每周会生成周二+周六两次盘点任务，违背"每周一盘"，已改码 | ✅ |
-| C | `SmartOrderServiceImpl.computeItems` | cycleDays 动态：批1=4 天、批2=3 天（回测 batchNo=0 仍走 sys_config 7） | sys_config 仍存基准值兜底 | ✅ |
+| C | `SmartOrderServiceImpl.computeItems` | cycleDays 动态：**按本店两订货日实际间隔 gap/7−gap**（'3,7' → 批1=4/批2=3；回测 batchNo=0 仍走 sys_config 7） | 2026-09-09 修订：原写死 4/3，用户指出批2 不一定是 3 天 → 改按间隔拆 | ✅ |
 | D | 第二单库存基准 | `estimateInventory`：盘点 summary + **盘点提交后 PG 已送达订货** − 日均×已过天数（`deliveredAfterCount`/`elapsedDaysOf`） | 只在批2 用；明细 reason 标注"库存为估算值（基于 X 月 X 日盘点）" | ✅ |
 | E | 第二单触发 | `SmartOrderGenerateJob` 新增 **9:00 cron** → `generateSecondBatchAll()`：今天=推导第二订货日 + 本周周盘已提交 + 该日未生成 | 复用 ORDER_CONFIRM 通知链路；controller 有手动触发 `/generate-second` | ✅ |
 | F | 明细/推送文案 | 批2 reason 标注估算值（日期随盘点日）；推送标题"第 1 批/第 2 批"区分 | H5/小程序"第 1 批/第 2 批"展示待改（下一步） | 🔶 后端✅ 前端待 |
 | G | safetyDays | sys_config `smart_order_safety_days` → 1（随 A 的 migration SQL） | 代码默认兜底同步改 1 | ✅ |
-| H | 第二订货日推导 | `secondOrderDayOf = (firstOrderDay + 3) % 7 + 1`；**order_days 多值只取首值**，不因第二值再盘/再订 | 试点店 '3,7'：3 → 7 与配置第二值一致 | ✅ |
+| H | 第二订货日推导 | **order_days 第二值优先**（试点 '3,7' → 7 周日）；单值店才 `(first + 3) % 7 + 1`；order_days 多值只取首值做盘点 | 2026-09-09 修订：原恒 +4 推导 → 按各店实际订货周期 | ✅ |
 
 **实施要点记录（2026-09-09）**
 - 生成入口：批1 = 周盘提交补触发（`generateByWeeklyTask`）+ 3:00 job（原逻辑）；批2 = 第二订货日 9:00 job，与批1 共用"本周周盘已提交"前置（盘点周二晚 → 周日批2 时已提交 ✓）
+- 切法（v0.2 修订）：批2 订货日 = order_days 第二值，覆盖 = 两订货日实际间隔（`coverageDaysOf`）；单值店回退推导 +4 → 4/3
 - 幂等：同店同周盘任务同 order_day 只一张（DB uk_store_week_batch + 代码 count 双保险）
 - 批2 估算口径（基础单位）：`估算 = 盘点数 + (盘点提交时刻, 现在] 内 PG 已送达订货 − dailyUse×已过天数`，下限 0（负估算不顶过整窗需求）；dailyUse 与批1 同源（库存差/订货节奏融合，周内无新盘点 → 预测不变）
 - 误差保护：PG 同步延迟漏到货 → 估算偏低 → 批2 订多 → 安全方向

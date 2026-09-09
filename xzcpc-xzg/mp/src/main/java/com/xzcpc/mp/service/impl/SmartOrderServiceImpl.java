@@ -125,12 +125,9 @@ public class SmartOrderServiceImpl implements SmartOrderService {
      *  企迈侧数据修复且按 plan/2026-09-smart-order-source-plan.md 验收达标后置 1 切回 PG 互证。 */
     private static final String CFG_USE_PG = "smart_order_use_pg";
 
-    /** 拆单批次：1=首批（周盘提交即触发，库存=实盘）；2=次批（第二订货日 9:00 自动生成，库存=估算值） */
+    /** 拆单批次：1=首批（周盘提交即触发，库存=实盘）；2=次批（第二订货日自动生成，库存=估算值） */
     private static final int BATCH_1 = 1;
     private static final int BATCH_2 = 2;
-    /** 首批/次批覆盖销售天数（7 天周期拆 4+3，orderDay2 = orderDay1 + 4；plan v0.2 决策#3） */
-    private static final int BATCH_1_CYCLE_DAYS = 4;
-    private static final int BATCH_2_CYCLE_DAYS = 3;
 
     // ==================== 生成 ====================
 
@@ -443,21 +440,48 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 batchNo, orderDay, countDate);
     }
 
-    /** 首个订货日 = store_order_cycle.order_days 首值（1=周一…7=周日；拆单后仅首个订货日盘点/首批下单） */
-    private static int firstOrderDayOf(StoreInfo store) {
+    /** 解析 order_days（1-7 逗号分隔，1=周一）为有序去重列表；无合法值抛业务异常 */
+    private static List<Integer> orderDaysOf(StoreInfo store) {
+        List<Integer> list = new ArrayList<>();
         if (StringUtils.hasText(store.getOrderDays())) {
-            try {
-                int d = Integer.parseInt(store.getOrderDays().split(",")[0].trim());
-                if (d >= 1 && d <= 7) return d;
-            } catch (NumberFormatException ignored) {
+            for (String s : store.getOrderDays().split(",")) {
+                try {
+                    int d = Integer.parseInt(s.trim());
+                    if (d >= 1 && d <= 7 && !list.contains(d)) list.add(d);
+                } catch (NumberFormatException ignored) {
+                }
             }
         }
-        throw new BusinessException("门店未配置订货周期（order_days），无法拆单");
+        if (list.isEmpty()) throw new BusinessException("门店未配置订货周期（order_days），无法拆单");
+        return list;
     }
 
-    /** 第二订货日 = 首个订货日 + 4 天（7 天周期拆 4+3，试点店 3 → 7 周日）；跨周回绕用 (d+3)%7+1 */
+    /** 首个订货日 = order_days 首值（拆单后仅首个订货日盘点、批1 下单） */
+    private static int firstOrderDayOf(StoreInfo store) {
+        return orderDaysOf(store).get(0);
+    }
+
+    /**
+     * 第二订货日：order_days 有第二值取实际值（试点 '3,7' → 周日 7，按各店订货周期拆分）；
+     * 单值店按 +4 推导 (d+3)%7+1（7 天周期拆 4+3 的默认假定，跨周回绕）。
+     */
     private static int secondOrderDayOf(StoreInfo store) {
-        return (firstOrderDayOf(store) + 3) % 7 + 1;
+        List<Integer> days = orderDaysOf(store);
+        if (days.size() >= 2) return days.get(1);
+        return (days.get(0) + 3) % 7 + 1;
+    }
+
+    /**
+     * 批次覆盖销售天数：按本店两个订货日的实际间隔切分（不写死 4/3）——
+     * 批1 = 首→次订货日间隔 gap（如 '3,7' → 4 天：周三~周六）；批2 = 7 − gap（3 天：周日~下周二）。
+     * 若某店间隔 3 天（如 '1,4'）→ 批1=3 天、批2=4 天。单值店 +4 推导 → gap=4（4+3）。
+     */
+    private static int coverageDaysOf(StoreInfo store, int batchNo) {
+        int d1 = firstOrderDayOf(store);
+        int d2 = secondOrderDayOf(store);
+        int gap = (d2 - d1 + 7) % 7;
+        if (gap == 0) gap = 7; // 防御：两订货日同天（配置异常）按整周处理
+        return batchNo == BATCH_1 ? gap : 7 - gap;
     }
 
     /**
@@ -527,12 +551,10 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             if (days > 0) daysBetween = BigDecimal.valueOf(days);
         }
 
-        // 覆盖销售天数（拆单 v0.2）：批1=4 天（订货日→下一订货日-1），批2=3 天（第二订货日→下周盘点前）；
+        // 覆盖销售天数（拆单 v0.2 修订）：按本店两个订货日实际间隔切分（'3,7' → 批1=4 天 / 批2=3 天）；
         // 回测（batchNo=0）保持整周口径走 sys_config
-        int cycleDays;
-        if (batchNo == BATCH_1) cycleDays = BATCH_1_CYCLE_DAYS;
-        else if (batchNo == BATCH_2) cycleDays = BATCH_2_CYCLE_DAYS;
-        else cycleDays = parseInt(getConfig(CFG_CYCLE_DAYS, "7"), 7);
+        int cycleDays = parseInt(getConfig(CFG_CYCLE_DAYS, "7"), 7);
+        if (batchNo == BATCH_1 || batchNo == BATCH_2) cycleDays = coverageDaysOf(store, batchNo);
         int safetyDays = parseInt(getConfig(CFG_SAFETY_DAYS, "1"), 1);
         BigDecimal defaultDailyUse = new BigDecimal(getConfig(CFG_DEFAULT_DAILY_USE, "0.5"));
 

@@ -4,7 +4,8 @@
 -- ============================================================
 
 -- 1) 建议单增加订货日/批次
---    order_day: 批1=门店第一个订货日（order_days 首值），批2=推导值 (orderDay+3)%7+1（试点店 '3,7' → 3 与 7）
+--    order_day: 批1=门店第一个订货日（order_days 首值）；批2=order_days 第二值（试点店 '3,7' → 周日 7），
+--               单值店无第二值才按 +4 推导 (orderDay+3)%7+1
 --    存量单据（W34 等旧数据）两列为 NULL，不影响新逻辑（幂等按 task_id 过滤，旧行 task_id 为空）
 ALTER TABLE smart_order
   ADD COLUMN order_day INT DEFAULT NULL COMMENT '订货日(1-7,1=周一): 批1=首订货日 批2=推导+4' AFTER week_label;
