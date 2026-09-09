@@ -48,6 +48,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;
 .r-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .r-chip{font-size:11px;color:#66706A;background:#FAFBF9;border:1px solid #E8ECE9;border-radius:6px;padding:2px 8px}
 .r-chip.review{color:#B54708;background:#FFF7E6;border-color:#FFD591}
+/* 批2 估算库存标注（拆单 2026-09）：库存非实盘，店长确认时知情 */
+.r-chip.est{color:#B54708;background:#FFF7E6;border-color:#FFD591;font-weight:600}
 /* 总仓库存标注：超量时红色（数量≤库存才能下单） */
 .r-stock{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#66706A;background:#FAFBF9;border:1px solid #E8ECE9;border-radius:6px;padding:2px 8px;margin-top:4px}
 .r-stock.over{color:#E05A47;background:#FDEEEC;border-color:#F2C7BE;font-weight:600}
@@ -368,6 +370,21 @@ function weekLabelOf(wl){
   return m?(m[1]+' 年第 '+Number(m[2])+' 周'):(wl||'')
 }
 
+/** 拆单批次标题（2026-09）：批1=周盘提交即订（实盘）、批2=第二订货日 9:00（估算库存）；旧单据无批次 */
+function batchText(o){
+  if(o&&o.batchNo===2)return ' · 第 2 批'
+  if(o&&o.batchNo===1)return ' · 第 1 批'
+  return ''
+}
+/** 批2 估算基准盘点日：明细 reason 已标注"库存为估算值（基于 X月X日 盘点）"，取首条展示到头部 */
+function estCountDate(){
+  for(var i=0;i<items.length;i++){
+    var m=(items[i].reason||'').match(/库存为估算值（基于\s*(\d+月\d+日)\s*盘点）/)
+    if(m)return m[1]
+  }
+  return ''
+}
+
 function fmtMoney(n){return '¥'+(Number(n)||0).toLocaleString('zh-CN')}
 function fmtTime(t){if(!t)return '--';return String(t).replace('T',' ').substring(0,16)}
 function fmtNum(n){
@@ -607,6 +624,8 @@ function rowHtml(it){
   var chips=''
   if(it.supportDays!=null)chips+='<span class="r-chip">可支撑 '+fmtNum(it.supportDays)+' 天</span>'
   if(it.unitPrice!=null)chips+='<span class="r-chip">单价 '+fmtMoney(it.unitPrice)+(it.stockUnit?'/'+esc(it.stockUnit):'')+'</span>'
+  // 批2 库存为估算值（拆单 2026-09：批2 不二次盘点，后端 reason 已标注"库存为估算值（基于 X月X日 盘点）"）
+  if((it.reason||'').indexOf('库存为估算值')>=0)chips+='<span class="r-chip est">估算库存</span>'
   // 店长意图对照（2026-09）：系统建议与店长近期订货偏差>30% → 高亮提示
   if(it.needsReview===1)chips+='<span class="r-chip review">⚠ 与您近期订货差异较大</span>'
   if(chips)info+='<span class="r-chips">'+chips+'</span>'
@@ -654,9 +673,13 @@ function render(){
   var total=totalQty()
   var st=order.status
   var stCls=statusClass(st)
+  // 拆单：批1/批2 标题区分；批2 未二次盘点 → 头部提示库存为估算值（明细行另有"估算库存"徽标）
+  var estD=order.batchNo===2?estCountDate():''
   var html='<div class="overview">'
-    +'<span class="ov-title">'+esc(weekLabelOf(order.weekLabel)+'建议订货单')+'</span>'
-    +'<span class="ov-sub">系统生成本周建议订货清单。</span>'
+    +'<span class="ov-title">'+esc(weekLabelOf(order.weekLabel)+batchText(order)+'建议订货单')+'</span>'
+    +'<span class="ov-sub">'+(order.batchNo===2
+        ?'本批未二次盘点，库存按估算值计算（基于 '+(estD||'上次')+' 盘点），请核对后确认。'
+        :'系统生成本周建议订货清单。')+'</span>'
     +'<div class="metrics">'
     +'<div class="metric"><span class="m-label">建议品项</span><span class="m-value">'+(order.itemCount||0)+'</span></div>'
     +'<div class="metric"><span class="m-label">建议数量</span><span class="m-value green">'+fmtNum(total)+'</span></div>'

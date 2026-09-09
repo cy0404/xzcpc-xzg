@@ -34,6 +34,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8F6;
 .card-sub{display:block;margin-top:2px;font-size:13px;color:#66706A;line-height:20px}
 .chip{flex-shrink:0;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
 .chip.store{background:#E7F4EB;color:#2F8F57}
+.chip.b1{background:#E7F4EB;color:#2F8F57}
+.chip.b2{background:#FFF7E6;color:#B54708;border:1px solid #FFD591}
 .status{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;flex-shrink:0}
 .status.pending{background:#FFF8EE;color:#E58A2D}
 .status.syncing{background:#FFF8EE;color:#E58A2D}
@@ -223,6 +225,14 @@ function weekLabelOf(wl){
   return m?(m[1]+' 年第 '+Number(m[2])+' 周'):(wl||'')
 }
 
+/* 拆单批次（2026-09）：同周两张单 → 卡片 chip 区分；批2 库存为估算值（批1 实盘）；旧单据无批次 */
+var WD=['','周一','周二','周三','周四','周五','周六','周日']
+function batchChip(r){
+  if(!r||!r.batchNo)return ''
+  if(r.batchNo===2)return '<span class="chip b2">第 2 批 · 库存估算</span>'
+  return '<span class="chip b1">第 1 批</span>'
+}
+
 function fmtMoney(n){return '¥'+(Number(n)||0).toLocaleString('zh-CN')}
 function fmtTime(t){if(!t)return '--';return String(t).replace('T',' ').substring(0,16)}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -301,17 +311,20 @@ function render(){
     var actionable=r.status==='pending'||r.status==='submit_failed'
     var linkText=!actionable?'查看详情':(r.status==='submit_failed'?'重新确认':'去确认')
     var stLabel=orderStatusLabel(r),stCls=orderStatusClass(r)
-    // 第一行：标题 + 状态（右上）；第二行：店名
+    // 第一行：标题 + 状态（右上）；tags：店名（跨店视图）+ 批次 chip
     var title=weekLabelOf(r.weekLabel)+'建议订货单'
-    var storeChip=(showStoreChip?'<span class="chip store">'+esc(r.storeName||'')+'</span>':'')
+    var tags=''
+    if(showStoreChip&&r.storeName)tags+='<span class="chip store">'+esc(r.storeName)+'</span>'
+    tags+=batchChip(r)
     var stChip=(r.status==='submit_failed'?'<span class="status submit_failed">提交失败</span>':'<span class="status '+stCls+'">'+stLabel+'</span>')
-    var sub='建议订货 '+fmtMoney(r.suggestAmount)+' · '+(r.itemCount||0)+' 个 SKU'
+    var dayTxt=(r.orderDay>=1&&r.orderDay<=7)?WD[r.orderDay]:''
+    var sub=(dayTxt?'订货日 '+dayTxt+' · ':'')+'建议订货 '+fmtMoney(r.suggestAmount)+' · '+(r.itemCount||0)+' 个 SKU'
     if(r.status==='success'&&r.qmaiDeclareNo){
       sub+='<br><span style="'+(isUnpaidOrder(r)?'color:#E05A47;font-weight:600':'color:#98A19C;font-size:12px')+'">报货单号：'+esc(r.qmaiDeclareNo)+'</span>'
     }
     return '<div class="card" onclick="goDetail('+r.id+')">'
       +'<div class="card-head"><span class="card-title">'+esc(title)+'</span>'+stChip+'</div>'
-      +(storeChip?'<div class="card-tags">'+storeChip+'</div>':'')
+      +(tags?'<div class="card-tags">'+tags+'</div>':'')
       +'<span class="card-sub">'+sub+'</span>'
       +'<span class="card-link">'+linkText+' <span class="arrow">›</span></span>'
       +'</div>'
