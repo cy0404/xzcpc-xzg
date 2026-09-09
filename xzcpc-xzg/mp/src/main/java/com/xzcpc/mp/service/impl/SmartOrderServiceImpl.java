@@ -51,6 +51,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.WeekFields;
 import java.util.*;
@@ -157,21 +159,35 @@ public class SmartOrderServiceImpl implements SmartOrderService {
     }
 
     /**
-     * 为单门店生成某批建议单（每日扫描用）：本周周盘任务已提交才生成（先盘后订，决策#8），返回是否新建。
+     * 为单门店生成某批建议单（每日扫描用）：周盘任务已提交才生成（先盘后订，决策#8），返回是否新建。
      * 批1=周盘提交后的首个订货日（现有 3:00 job / 提交补触发）；批2=第二订货日 9:00 job（generateSecondBatchAll）触发。
      */
     private boolean generateForStore(StoreInfo store, int batchNo) {
         LocalDate today = LocalDate.now();
-        // 本周周盘任务（与 TaskServiceImpl.autoGenerateWeekly 同口径 ISO_WEEK_FMT；
-        // 拆单后一周一盘 → 全周唯一提交过的周盘任务即本周盘点）
-        String taskWeek = ISO_WEEK_FMT.format(today);
-        Task weekly = taskMapper.selectOne(new LambdaQueryWrapper<Task>()
-                .eq(Task::getStoreId, store.getId())
-                .eq(Task::getTaskType, "weekly")
-                .eq(Task::getTaskWeek, taskWeek)
-                .eq(Task::getStatus, "submitted")
-                .orderByDesc(Task::getSubmittedAt)
-                .last("LIMIT 1"));
+        // 周盘任务定位：
+        // 批1 = 本周（当前 ISO 周）已提交的周盘任务——盘点锚定首个订货日，批1 与盘点同周；
+        // 批2 = 最近 8 天内已提交的周盘任务——'3,7' 店批2 周日与盘点同周（周二盘）；
+        //      '7,3' 店（周日盘、周三批2）批2 落在盘点周的下一个 ISO 周，须跨周找上周六盘的任务；
+        //      超 8 天说明该盘点周期未盘（先盘后订，不生成）
+        Task weekly;
+        if (batchNo == BATCH_2) {
+            weekly = taskMapper.selectOne(new LambdaQueryWrapper<Task>()
+                    .eq(Task::getStoreId, store.getId())
+                    .eq(Task::getTaskType, "weekly")
+                    .eq(Task::getStatus, "submitted")
+                    .ge(Task::getSubmittedAt, LocalDateTime.now().minusDays(8))
+                    .orderByDesc(Task::getSubmittedAt)
+                    .last("LIMIT 1"));
+        } else {
+            String taskWeek = ISO_WEEK_FMT.format(today);
+            weekly = taskMapper.selectOne(new LambdaQueryWrapper<Task>()
+                    .eq(Task::getStoreId, store.getId())
+                    .eq(Task::getTaskType, "weekly")
+                    .eq(Task::getTaskWeek, taskWeek)
+                    .eq(Task::getStatus, "submitted")
+                    .orderByDesc(Task::getSubmittedAt)
+                    .last("LIMIT 1"));
+        }
         if (weekly == null) {
             log.info("SMART_ORDER_GEN storeId={} batch={} 本周周盘未提交，跳过生成", store.getId(), batchNo);
             return false;
@@ -413,7 +429,10 @@ public class SmartOrderServiceImpl implements SmartOrderService {
      */
     private boolean buildOrder(StoreInfo store, Task current, List<TaskMaterialSummary> curSummaries, int batchNo) {
         LocalDate today = LocalDate.now();
-        LocalDate weekStart = today.with(DayOfWeek.MONDAY);
+        // 周基准 = 来源周盘任务所在周（同周两批共用同一 week_start_date）；
+        // '7,3' 型门店（周日盘）批2 周三已落下一个 ISO 周——按生成日取周一会把批2 错标到下一周，
+        // 且与批1 的预测窗口（weekStart 锚定）不一致
+        LocalDate weekStart = weekStartOfTask(current);
         int orderDay = batchNo == BATCH_2 ? secondOrderDayOf(store) : firstOrderDayOf(store);
 
         // 幂等：同店同周盘任务同订货日已生成过则跳过（UNIQUE KEY uk_store_week_batch 兜底并发）；
@@ -482,6 +501,22 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         int gap = (d2 - d1 + 7) % 7;
         if (gap == 0) gap = 7; // 防御：两订货日同天（配置异常）按整周处理
         return batchNo == BATCH_1 ? gap : 7 - gap;
+    }
+
+    /** 解析周标签 YYYY-Www → 该周周一（与 TaskServiceImpl.parseWeekStart 同口径，ISO 周制）；
+     *  解析失败回退本周一（正常不会发生） */
+    private static LocalDate weekStartOfTask(Task task) {
+        if (task != null && StringUtils.hasText(task.getTaskWeek())) {
+            try {
+                DateTimeFormatter fmt = new DateTimeFormatterBuilder()
+                        .appendPattern("YYYY-'W'ww")
+                        .parseDefaulting(ChronoField.DAY_OF_WEEK, 1)
+                        .toFormatter();
+                return LocalDate.parse(task.getTaskWeek(), fmt);
+            } catch (Exception ignored) {
+            }
+        }
+        return LocalDate.now().with(DayOfWeek.MONDAY);
     }
 
     /**

@@ -330,8 +330,10 @@ public class TaskServiceImpl implements TaskService { // 月盘任务服务实�
         List<String> failed = new ArrayList<>();
         Map<String, StoreInfo> storeMap = storeService.getStoreMap();
         // 按门店订货周期表（拆单版 2026-09）：一周一盘 → 只为「首个订货日」生成盘点任务——
-        // order_days 多值（如试点店 '3,7' = 企迈每周两个订货日）时，次批订货日由智能订货按 +4 推导、
-        // 库存走估算，不再二次盘点（plan/2026-09-smart-order-split-plan.md 决策#1/#3）
+        // order_days 顺序 = 盘点后的订货顺序：首值 = 盘点锚定的订货日（盘点窗口 = 首值前一天9点 ~ 首值5点），
+        // 后续值 = 该盘的后续批次订货日（'3,7' = 周二晚盘 → 批1 周三/批2 周日；'7,3' = 周六晚盘 → 批1 周日/批2 周三），
+        // 批2 库存走估算不再二次盘点（plan/2026-09-smart-order-split-plan.md 决策#1/#3）
+        // 盘点日 = 订货日-1，盘点日在今天则生成（即订货日前一天9点生成任务）
         // 盘点日 = 订货日-1，盘点日在今天则生成（即订货日前一天9点生成任务）
         List<StoreOrderCycle> cycles = storeOrderCycleMapper.selectList(
                 new LambdaQueryWrapper<StoreOrderCycle>().orderByAsc(StoreOrderCycle::getId));
