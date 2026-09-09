@@ -134,6 +134,7 @@ public class QmaiClient {
                 // 状态字段名是 orderStatus，不是 status
                 item.setOrderStatus(toInt(r.get("orderStatus")));
                 item.setPayStatus(toInt(r.get("payStatus")));
+                item.setSource(toInt(r.get("source")));
                 item.setProductNum(toDouble(r.get("productNum")));
                 item.setProductCateNum(toInt(r.get("productCateNum")));
                 item.setUpdatedAt((String) r.get("updatedAt"));
@@ -768,6 +769,8 @@ public class QmaiClient {
         /** 报货单状态：0=待支付 1=待接单 2=已接单 3=履约中 4=已完成 5=已取消 6=已驳回 */
         private int orderStatus;
         private int payStatus;
+        /** 来源：1=门店/店长在企迈端手动下单；2=系统 API（智能订货自动提交） */
+        private int source;
         private double productNum;      // 报货物品种类数
         private int productCateNum;     // 报货物品种类数
         private String updatedAt;       // 更新时间（用于 48h 过滤已完成订单）

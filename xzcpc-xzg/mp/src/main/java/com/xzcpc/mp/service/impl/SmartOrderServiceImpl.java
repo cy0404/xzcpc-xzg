@@ -128,6 +128,9 @@ public class SmartOrderServiceImpl implements SmartOrderService {
     private static final String CFG_USE_PG = "smart_order_use_pg";
     /** 理论消耗日均候选源（costcard 域 store_material_consume_daily，销售×成本卡算得） */
     private static final String CFG_USE_CONSUME = "smart_order_use_consume";
+    /** 店长手动订货抑制窗口天数（2026-09-09）：窗口内店长在企迈手动下过单（source=1）且系统无 PG 订货节奏
+     *  （低频手动管理料，如南姜/香茅/鲜果）→ 本次不重复建议，避免"刚订过又让订" */
+    private static final String CFG_MANUAL_SUPPRESS_DAYS = "smart_order_manual_suppress_days";
 
     /** 拆单批次：1=首批（周盘提交即触发，库存=实盘）；2=次批（第二订货日自动生成，库存=估算值） */
     private static final int BATCH_1 = 1;
@@ -600,6 +603,21 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         boolean deliveredFailed = false;
         LocalDateTime nowTs = LocalDateTime.now();
 
+        // 店长手动订货抑制源（2026-09-09 南姜案例）：近 N 天店长在企迈手动下过单的物料集合。
+        // 一次性拉取（回测不拉企迈），失败=null → 不抑制（宽容降级）
+        Set<String> recentManualDeclared = null;
+        if (predictOut == null && store.getQmaiStoreId() != null) {
+            int suppressDays = parseInt(getConfig(CFG_MANUAL_SUPPRESS_DAYS, "7"), 7);
+            if (suppressDays > 0) {
+                try {
+                    recentManualDeclared = fetchRecentManualDeclaredCodes(
+                            store.getQmaiStoreId(), nowTs, suppressDays);
+                } catch (Exception e) {
+                    log.warn("SMART_ORDER_GEN 手动订抑制源查询失败 storeId={}: {}", store.getId(), e.getMessage());
+                }
+            }
+        }
+
         List<SmartOrderItem> items = new ArrayList<>();
         int sortNo = 0;
         for (TaskMaterialSummary sum : curSummaries) {
@@ -638,6 +656,25 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                     trace.put("base", null);
                     trace.put("inOrder", false);
                     trace.put("reason", "疑似停售（近7天无销售记录）");
+                    predictOut.put(mid, trace);
+                }
+                continue;
+            }
+
+            // ---- 店长手动订货抑制（2026-09-09 南姜案例）----
+            // 店长近 N 天已在企迈手动下过单（source=1 且未取消）的物料，且系统对该物料无 PG 订货节奏
+            //（= 低频手动管理料：南姜/香茅/鲜果等，店长自己按需高频小单补，不走系统节奏模型）→ 本次不重复建议，
+            // 避免"9/6 刚订 300g、9/9 又让订 117g"。PG 有节奏的周度主料（厚椰乳/冰勃朗等）不受影响。
+            if (recentManualDeclared != null && StringUtils.hasText(qm)
+                    && recentManualDeclared.contains(qm) && !orderRhythmDaily.containsKey(mid)) {
+                if (predictOut != null) {
+                    Map<String, Object> trace = new HashMap<>();
+                    trace.put("dailyUse", null);
+                    trace.put("useMode", "manualDeclared");
+                    trace.put("demand", null);
+                    trace.put("base", null);
+                    trace.put("inOrder", false);
+                    trace.put("reason", "店长近7天已手动订过（手动管理料不重复建议）");
                     predictOut.put(mid, trace);
                 }
                 continue;
@@ -1518,6 +1555,41 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             }
         }
         return sum;
+    }
+
+    /**
+     * 拉取近 N 天店长在企迈端手动创建的报货单物料集合（source=1 且未取消/未驳回）。
+     * 用于低频手动管理料抑制（2026-09-09 南姜案例）：店长刚在企迈手动订过（如 9/6 订 300g），
+     * 系统又建议 117g → "刚买过还让我买"。source=2（智能订货 API 提交）不算手动；
+     * 取消/驳回的单不算已订。上限 30 单（每单一次 detail 调用），失败降级返回空集。
+     */
+    private Set<String> fetchRecentManualDeclaredCodes(long qmaiStoreId, LocalDateTime nowTs, int windowDays) {
+        Set<String> codes = new HashSet<>();
+        if (qmaiStoreId <= 0 || windowDays <= 0) return codes;
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        LocalDateTime start = nowTs.minusDays(windowDays);
+        try {
+            var listResult = qmaiClient.getDeclareOrderListAll(qmaiStoreId, start.format(fmt), nowTs.format(fmt), 1, 50);
+            int detailCount = 0;
+            for (var rec : listResult.getRecords()) {
+                if (detailCount >= 30) break;
+                if (!StringUtils.hasText(rec.getDeclareNo())) continue;
+                if (rec.getSource() != 1) continue;              // 只认店长手动（source=1），系统 API 单不算
+                if (rec.getOrderStatus() == 5 || rec.getOrderStatus() == 6) continue; // 取消/驳回不算已订
+                try {
+                    var detail = qmaiClient.getDeclareOrderDetail(rec.getDeclareNo());
+                    detailCount++;
+                    for (var p : detail.getProducts()) {
+                        if (StringUtils.hasText(p.getProductCode())) codes.add(p.getProductCode());
+                    }
+                } catch (Exception e) {
+                    log.warn("SMART_ORDER_GEN 手动订详情拉取失败 declareNo={}: {}", rec.getDeclareNo(), e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("SMART_ORDER_GEN 近{}天手动订查询失败 qmaiStoreId={}: {}", windowDays, qmaiStoreId, e.getMessage());
+        }
+        return codes;
     }
 
     /** 某物料窗口入库量折算到基础单位；单位无法换算时按基础单位近似（一期） */
