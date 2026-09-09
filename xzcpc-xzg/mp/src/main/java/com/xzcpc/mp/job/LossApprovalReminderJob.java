@@ -1,14 +1,18 @@
 package com.xzcpc.mp.job;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xzcpc.mp.entity.LossReport;
+import com.xzcpc.mp.entity.NotificationLog;
 import com.xzcpc.mp.mapper.LossReportMapper;
+import com.xzcpc.mp.mapper.NotificationLogMapper;
 import com.xzcpc.mp.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +29,7 @@ import java.util.Map;
 public class LossApprovalReminderJob {
 
     private final LossReportMapper lossReportMapper;
+    private final NotificationLogMapper notificationLogMapper;
     private final NotificationService notificationService;
 
     @Scheduled(cron = "0 0 10 * * ?")
@@ -42,7 +47,15 @@ public class LossApprovalReminderJob {
             if (storeIdObj == null || cntObj == null) continue;
             long cnt = ((Number) cntObj).longValue();
             if (cnt <= 0) continue;
-            notificationService.enqueueToStoreManagers(String.valueOf(storeIdObj), "LOSS_APPROVAL_REMIND",
+            String storeId = String.valueOf(storeIdObj);
+            // 当天幂等：该店今天已入队过提醒则不重复（防双实例共库同时跑 job 重复入队/重复发送）
+            Long exists = notificationLogMapper.selectCount(
+                    new LambdaQueryWrapper<NotificationLog>()
+                            .eq(NotificationLog::getEventType, "LOSS_APPROVAL_REMIND")
+                            .eq(NotificationLog::getStoreId, storeId)
+                            .ge(NotificationLog::getCreatedAt, LocalDate.now().atStartOfDay()));
+            if (exists != null && exists > 0) continue;
+            notificationService.enqueueToStoreManagers(storeId, "LOSS_APPROVAL_REMIND",
                     "【报损审批】今日有 " + cnt + " 条报损待审批",
                     "店员提交的报损单待您审批，请到店长工作台处理",
                     null, "/pages/loss-report/list/index?tab=pending_approval");

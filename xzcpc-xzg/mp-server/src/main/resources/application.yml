@@ -19,6 +19,8 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 app:
+  scheduling:
+    enabled: true  # 定时任务总开关：生产实例 true（默认）；测试实例启动加 APP_SCHEDULING_ENABLED=false 防双实例重复发（双实例共库）
   sync:
     enabled: false  # 暂时关闭物料/门店外部API同步
   upload:
