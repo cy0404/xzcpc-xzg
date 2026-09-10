@@ -19,6 +19,9 @@ public class NotificationLog {
     private String content;
     private String pagePath;       // 订阅消息点击跳转小程序页面（含参数，如 /pages/loss-report/list/index?tab=pending_approval）
     private String sourceId;       // 来源业务ID
+
+    /** 入队幂等键（同日同店同人同事件唯一）：并发双实例跑 job 时靠 uk_idem_key 唯一索引拦截重复入队 */
+    private String idemKey;
     private Integer status;        // 0待发送 1成功 2失败
     private String failReason;
     private Integer retryCount;

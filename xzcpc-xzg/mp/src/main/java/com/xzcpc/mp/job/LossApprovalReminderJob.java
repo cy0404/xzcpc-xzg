@@ -48,17 +48,20 @@ public class LossApprovalReminderJob {
             long cnt = ((Number) cntObj).longValue();
             if (cnt <= 0) continue;
             String storeId = String.valueOf(storeIdObj);
-            // 当天幂等：该店今天已入队过提醒则不重复（防双实例共库同时跑 job 重复入队/重复发送）
+            // 当天幂等（双重保障）：
+            // ① 快速路径：该店今天已入队过提醒则整店跳过（省去逐人插入尝试）
             Long exists = notificationLogMapper.selectCount(
                     new LambdaQueryWrapper<NotificationLog>()
                             .eq(NotificationLog::getEventType, "LOSS_APPROVAL_REMIND")
                             .eq(NotificationLog::getStoreId, storeId)
                             .ge(NotificationLog::getCreatedAt, LocalDate.now().atStartOfDay()));
             if (exists != null && exists > 0) continue;
-            notificationService.enqueueToStoreManagers(storeId, "LOSS_APPROVAL_REMIND",
+            // ② 并发兜底：带幂等键入队，靠 uk_idem_key 唯一索引拦截（双实例同一瞬间跑时"先查后写"都会查不到）
+            notificationService.enqueueToStoreManagersOnce(storeId, "LOSS_APPROVAL_REMIND",
                     "【报损审批】今日有 " + cnt + " 条报损待审批",
                     "店员提交的报损单待您审批，请到店长工作台处理",
-                    null, "/pages/loss-report/list/index?tab=pending_approval");
+                    null, "/pages/loss-report/list/index?tab=pending_approval",
+                    "LOSS_APPROVAL_REMIND:" + storeId + ":" + LocalDate.now());
             sentStores++;
         }
         log.info("LOSS_APPROVAL_REMIND 完成：{} 家门店有待审批报损", sentStores);

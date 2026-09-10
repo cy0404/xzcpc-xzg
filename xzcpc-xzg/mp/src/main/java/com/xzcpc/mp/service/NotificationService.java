@@ -79,6 +79,47 @@ public class NotificationService {
         return pagePath + (pagePath.contains("?") ? "&" : "?") + "storeId=" + storeId;
     }
 
+    /**
+     * 按门店通知店长/老板，且每人每天最多一条（幂等）：
+     * idemKeyPrefix 建议 "{eventType}:{storeId}:{yyyy-MM-dd}"，内部按 openid 追加后缀作为唯一键。
+     * 并发场景（双实例同时跑 job）下靠 notification_log.uk_idem_key 唯一索引拦截，插入冲突即跳过。
+     */
+    public int enqueueToStoreManagersOnce(String storeId, String eventType, String title, String content,
+                                          String sourceId, String pagePath, String idemKeyPrefix) {
+        List<String> openids = resolveManagerOpenids(storeId);
+        int count = 0;
+        for (String openid : openids) {
+            if (enqueueOnce(openid, storeId, eventType, title, content, sourceId, pagePath,
+                    idemKeyPrefix + ":" + openid)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** 带幂等键的单条入队：同一 idemKey 只入队一次（重复时静默跳过，返回 false） */
+    public boolean enqueueOnce(String openid, String storeId, String eventType, String title,
+                               String content, String sourceId, String pagePath, String idemKey) {
+        if (!StringUtils.hasText(openid)) return false;
+        NotificationLog n = new NotificationLog();
+        n.setEventType(eventType);
+        n.setStoreId(storeId != null ? storeId : "");
+        n.setTargetOpenid(openid);
+        n.setTitle(truncate(title, 150));
+        n.setContent(truncate(content, 800));
+        n.setPagePath(withStoreParam(pagePath, storeId));
+        n.setSourceId(sourceId);
+        n.setIdemKey(truncate(idemKey, 191));
+        n.setStatus(0);
+        try {
+            notificationLogMapper.insert(n);
+            return true;
+        } catch (DuplicateKeyException e) {
+            log.info("通知重复入队已跳过 idemKey={}", idemKey);
+            return false;
+        }
+    }
+
     /** 该门店在职工长/经理/老板 openid（老板绑定自动写入 employee.role=老板，故一张表全覆盖） */
     public List<String> resolveManagerOpenids(String storeId) {
         if (!StringUtils.hasText(storeId)) return List.of();
