@@ -10,6 +10,7 @@ import com.xzcpc.mp.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -25,6 +26,9 @@ import java.util.List;
  */
 @Slf4j
 @Component
+// 订阅消息 job 只在 mp-server（小程序端）实例加载：总部端 server 会扫描到 com.xzcpc.mp.job
+// 并执行同样的 @Scheduled（双实例共库重复发送），用 app.notify.jobs 开关隔离
+@ConditionalOnProperty(name = "app.notify.jobs", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 public class OrderPayReminderJob {
 
