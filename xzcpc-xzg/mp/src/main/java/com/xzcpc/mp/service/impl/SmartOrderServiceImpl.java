@@ -12,10 +12,12 @@ import com.xzcpc.mp.dto.SmartOrderAddItemReq;
 import com.xzcpc.mp.dto.SmartOrderConfirmReq;
 import com.xzcpc.mp.entity.InboundOrder;
 import com.xzcpc.mp.entity.InboundOrderItem;
+import com.xzcpc.mp.entity.MaterialOrderConstraint;
 import com.xzcpc.mp.entity.SmartOrder;
 import com.xzcpc.mp.entity.SmartOrderItem;
 import com.xzcpc.mp.mapper.InboundOrderItemMapper;
 import com.xzcpc.mp.mapper.InboundOrderMapper;
+import com.xzcpc.mp.mapper.MaterialOrderConstraintMapper;
 import com.xzcpc.mp.mapper.SmartOrderItemMapper;
 import com.xzcpc.mp.mapper.SmartOrderMapper;
 import com.xzcpc.mp.service.MpStaffService;
@@ -101,6 +103,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
     private final TaskMaterialSummaryMapper summaryMapper;
     private final MaterialMapper materialMapper;
     private final MaterialInventoryRuleMapper ruleMapper;
+    private final MaterialOrderConstraintMapper orderConstraintMapper;
     private final MaterialConversionRuleMapper conversionMapper;
     private final StoreService storeService;
     private final QmaiClient qmaiClient;
@@ -562,6 +565,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
         Map<String, Material> materialMap = ctx.materialMap();
         Map<String, MaterialInventoryRule> ruleMap = ctx.ruleMap();
         Map<String, List<MaterialConversionRule>> convMap = ctx.convMap();
+        Map<String, MaterialOrderConstraint> constraintMap = ctx.constraintMap();
 
         // P2B 预测数据：PG 销量（去年同周/近4周/去年同4周）+ 在途（累计订货-累计到货差值法）+ 损耗/调货/自购修正
         Map<String, PgSales> lastYearMap = pgSalesSum(store, weekStart.minusWeeks(52), weekStart.minusWeeks(51), materialMap, ruleMap, convMap);
@@ -908,6 +912,31 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                     : base.setScale(0, RoundingMode.CEILING);
             boolean unitConverted = factor != null && factor.compareTo(BigDecimal.ONE) != 0;
 
+            // ④' 企迈订货约束取整（material_order_constraint，2026-09-10）：
+            //     起订量：建议量不足则提升到起订量（酸角 12 瓶、南姜 300g、金桔柠檬 300g）；
+            //     倍数：向上取整到倍数（香茅/南姜/金桔柠檬 100g、乍甸酸奶 5 份、杯套 20 捆）——
+            //     否则下单页报"订货数量小于起订数量 / 不满足订货倍数"，店长必须手动改。
+            //     限购（limitQty）仅作提示不强制：超过时仍需按需订（企迈侧会拦截，明细里标注）。
+            boolean constraintApplied = false;
+            String constraintNote = null;
+            MaterialOrderConstraint oc = constraintMap.get(material.getQmCode());
+            if (oc != null) {
+                BigDecimal before = suggest;
+                BigDecimal mult = oc.getOrderMultiple();
+                if (mult != null && mult.compareTo(BigDecimal.ZERO) > 0) {
+                    suggest = suggest.divide(mult, 0, RoundingMode.CEILING).multiply(mult);
+                }
+                BigDecimal minQ = oc.getMinOrderQty();
+                if (minQ != null && minQ.compareTo(BigDecimal.ZERO) > 0
+                        && suggest.compareTo(minQ) < 0) {
+                    suggest = minQ;
+                }
+                if (suggest.compareTo(before) != 0) {
+                    constraintApplied = true;
+                    constraintNote = buildConstraintNote(oc, before, suggest);
+                }
+            }
+
             // ⑤ 无企迈编码无法下单，跳过
             String qmCode = material.getQmCode();
             if (!StringUtils.hasText(qmCode)) {
@@ -941,6 +970,7 @@ public class SmartOrderServiceImpl implements SmartOrderService {
             if (inTransitQty.compareTo(BigDecimal.ZERO) != 0) reason.append("，在途 −").append(trimNum(inTransitQty.abs()));
             if (selfPurchaseQty.compareTo(BigDecimal.ZERO) != 0) reason.append("，自购 −").append(trimNum(selfPurchaseQty));
             if (unitConverted) reason.append(" · 按订货单位换算并向上取整");
+            if (constraintApplied) reason.append("；").append(constraintNote);
             // 批2 库存是估算值（非实盘），明细标注供店长知情（plan v0.2 决策#4/#F）
             if (batchNo == BATCH_2 && current.getSubmittedAt() != null) {
                 LocalDate cd = current.getSubmittedAt().toLocalDate();
@@ -1467,7 +1497,8 @@ public class SmartOrderServiceImpl implements SmartOrderService {
      */
     private record MaterialCtx(Map<String, Material> materialMap,
                                Map<String, MaterialInventoryRule> ruleMap,
-                               Map<String, List<MaterialConversionRule>> convMap) {}
+                               Map<String, List<MaterialConversionRule>> convMap,
+                               Map<String, MaterialOrderConstraint> constraintMap) {}
 
     private MaterialCtx loadMaterialContext(List<TaskMaterialSummary> curSummaries) {
         List<String> matIds = curSummaries.stream()
@@ -1486,7 +1517,21 @@ public class SmartOrderServiceImpl implements SmartOrderService {
                 : conversionMapper.selectList(new LambdaQueryWrapper<MaterialConversionRule>()
                         .in(MaterialConversionRule::getRuleId, ruleIds))
                 .stream().collect(Collectors.groupingBy(MaterialConversionRule::getRuleId));
-        return new MaterialCtx(materialMap, ruleMap, convMap);
+        // 企迈订货约束（起订量/倍数/限购，key = qm_code）：建议量取整用（酸角起订 12 瓶等）。
+        // 表未建/查询异常时降级为空（不阻断生成）
+        List<String> qmCodes = materialMap.values().stream()
+                .map(Material::getQmCode).filter(StringUtils::hasText).distinct().toList();
+        Map<String, MaterialOrderConstraint> constraintMap = Map.of();
+        if (!qmCodes.isEmpty()) {
+            try {
+                constraintMap = orderConstraintMapper.selectList(new LambdaQueryWrapper<MaterialOrderConstraint>()
+                                .in(MaterialOrderConstraint::getQmCode, qmCodes))
+                        .stream().collect(Collectors.toMap(MaterialOrderConstraint::getQmCode, c -> c, (a, b) -> a));
+            } catch (Exception e) {
+                log.warn("SMART_ORDER_GEN 订货约束读取失败（表未建？），跳过起订量取整: {}", e.getMessage());
+            }
+        }
+        return new MaterialCtx(materialMap, ruleMap, convMap, constraintMap);
     }
 
     /** qm_code → material.material_id 映射（PG item_code ↔ 自有物料编码） */
@@ -1523,6 +1568,20 @@ public class SmartOrderServiceImpl implements SmartOrderService {
 
     private static String trimNum(BigDecimal v) {
         return v.stripTrailingZeros().toPlainString();
+    }
+
+    /** 订货约束取整说明（供 reason 展示）：给出调整前后与约束依据 */
+    private static String buildConstraintNote(MaterialOrderConstraint oc, BigDecimal before, BigDecimal after) {
+        StringBuilder sb = new StringBuilder("按企迈起订规则从 ").append(trimNum(before))
+                .append(" 调整为 ").append(trimNum(after));
+        String unit = StringUtils.hasText(oc.getOrderUnit()) ? oc.getOrderUnit() : "";
+        sb.append(unit);
+        if (oc.getOrderMultiple() != null && oc.getOrderMultiple().compareTo(BigDecimal.ZERO) > 0) {
+            sb.append("（订货倍数 ").append(trimNum(oc.getOrderMultiple())).append(unit).append("）");
+        } else if (oc.getMinOrderQty() != null && oc.getMinOrderQty().compareTo(BigDecimal.ZERO) > 0) {
+            sb.append("（起订量 ").append(trimNum(oc.getMinOrderQty())).append(unit).append("）");
+        }
+        return sb.toString();
     }
 
     /** 带符号数量文本：正数前加 +（如 +8、−5） */
