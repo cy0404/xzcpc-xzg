@@ -103,8 +103,17 @@ public class StoreServiceImpl implements StoreService {
     @Override
     public Store getStoreByChatId(String chatId) {
         if (!StringUtils.hasText(chatId)) return null;
-        return storeMapper.selectOne(new LambdaQueryWrapper<Store>()
-                .eq(Store::getChatId, chatId));
+        // 同一 chat_id 可能绑定多个门店（历史脏数据），selectOne 会抛 TooManyResultsException 导致
+        // issue/callback 等外部回调 500；改为取最早建档的一条并告警，便于排查清理脏数据
+        List<Store> stores = storeMapper.selectList(new LambdaQueryWrapper<Store>()
+                .eq(Store::getChatId, chatId)
+                .orderByAsc(Store::getId));
+        if (stores.isEmpty()) return null;
+        if (stores.size() > 1) {
+            log.warn("chatId={} 绑定多个门店: {}，取第一条（建议清理 store_info.chat_id 重复绑定）",
+                    chatId, stores.stream().map(Store::getStoreId).toList());
+        }
+        return stores.get(0);
     }
 
     // ==================== 外部 API 同步到数据库 ====================
