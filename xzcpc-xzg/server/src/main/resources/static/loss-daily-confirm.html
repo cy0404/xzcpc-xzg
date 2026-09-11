@@ -943,6 +943,9 @@ function renderCard(r) {
     h += '<p class="meta">上次拒绝原因：' + esc(r.rejectReason) + '</p>';
     if (!r.result) h += ' <span class="tag tag-wait" style="font-size:10px">重新提交</span>';
   }
+  if (r.hqRemark) {
+    h += '<p class="meta">总部复核备注：' + esc(r.hqRemark) + '</p>';
+  }
   if (r.images && r.images.length) {
     h += '<div class="photos">';
     for (var j = 0; j < r.images.length; j++) {
@@ -1512,11 +1515,13 @@ function onReject(id) {
   });
 }
 function onRecheck(id, pass) {
+  var ta = document.getElementById('modal-reason');
+  ta.placeholder = pass ? '总部复核备注（选填，将同步至蓝蛙群知会卡）' : '总部复核备注（选填）'; ta.value = '';
   openModal(pass ? '确认不同意该拒绝？报损将成立并进入补发流程。' : '确认同意该拒绝？该报损维持拒绝。', function() {
     fetch('/api/public/loss-report/' + (pass ? 'recheck-pass' : 'recheck-reject'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id: id, uid: uid})
+      body: JSON.stringify({id: id, uid: uid, remark: (ta.value || '').trim()})
     }).then(function(res) { return res.json(); }).then(function(d) {
       if (d.code !== 200) { alert(d.msg || '操作失败'); return; }
       location.reload();

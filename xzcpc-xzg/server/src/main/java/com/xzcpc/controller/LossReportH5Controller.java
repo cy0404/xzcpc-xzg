@@ -176,19 +176,35 @@ public class LossReportH5Controller {
         java.util.Set<Long> downloadedIds = new java.util.HashSet<>();
         Map<Long, Map<String, Object>> feedbackMap = new HashMap<>();
         Map<Long, String> recheckMap = new HashMap<>(); // 蓝蛙二次审核标记：pass/reject
+        Map<Long, String> rejectReasonLogMap = new HashMap<>(); // 厂家拒绝原因（reject 日志，最新一条）
+        Map<Long, String> hqRemarkMap = new HashMap<>();        // 总部复核备注（recheck_* 日志）
         Map<String, String> mobileMap = new HashMap<>();
         if (!idList.isEmpty()) {
             String inSql = idList.stream().map(String::valueOf).collect(Collectors.joining(","));
             List<Map<String, Object>> logs = jdbcTemplate.queryForList(
                     "SELECT report_id, action, operator, remark, created_at FROM loss_report_log " +
-                    "WHERE report_id IN (" + inSql + ") AND action IN ('download','receive','not_receive','recheck_pass','recheck_reject') " +
+                    "WHERE report_id IN (" + inSql + ") AND action IN ('download','receive','not_receive','reject','recheck_pass','recheck_reject') " +
                     "ORDER BY created_at ASC");
             for (Map<String, Object> log : logs) {
                 long rid = ((Number) log.get("report_id")).longValue();
                 String action = (String) log.get("action");
                 if ("download".equals(action)) { downloadedIds.add(rid); continue; }
-                if ("recheck_pass".equals(action)) { recheckMap.put(rid, "pass"); continue; }
-                if ("recheck_reject".equals(action)) { recheckMap.put(rid, "reject"); continue; }
+                if ("reject".equals(action)) {
+                    // 厂家拒绝原因：复核通过后 reject_reason 列被清空，从日志兜底（created_at 升序，后写=最新）
+                    Object rj = log.get("remark");
+                    if (rj != null && !rj.toString().isEmpty()) rejectReasonLogMap.put(rid, rj.toString());
+                    continue;
+                }
+                if ("recheck_pass".equals(action)) {
+                    recheckMap.put(rid, "pass");
+                    hqRemarkMap.put(rid, logRemarkPart((String) log.get("remark"), "总部备注："));
+                    continue;
+                }
+                if ("recheck_reject".equals(action)) {
+                    recheckMap.put(rid, "reject");
+                    hqRemarkMap.put(rid, logRemarkPart((String) log.get("remark"), "总部备注："));
+                    continue;
+                }
                 feedbackMap.put(rid, log); // created_at 升序，后写覆盖 = 最新一条
             }
             List<String> openids = new ArrayList<>();
@@ -239,7 +255,11 @@ public class LossReportH5Controller {
             item.put("qimaiOrderNo", r.getOrDefault("qimai_order_no", ""));
             Object occDate = r.get("occurred_date");
             item.put("occurredDate", occDate != null ? occDate.toString().substring(5) : ""); // MM-dd
-            item.put("rejectReason", r.getOrDefault("reject_reason", ""));
+            // 拒绝原因：优先取 reject 日志（复核通过后列被清空），无日志回退列值
+            String rejectReasonLog = rejectReasonLogMap.get(id);
+            item.put("rejectReason", rejectReasonLog != null && !rejectReasonLog.isEmpty()
+                    ? rejectReasonLog : r.getOrDefault("reject_reason", ""));
+            item.put("hqRemark", hqRemarkMap.getOrDefault(id, ""));
             Object qty = r.get("input_qty");
             String unit = (String) r.getOrDefault("input_unit", "");
             String qtyStr = "--";
@@ -451,6 +471,7 @@ public class LossReportH5Controller {
         long id = Long.parseLong(body.get("id"));
         String uid = body.getOrDefault("uid", "");
         String operator = uid.isEmpty() ? "审核人" : uid;
+        String hqRemark = body.getOrDefault("remark", "").trim(); // 总部复核备注（选填）
         Map<String, Object> cur;
         try {
             cur = jdbcTemplate.queryForMap("SELECT status, remark FROM loss_report WHERE id=?", id);
@@ -464,15 +485,23 @@ public class LossReportH5Controller {
                 "SELECT id FROM loss_report_log WHERE report_id=? AND action IN ('recheck_pass','recheck_reject') LIMIT 1",
                 Long.class, id);
         if (!dup.isEmpty()) return Map.of("code", 500, "msg", "该单已复核过");
+        String remarkSuffix = hqRemark.isEmpty() ? "" : "；总部备注：" + hqRemark;
         if (pass) {
             jdbcTemplate.update("UPDATE loss_report SET status='registered', confirmed_at=?, reject_reason=NULL WHERE id=?",
                     LocalDateTime.now(), id);
-            addLog(id, "recheck_pass", operator, "二次审核直接通过", "");
+            addLog(id, "recheck_pass", operator, "二次审核直接通过" + remarkSuffix, "");
             notifyLanwaRecheckPass(id); // 即时知会蓝蛙群（厂家不补发，仅告知复核结论）
         } else {
-            addLog(id, "recheck_reject", operator, "二次审核确定不通过（门店可重新提交）", "");
+            addLog(id, "recheck_reject", operator, "二次审核确定不通过（门店可重新提交）" + remarkSuffix, "");
         }
         return Map.of("code", 200, "msg", pass ? "已通过，进入补发流程" : "已确认不通过，门店可重新提交");
+    }
+
+    /** 取日志 remark 中某标记之后的部分（如「总部备注：」）；无标记返回空串 */
+    private static String logRemarkPart(String logRemark, String marker) {
+        if (logRemark == null) return "";
+        int i = logRemark.indexOf(marker);
+        return i < 0 ? "" : logRemark.substring(i + marker.length()).trim();
     }
 
     /** 二次审核通过后即时知会蓝蛙群：厂家只审核不补发，补发由总部补发人走每日卡片 G；失败不阻断主流程 */
@@ -499,12 +528,30 @@ public class LossReportH5Controller {
                 } catch (Exception ignored) { qtyStr = qty + " " + unit; }
             }
             String reason = String.valueOf(cur.getOrDefault("reason", ""));
+            // 厂家拒绝原因：复核通过后 reject_reason 列被清空，只能取 reject 日志 remark
+            String rejectReason = "";
+            try {
+                List<String> rs = jdbcTemplate.queryForList(
+                        "SELECT remark FROM loss_report_log WHERE report_id=? AND action='reject' ORDER BY id DESC LIMIT 1",
+                        String.class, id);
+                if (!rs.isEmpty() && rs.get(0) != null) rejectReason = rs.get(0).trim();
+            } catch (Exception ignored) {}
+            // 总部复核备注：取 recheck_pass 日志 remark 的「总部备注：」之后部分（人工补发历史单同样适用）
+            String hqRemark = "";
+            try {
+                List<String> rs = jdbcTemplate.queryForList(
+                        "SELECT remark FROM loss_report_log WHERE report_id=? AND action='recheck_pass' ORDER BY id DESC LIMIT 1",
+                        String.class, id);
+                if (!rs.isEmpty()) hqRemark = logRemarkPart(rs.get(0), "总部备注：");
+            } catch (Exception ignored) {}
             String occurredDate = cur.get("occurred_date") == null ? "" : String.valueOf(cur.get("occurred_date"));
             Map<String, Object> card = new LinkedHashMap<>();
             card.put("header", fms.cardHeader("blue", "到货验收报损 · 牛油果泥（蓝蛙）二次审核通过"));
             List<Map<String, Object>> els = new ArrayList<>();
             els.add(fms.mdEl("**" + store + "**\n" + qtyStr + " · " + name +
-                    "\n原因：" + (reason.isEmpty() ? "--" : reason) +
+                    "\n报损原因：" + (reason.isEmpty() ? "--" : reason) +
+                    (rejectReason.isEmpty() ? "" : "\n厂家拒绝原因：" + rejectReason) +
+                    (hqRemark.isEmpty() ? "" : "\n总部复核备注：" + hqRemark) +
                     "\n\n该单已通过总部复核，报损成立。"));
             if (!occurredDate.isEmpty() && !"null".equals(occurredDate)) {
                 String avocadoId = fms.getAvocadoMaterialId();
