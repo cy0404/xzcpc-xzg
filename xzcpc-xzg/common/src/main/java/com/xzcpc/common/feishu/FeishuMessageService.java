@@ -341,19 +341,15 @@ public class FeishuMessageService {
      */
     public String resolveGroupKey(String materialCategory) {
         if (materialCategory == null || materialCategory.isEmpty()) return "其他类";
-        try {
-            String key = jdbcTemplate.queryForObject(
-                    "SELECT DISTINCT category FROM loss_notify_card_config " +
-                    "WHERE status=1 AND category != '其他类' AND FIND_IN_SET(?, category) > 0 " +
-                    "ORDER BY LENGTH(category) ASC LIMIT 1",
-                    String.class, materialCategory);
-            return key != null && !key.isEmpty() ? key : "其他类";
-        } catch (Exception e) {
-            return "其他类";
-        }
+        String group = loadCategoryGroupMap().get(materialCategory.trim());
+        return group != null && !group.isEmpty() ? group : "其他类";
     }
 
-    /** 全量加载分类→分组映射（供 resolveFruitVeg 等批量场景使用，避免逐条查库） */
+    /** 未识别分类告警去重：进程内每个分类只告警一次，避免卡片批量渲染时刷屏 */
+    private static final java.util.Set<String> WARNED_UNKNOWN_CATEGORIES = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** 全量加载分类→分组映射（供 resolveFruitVeg 等批量场景使用，避免逐条查库）。
+     *  键含「类」后缀别名容错（X 与 X类 双向注册），见 putCategoryWithAlias。 */
     public Map<String, String> loadCategoryGroupMap() {
         Map<String, String> map = new HashMap<>();
         try {
@@ -363,8 +359,7 @@ public class FeishuMessageService {
                 String cats = (String) row.get("category");
                 if (cats != null) {
                     for (String c : cats.split(",")) {
-                        String tc = c.trim();
-                        if (!tc.isEmpty()) map.put(tc, cats);
+                        putCategoryWithAlias(map, c.trim(), cats);
                     }
                 }
             }
@@ -375,11 +370,38 @@ public class FeishuMessageService {
         String fv = getConfig("feishu_fruitveg_categories");
         if (fv != null && !fv.isEmpty()) {
             for (String c : fv.split(",")) {
-                String tc = c.trim();
-                if (!tc.isEmpty()) map.put(tc, "水果蔬菜");
+                putCategoryWithAlias(map, c.trim(), "水果蔬菜");
             }
         }
         return map;
+    }
+
+    /**
+     * 注册分类别名：X 与 X「类」双向都进映射。
+     * 源系统物料分类名会漂移（2026-09-10 事故：分类从「水果蔬菜」被同步改成「水果蔬菜类」，
+     * 精确匹配失效 → 整组落进"其他类"卡片），双向别名可容忍任一写法。
+     */
+    private void putCategoryWithAlias(Map<String, String> map, String key, String group) {
+        if (key == null || key.isEmpty()) return;
+        if (!"其他类".equals(key)) map.putIfAbsent(key, group);
+        String alias = key.endsWith("类") ? key.substring(0, key.length() - 1) : key + "类";
+        if (!"其他类".equals(alias)) map.putIfAbsent(alias, group);
+    }
+
+    /**
+     * 分类 → 分组（未识别分类落到「其他类」并告警一次，便于尽早发现源系统分类改名/配置漂移）。
+     * 卡片与 H5 统一走本方法，替代各处 getOrDefault(cat, "其他类")。
+     */
+    public String resolveCategoryGroup(Map<String, String> catGroupMap, String category) {
+        if (category == null || category.trim().isEmpty()) return "其他类";
+        String c = category.trim();
+        String group = catGroupMap.get(c);
+        if (group != null) return group;
+        if (!"其他类".equals(c) && WARNED_UNKNOWN_CATEGORIES.add(c)) {
+            log.warn("未识别物料分类「{}」→ 归入其他类（loss_notify_card_config / feishu_fruitveg_categories "
+                    + "均未覆盖，可能源系统分类改名导致配置漂移；该分类仅告警一次）", c);
+        }
+        return "其他类";
     }
 
     /** 获取某分组的 @用户列表（逗号分隔，用于卡片内 <at> 提及） */

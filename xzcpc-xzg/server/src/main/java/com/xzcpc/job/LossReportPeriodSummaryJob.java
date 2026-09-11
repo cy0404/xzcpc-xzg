@@ -111,7 +111,7 @@ public class LossReportPeriodSummaryJob {
         int excluded = 0;
         for (Map<String, Object> r : raw) {
             String cat = String.valueOf(r.getOrDefault("category", ""));
-            String gk = cat.isEmpty() ? "其他类" : catGroupMap.getOrDefault(cat, "其他类");
+            String gk = fms.resolveCategoryGroup(catGroupMap, cat);
             if ("水果蔬菜".equals(gk)) {
                 excluded++;
                 continue;

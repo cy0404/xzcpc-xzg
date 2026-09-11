@@ -54,7 +54,7 @@ public class LossReportMonthlyVoucherJob {
         List<Map<String, Object>> fruitList = new ArrayList<>();
         for (Map<String, Object> r : reports) {
             String cat = (String) r.getOrDefault("category", "");
-            String gk = cat != null ? catGroupMap.getOrDefault(cat, "其他类") : "其他类";
+            String gk = fms.resolveCategoryGroup(catGroupMap, cat);
             if ("水果蔬菜".equals(gk)) fruitList.add(r);
         }
         if (fruitList.isEmpty()) { log.info("无水果蔬菜已登记报损"); return; }

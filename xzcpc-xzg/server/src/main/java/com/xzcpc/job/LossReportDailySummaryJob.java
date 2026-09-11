@@ -51,7 +51,7 @@ public class LossReportDailySummaryJob {
         Map<String, String> catGroupMap = fms.loadCategoryGroupMap();
         for (Map<String, Object> r : allReports) {
             String cat = (String) r.getOrDefault("category", "");
-            r.put("_group", cat != null ? catGroupMap.getOrDefault(cat, "其他类") : "其他类");
+            r.put("_group", fms.resolveCategoryGroup(catGroupMap, cat));
         }
 
         // 卡片 A：水果蔬菜 pending
@@ -205,7 +205,7 @@ public class LossReportDailySummaryJob {
         Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
         for (Map<String, Object> r : auditAll) {
             String cat = (String) r.getOrDefault("category", "");
-            String gk = cat != null ? catGroupMap.getOrDefault(cat, "其他类") : "其他类";
+            String gk = fms.resolveCategoryGroup(catGroupMap, cat);
             if ("其他类".equals(gk)) continue;
             grouped.computeIfAbsent(gk, k -> new ArrayList<>()).add(r);
         }
@@ -248,7 +248,7 @@ public class LossReportDailySummaryJob {
         Map<String, List<Map<String, Object>>> grouped = new LinkedHashMap<>();
         for (Map<String, Object> r : statsAll) {
             String cat = (String) r.getOrDefault("category", "");
-            String gk = cat != null ? catGroupMap.getOrDefault(cat, "其他类") : "其他类";
+            String gk = fms.resolveCategoryGroup(catGroupMap, cat);
             if ("其他类".equals(gk)) continue;
             grouped.computeIfAbsent(gk, k -> new ArrayList<>()).add(r);
         }
@@ -431,7 +431,7 @@ public class LossReportDailySummaryJob {
         for (Map<String, Object> r : statsAll) {
             String status = (String) r.get("status");
             String cat = (String) r.getOrDefault("category", "");
-            String gk = cat != null ? catGroupMap.getOrDefault(cat, "其他类") : "其他类";
+            String gk = fms.resolveCategoryGroup(catGroupMap, cat);
 
             if ("registered".equals(status) && "水果蔬菜".equals(gk)) {
                 // 水果蔬菜类只统计上个月的

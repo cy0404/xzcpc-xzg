@@ -208,29 +208,8 @@ public class LossReportH5Controller {
                 }
             }
         }
-        // 批量预加载分类映射，避免逐条查库
-        Map<String, Object> configMap = new HashMap<>();
-        try {
-            List<Map<String, Object>> configs = jdbcTemplate.queryForList(
-                "SELECT DISTINCT category FROM loss_notify_card_config WHERE status=1 AND category != '其他类'");
-            for (Map<String, Object> cfg : configs) {
-                String cats = (String) cfg.get("category");
-                if (cats != null) {
-                    for (String c : cats.split(",")) {
-                        String tc = c.trim();
-                        if (!tc.isEmpty()) configMap.put(tc, cats);
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
-        // 兜底：sys_config.feishu_fruitveg_categories 里列出的分类算水果蔬菜组
-        String fvCats = fms.getConfig("feishu_fruitveg_categories");
-        if (fvCats != null && !fvCats.isEmpty()) {
-            for (String c : fvCats.split(",")) {
-                String tc = c.trim();
-                if (!tc.isEmpty()) configMap.put(tc, "水果蔬菜");
-            }
-        }
+        // 分类分组映射：统一走 fms（含「类」后缀别名容错），避免与 Job 侧口径分叉
+        Map<String, String> configMap = fms.loadCategoryGroupMap();
 
         List<Map<String, Object>> pending = new ArrayList<>();
         List<Map<String, Object>> done = new ArrayList<>();
@@ -335,9 +314,9 @@ public class LossReportH5Controller {
             }
             String parentCat = (String) r.getOrDefault("parent_category", "");
             String matCat = (String) r.getOrDefault("category", "");
-            String gKey = matCat != null ? (String) configMap.getOrDefault(matCat, "其他类") : "其他类";
+            String gKey = fms.resolveCategoryGroup(configMap, matCat);
             // 分类或父分类命中水果蔬菜分组都算水果蔬菜（部分物料分类未配置时靠父分类兜底）
-            String pKey = parentCat != null ? (String) configMap.getOrDefault(parentCat, "") : "";
+            String pKey = parentCat != null ? configMap.getOrDefault(parentCat, "") : "";
             item.put("urgent", r.getOrDefault("urgent", 0));
             item.put("isFruitVeg", "水果蔬菜".equals(gKey) || "水果蔬菜".equals(pKey));
             item.put("handlerName", r.getOrDefault("handler_name", ""));
@@ -1316,7 +1295,7 @@ public class LossReportH5Controller {
             // 按 category 参数过滤
             String matCat = (String) r.getOrDefault("category", "");
             if (category != null && !category.isEmpty()) {
-                String gk = matCat != null ? catGroupMap.getOrDefault(matCat, "其他类") : "其他类";
+                String gk = fms.resolveCategoryGroup(catGroupMap, matCat);
                 if (!category.equals(gk)) continue;
             }
             Map<String, Object> item = new LinkedHashMap<>();
@@ -1979,19 +1958,6 @@ public class LossReportH5Controller {
             log.error("H5 验收失败 id={}", body.get("issueId"), e);
             return Map.of("code", 500, "msg", "验收失败，请稍后重试");
         }
-    }
-
-    private String resolveGroupKey(String category) {
-        if (category == null || category.isEmpty()) return "其他类";
-        try {
-            // 查 loss_notify_card_config，category 列是逗号分隔的分类列表
-            // 匹配当前物料分类属于哪个配置行，排除"其他类"
-            String name = jdbcTemplate.queryForObject(
-                    "SELECT category FROM loss_notify_card_config WHERE status=1 AND category != '其他类' AND FIND_IN_SET(?, category) > 0 ORDER BY LENGTH(category) ASC LIMIT 1",
-                    String.class, category);
-            if (name != null && !name.isEmpty()) return name;
-        } catch (Exception ignored) {}
-        return "其他类";
     }
 
     private String getAtUserForCategory(String groupName) {
