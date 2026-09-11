@@ -95,12 +95,26 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
         report.put("interfaceSupervisors", userIds.size());
         report.put("matchedSupervisors", byUserId.size());
 
-        // ---- 4. 门店 code → Store（本地 store_id） ----
+        // ---- 4. 门店 code → Store（本地 store_id）；同时建名称索引兜底 ----
+        // ⚠️ store_code 会被企迈门店同步（StoreServiceImpl.upsertStores）改写为 mendianxinxi-*，
+        // 与 xinfo 接口数字 id 不再一致；再按 code 匹配会误判为新店 → 重复建店（2026-09-10 事故）。
+        // 兜底：按 xinfo_store_name / store_name 命中老店，避免重复建店。
         Map<String, Store> byCode = new HashMap<>();
+        Map<String, Store> byXcxId = new HashMap<>();   // miniProgramId ↔ xiaochengxuid（企迈门店号，两套同步都写，最稳）
+        Map<String, Store> byName = new HashMap<>();
         storeMapper.selectList(new LambdaQueryWrapper<Store>().eq(Store::getDelFlag, 0))
                 .forEach(s -> {
                     if (StringUtils.hasText(s.getStoreCode())) {
                         byCode.putIfAbsent(s.getStoreCode(), s);
+                    }
+                    if (StringUtils.hasText(s.getXiaochengxuid())) {
+                        byXcxId.putIfAbsent(s.getXiaochengxuid(), s);
+                    }
+                    if (StringUtils.hasText(s.getXinfoStoreName())) {
+                        byName.putIfAbsent(s.getXinfoStoreName(), s);
+                    }
+                    if (StringUtils.hasText(s.getStoreName())) {
+                        byName.putIfAbsent(s.getStoreName(), s);
                     }
                 });
 
@@ -109,14 +123,36 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
         List<String> unmatchedSupervisors = new ArrayList<>();   // userId 本地匹配不到
         List<String> nameMismatches = new ArrayList<>();         // displayName ≠ admin_permission.name
         List<String> newStoreIds = new ArrayList<>();            // 新增门店（store_code + 生成的 store_id，供人工维护）
+        List<String> codeMismatches = new ArrayList<>();         // 名称兜底命中的门店（store_code 与接口 id 不一致）
         List<String> removedStaleRows = new ArrayList<>();       // 本次收敛软删的旧 auto 行（督导变更）
         List<String> staleManualRows = new ArrayList<>();        // 双挂 manual 残留（仅报告，人工确认后手动清理）
         Set<String> currentAutoKeys = new HashSet<>();           // 本次接口确认的 (openId|storeId)
 
         for (Map<String, Object> item : items) {
-            // 匹配键：接口 id（数字）↔ 本地 store_code（与企迈 code 同源）
+            // 匹配键优先级：① 接口 id ↔ 本地 store_code（历史约定，但会被企迈同步改写为 mendianxinxi-*）
+            //   ② 接口 miniProgramId ↔ 本地 xiaochengxuid（企迈门店号，两边都有、最稳）
+            //   ③ 名称兜底（xinfo_store_name / store_name）
             String code = str(item.get("id"));
             Store store = StringUtils.hasText(code) ? byCode.get(code) : null;
+            String matchedBy = null;
+            if (store == null) {
+                String xcxId = str(item.get("miniProgramId"));
+                if (StringUtils.hasText(xcxId)) {
+                    store = byXcxId.get(xcxId);
+                    if (store != null) matchedBy = "小程序号" + xcxId;
+                }
+            }
+            if (store == null) {
+                String itemName = str(item.get("name"));
+                if (StringUtils.hasText(itemName)) {
+                    store = byName.get(itemName);
+                    if (store != null) matchedBy = "名称「" + itemName + "」";
+                }
+            }
+            if (store != null && matchedBy != null) {
+                codeMismatches.add("接口id=" + code + "「" + str(item.get("name")) + "」按" + matchedBy
+                        + "复用门店 " + store.getStoreId() + "（本地 store_code=" + store.getStoreCode() + "）");
+            }
             boolean isNewStore = false;
             if (store == null) {
                 if (!apply) {
@@ -196,6 +232,7 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
         report.put("unmatchedByCode", unmatchedByCode);
         report.put("newStores", newStores);
         report.put("newStoreIds", newStoreIds); // 新店 store_id 清单，供人工后续维护
+        report.put("codeMismatches", codeMismatches); // store_code 与接口 id 不一致、按名称复用老店的清单
         report.put("unmatchedSupervisors", unmatchedSupervisors);
         report.put("nameMismatches", nameMismatches);
         report.put("removedStaleAuto", removedStaleRows); // 收敛清单：旧督导 auto 行（软删）
@@ -214,8 +251,8 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
                 });
         report.put("staleAutoRows", staleAuto);
 
-        log.info("督导同步完成：接口{}家 匹配{}家 无督导{}家 未对齐门店{} 未匹配督导{} 收敛旧auto行{} 失效auto行{} manual残留{}",
-                items.size(), matchedStores, noSupervisor, unmatchedByCode,
+        log.info("督导同步完成：接口{}家 匹配{}家 无督导{}家 未对齐门店{} 名称兜底{} 未匹配督导{} 收敛旧auto行{} 失效auto行{} manual残留{}",
+                items.size(), matchedStores, noSupervisor, unmatchedByCode, codeMismatches.size(),
                 unmatchedSupervisors.size(), removedStaleRows.size(), staleAuto.size(), staleManualRows.size());
         return report;
     }
@@ -313,6 +350,26 @@ public class SupervisorSyncServiceImpl implements SupervisorSyncService {
             }
             return existing;
         }
+        // 防重复（同名兜底）：store_code 匹配不上但名称已存在（xinfo_store_name / store_name）→ 复用，不新建
+        String name = str(item.get("name"));
+        if (StringUtils.hasText(name)) {
+            Store sameName = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
+                    .eq(Store::getDelFlag, 0).eq(Store::getXinfoStoreName, name).last("LIMIT 1"));
+            if (sameName == null) {
+                sameName = storeMapper.selectOne(new LambdaQueryWrapper<Store>()
+                        .eq(Store::getDelFlag, 0).eq(Store::getStoreName, name).last("LIMIT 1"));
+            }
+            if (sameName != null) {
+                log.warn("督导同步：接口 id={}「{}」store_code 未匹配但同名门店已存在 store_id={}，复用不新建",
+                        code, name, sameName.getStoreId());
+                if (applyBaseInfo(sameName, item)) {
+                    sameName.setUpdatedAt(LocalDateTime.now());
+                    storeMapper.updateById(sameName);
+                }
+                return sameName;
+            }
+        }
+
         Store s = new Store();
         s.setStoreCode(code);
         s.setStoreId(genStoreId()); // store_id 本地自定义生成（cm 开头企迈格式），非接口采集
