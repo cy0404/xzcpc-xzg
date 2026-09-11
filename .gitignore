@@ -35,3 +35,9 @@ application-local.yml
 # 排查脚本（含库密码，不入库）
 /check-*.py
 /xzcpc-xzg/check-*.py
+
+# 成本卡分析脚本的连接参数（含库密码，不入库）
+/scripts/costcard/_conn.py
+/scripts/costcard/output/
+/scripts/costcard/tmp/
+/scripts/costcard/__pycache__/
