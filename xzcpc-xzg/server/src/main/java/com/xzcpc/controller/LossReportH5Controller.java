@@ -464,6 +464,24 @@ public class LossReportH5Controller {
     }
 
     /**
+     * 手动补发「二次审核通过」知会卡到蓝蛙群（补偿用：历史上因收件人配置未启用被静默跳过的单）。
+     * 仅允许已复核通过（存在 recheck_pass 日志）的单补发，防误发未复核单。
+     * POST /api/public/loss-report/notify-lanwa-recheck?id=24050
+     */
+    @PostMapping("/api/public/loss-report/notify-lanwa-recheck")
+    @ResponseBody
+    public Map<String, Object> notifyLanwaRecheckManual(@RequestParam long id) {
+        List<Long> pass = jdbcTemplate.queryForList(
+                "SELECT id FROM loss_report_log WHERE report_id=? AND action='recheck_pass' LIMIT 1",
+                Long.class, id);
+        if (pass.isEmpty()) {
+            return Map.of("code", 500, "msg", "该单没有 recheck_pass 记录，不能补发知会（id=" + id + "）");
+        }
+        notifyLanwaRecheckPass(id);
+        return Map.of("code", 200, "msg", "已补发知会卡 id=" + id);
+    }
+
+    /**
      * 蓝蛙群拒绝的单，审核人二次审核。仅蓝蛙牛油果泥单、status=rejected、且未复核过（幂等）。
      * 通过：status→registered，清 reject_reason；不通过：保持 rejected（门店端重新提交，现状已支持）。
      */
